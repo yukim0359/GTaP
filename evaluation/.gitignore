@@ -1,0 +1,13 @@
+venv/
+*.sh.o*
+bin
+tmp*
+profile/
+
+# util
+gen_vector
+data.bin
+gen_spm
+spm_data.bin
+gen_spm_skew
+spm_data_skew.bin
