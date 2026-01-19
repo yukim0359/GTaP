@@ -5,6 +5,8 @@
 #include <queue>
 #include <algorithm>
 #include <time.h>
+
+#define PROFILE
 #define GTAP_MAX_TASK_DATA_SIZE 8
 #include "gtap_block.cuh"
 
@@ -202,7 +204,7 @@ int main(int argc, char** argv) {
     free(h_depth_cpu);
 
     #ifdef PROFILE
-    visualize_profile("bfs");
+    visualize_profile("bfs_block");
     #endif
 
     free(h_row); free(h_col); free(h_depth);

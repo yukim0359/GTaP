@@ -4,6 +4,8 @@
 #include <string>
 #include <queue>
 #include <algorithm>
+
+#define PROFILE
 #define GTAP_MAX_TASK_DATA_SIZE 8
 #include "gtap_thread.cuh"
 

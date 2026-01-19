@@ -7,7 +7,7 @@ plt.style.use("~/plot_style/thesis_plt.mplstyle")
 
 BENCHMARK_NAME = "nq"
 TITLE_BENCHMARK_NAME = "N-Queens"
-OUTPUT_FORMAT = "png"  # "png" or "pdf"
+OUTPUT_FORMAT = "pdf"  # "png" or "pdf"
 
 csv_path = Path(f"epaq_performance_results_{BENCHMARK_NAME}.csv")
 out_path_comparison = Path(f"img/epaq_comparison_{BENCHMARK_NAME}.{OUTPUT_FORMAT}")

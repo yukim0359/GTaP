@@ -3,9 +3,8 @@
 #include <string.h>
 #include <omp.h>
 
-#ifndef CUTOFF
-#define CUTOFF (4096)
-#endif
+#define TASK_SPAWN_CUTOFF_SORT (4096)
+#define TASK_SPAWN_CUTOFF_MERGE (4096)
 
 #define SWAP(type, x, y)                                                       \
   {                                                                            \
@@ -82,7 +81,7 @@ void cilkmerge(elem_p a, idx_t a_len, elem_p b, idx_t b_len, elem_p dst) {
   }
 
   // Single-threaded merge for small arrays
-  if (a_len + b_len < CUTOFF) {
+  if (a_len + b_len < TASK_SPAWN_CUTOFF_MERGE) {
     merge(a, a_len, b, b_len, dst);
     return;
   }
@@ -111,7 +110,7 @@ void cilksort(elem_p arr, idx_t n, elem_p tmp) {
     return;
 
   // Single-threaded sort for small arrays
-  if (n < CUTOFF) {
+  if (n < TASK_SPAWN_CUTOFF_SORT) {
     qsort(arr, n, sizeof(elem_t), compare_elem_t);
     return;
   }

@@ -1,7 +1,7 @@
 #!/bin/bash
-#PBS -q regular-g
+#PBS -q debug-g
 #PBS -l select=1
-#PBS -l walltime=01:00:00
+#PBS -l walltime=00:30:00
 #PBS -W group_list=gc64
 #PBS -j oe
 

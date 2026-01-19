@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
-#include "gtap_block.cuh"
+// #define PROFILE
+#include "gtap_block_gq.cuh"
 
 #define DATA_LENGTH 2048
 
@@ -87,6 +88,11 @@ int main(int argc, char** argv) {
     float elapsed_time;
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %f ms\n", elapsed_time);
+
+#ifdef PROFILE
+    visualize_profile("fib_plus");
+#endif
+
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     return 0;

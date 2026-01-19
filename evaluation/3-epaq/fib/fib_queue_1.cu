@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 #define GTAP_MAX_TASK_DATA_SIZE 16
+// #define PROFILE
 #include "gtap_thread.cuh"
 
 __device__ int d_result;
@@ -60,6 +61,11 @@ int main(int argc, char** argv) {
     float elapsed_time;
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
+
+#ifdef PROFILE
+    visualize_profile("fib_queue_1");
+#endif
+
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     return 0;

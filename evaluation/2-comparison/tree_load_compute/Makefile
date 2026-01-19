@@ -10,24 +10,27 @@ CXX_BIN    ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(PROJ_DIR)/runtime
 
 # ---- Inputs / Outputs ----
-SRC_GTAP        := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
+SRC_GTAP_THREAD := $(SCRIPT_DIR)/gtap_thread_$(BENCHMARK_NAME).cu
+SRC_GTAP_BLOCK  := $(SCRIPT_DIR)/gtap_block_$(BENCHMARK_NAME).cu
 SRC_OMP         := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).cpp
 SRC_OMP_CUDA    := $(SCRIPT_DIR)/omp_cuda_$(BENCHMARK_NAME).cu
 SRC_SEQ         := $(SCRIPT_DIR)/seq_$(BENCHMARK_NAME).c
 
 OUT_DIR       := $(SCRIPT_DIR)/bin
-OUT_GTAP      := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
+OUT_GTAP_THREAD := $(OUT_DIR)/gtap_thread_$(BENCHMARK_NAME)
+OUT_GTAP_BLOCK  := $(OUT_DIR)/gtap_block_$(BENCHMARK_NAME)
 OUT_OMP       := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_OMP_CUDA  := $(OUT_DIR)/omp_cuda_$(BENCHMARK_NAME)
 OUT_SEQ       := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings ----
-GTAP_GRID_SIZE          ?= 1000
-GTAP_BLOCK_SIZE         ?= 64
-GTAP_MAX_TASKS_PER_WARP ?= 200000
-GTAP_MAX_CHILD_TASKS    ?= 2
-GTAP_NUM_QUEUES         ?= 1
-GTAP_CFLAGS             ?= -DGTAP_TERMINATE_ON_FIRST_TASK_FINISH
+GTAP_GRID_SIZE           ?= 1000
+GTAP_BLOCK_SIZE          ?= 64
+GTAP_MAX_TASKS_PER_WARP  ?= 100000
+GTAP_MAX_TASKS_PER_BLOCK ?= 100000
+GTAP_MAX_CHILD_TASKS     ?= 2
+GTAP_NUM_QUEUES          ?= 1
+GTAP_CFLAGS              ?= -DGTAP_TERMINATE_ON_FIRST_TASK_FINISH
 
 # ---- OpenMP build settings ----
 CC_OMP           ?= $(CXX_BIN)
@@ -48,9 +51,9 @@ LDFLAGS_OMP_CUDA      ?= -L"$(OMP_CUDA_LIB_DIR)" -Wl,-rpath,"$(OMP_CUDA_LIB_DIR)
 CC_SEQ           ?= $(CXX_BIN)
 CFLAGS_SEQ       ?= -O3 -Wall -Wextra
 
-.PHONY: all gtap omp omp_cuda seq clean print-vars
+.PHONY: all gtap_thread gtap_block omp omp_cuda seq clean print-vars
 
-all: gtap omp omp_cuda
+all: gtap_thread gtap_block omp omp_cuda
 
 print-vars:
 	@echo "SCRIPT_DIR=$(SCRIPT_DIR)"
@@ -65,9 +68,9 @@ $(OUT_DIR):
 	mkdir -p "$(OUT_DIR)"
 
 # ---- Build: gtap_$(BENCHMARK_NAME).cu ----
-gtap: $(OUT_GTAP)
+gtap_thread: $(OUT_GTAP_THREAD)
 
-$(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
+$(OUT_GTAP_THREAD): $(SRC_GTAP_THREAD) | $(OUT_DIR)
 	"$(CXX_BIN)" -O3 -x cuda \
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
@@ -79,7 +82,23 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_GTAP)" -o "$(OUT_GTAP)"
+	  "$(SRC_GTAP_THREAD)" -o "$(OUT_GTAP_THREAD)"
+
+gtap_block: $(OUT_GTAP_BLOCK)
+
+$(OUT_GTAP_BLOCK): $(SRC_GTAP_BLOCK) | $(OUT_DIR)
+	"$(CXX_BIN)" -O3 -x cuda \
+	  --cuda-path="$(CUDA_PATH)" \
+	  --cuda-gpu-arch="$(CUDA_ARCH)" \
+	  -Wall -Wextra \
+	  -Xcuda-ptxas --warn-on-spills \
+	  -I"$(GT_INC)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_BLOCK="$(GTAP_MAX_TASKS_PER_BLOCK)" -DGTAP_MAX_CHILD_TASKS="$(GTAP_MAX_CHILD_TASKS)" \
+	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
+	  $(GTAP_CFLAGS) \
+	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  "$(SRC_GTAP_BLOCK)" -o "$(OUT_GTAP_BLOCK)"
 
 # ---- Build: omp_$(BENCHMARK_NAME).cpp ----
 omp: $(OUT_OMP)
@@ -109,4 +128,4 @@ $(OUT_OMP_CUDA): $(SRC_OMP_CUDA) | $(OUT_DIR)
 # 	"$(CC_SEQ)" $(CFLAGS_SEQ) "$(SRC_SEQ)" -o "$(OUT_SEQ)"
 
 clean:
-	rm -f $(OUT_GTAP) $(OUT_OMP) $(OUT_OMP_CUDA) $(OUT_SEQ)
+	rm -f $(OUT_GTAP_THREAD) $(OUT_GTAP_BLOCK) $(OUT_OMP) $(OUT_OMP_CUDA) $(OUT_SEQ)

@@ -133,7 +133,6 @@ struct Ctx {
     int indices_n;
     int mem_ops;
     int compute_iters;
-    int total_nodes;
 
     std::vector<cudaStream_t> streams; // [omp_threads]
     std::vector<cudaEvent_t>  done;    // [total_nodes]
@@ -147,22 +146,18 @@ static inline void cuda_check(cudaError_t st, const char* msg) {
 }
 
 static void tree_omp_cuda(int node, int height, Ctx* ctx) {
-    if (node >= ctx->total_nodes) return;
-
     if (height == 0) {
-        #pragma omp task default(none) firstprivate(node) shared(ctx)
-        {
-            int tid = omp_get_thread_num();
-            cudaStream_t s = ctx->streams[tid];
+        int tid = omp_get_thread_num();
+        cudaStream_t s = ctx->streams[tid];
 
-            leaf_kernel<<<1, GPU_BLOCK_SIZE, 0, s>>>(
-                node, ctx->mem_ops, ctx->compute_iters,
-                ctx->d_input, ctx->input_n,
-                ctx->d_indices, ctx->indices_n,
-                ctx->d_out
-            );
-            cuda_check(cudaEventRecord(ctx->done[node], s), "EventRecord(leaf)");
-        }
+        leaf_kernel<<<1, GPU_BLOCK_SIZE, 0, s>>>(
+            node, ctx->mem_ops, ctx->compute_iters,
+            ctx->d_input, ctx->input_n,
+            ctx->d_indices, ctx->indices_n,
+            ctx->d_out
+        );
+        cuda_check(cudaGetLastError(), "launch leaf_kernel");
+        // cuda_check(cudaEventRecord(ctx->done[node], s), "EventRecord(leaf)");
         return;
     }
 
@@ -170,30 +165,29 @@ static void tree_omp_cuda(int node, int height, Ctx* ctx) {
     int r = node * 2 + 2;
 
     // spawn children
+    #pragma omp task default(none) firstprivate(l, height) shared(ctx)
     tree_omp_cuda(l, height - 1, ctx);
+    #pragma omp task default(none) firstprivate(r, height) shared(ctx)
     tree_omp_cuda(r, height - 1, ctx);
 
     // wait until child OpenMP tasks have at least enqueued & recorded their events
     #pragma omp taskwait
 
-    // internal node task: BLOCK on GPU completion of children, then launch parent
-    #pragma omp task default(none) firstprivate(node, l, r) shared(ctx)
-    {
-        // ここで「子のGPU完了」まで待つ
-        cuda_check(cudaEventSynchronize(ctx->done[l]), "EventSync(l)");
-        cuda_check(cudaEventSynchronize(ctx->done[r]), "EventSync(r)");
+    // // ここで「子のGPU完了」まで待つ
+    // cuda_check(cudaEventSynchronize(ctx->done[l]), "EventSync(l)");
+    // cuda_check(cudaEventSynchronize(ctx->done[r]), "EventSync(r)");
 
-        int tid = omp_get_thread_num();
-        cudaStream_t s = ctx->streams[tid];
+    int tid = omp_get_thread_num();
+    cudaStream_t s = ctx->streams[tid];
 
-        internal_kernel<<<1, GPU_BLOCK_SIZE, 0, s>>>(
-            node, l, r, ctx->mem_ops, ctx->compute_iters,
-            ctx->d_input, ctx->input_n,
-            ctx->d_indices, ctx->indices_n,
-            ctx->d_out
-        );
-        cuda_check(cudaEventRecord(ctx->done[node], s), "EventRecord(internal)");
-    };
+    internal_kernel<<<1, GPU_BLOCK_SIZE, 0, s>>>(
+        node, l, r, ctx->mem_ops, ctx->compute_iters,
+        ctx->d_input, ctx->input_n,
+        ctx->d_indices, ctx->indices_n,
+        ctx->d_out
+    );
+    cuda_check(cudaGetLastError(), "launch leaf_kernel");
+    // cuda_check(cudaEventRecord(ctx->done[node], s), "EventRecord(internal)");
 }
 
 // ------------------------------
@@ -252,7 +246,6 @@ int main(int argc, char** argv) {
     ctx.indices_n = indices_n;
     ctx.mem_ops = mem_ops;
     ctx.compute_iters = compute_iters;
-    ctx.total_nodes = total_nodes;
 
     // One stream per OpenMP thread
     int omp_threads = omp_get_max_threads();
@@ -287,7 +280,7 @@ int main(int argc, char** argv) {
         }
     }
     // Wait for root completion, then stop timer
-    cuda_check(cudaEventSynchronize(ctx.done[0]), "EventSync(root)");
+    // cuda_check(cudaEventSynchronize(ctx.done[0]), "EventSync(root)");
     cuda_check(cudaDeviceSynchronize(), "DeviceSync");
     double t1 = omp_get_wtime();
     double ms = (t1 - t0) * 1000.0;

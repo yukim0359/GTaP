@@ -6,7 +6,7 @@ from pathlib import Path
 plt.style.use("~/plot_style/thesis_plt.mplstyle")
 
 BENCHMARK_NAME = "nq"
-OUTPUT_FORMAT = "png"  # "png" or "pdf"
+OUTPUT_FORMAT = "pdf"  # "png" or "pdf"
 
 csv_path = Path(f"{BENCHMARK_NAME}_performance_results.csv")
 out_path_comparison = Path(f"img/{BENCHMARK_NAME}_performance_comparison.{OUTPUT_FORMAT}")
