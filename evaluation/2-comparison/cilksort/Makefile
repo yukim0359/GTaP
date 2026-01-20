@@ -21,7 +21,7 @@ OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings ----
-GTAP_GRID_SIZE          ?= 4000
+GTAP_GRID_SIZE          ?= 2000
 GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 80000
 GTAP_MAX_CHILD_TASKS    ?= 7

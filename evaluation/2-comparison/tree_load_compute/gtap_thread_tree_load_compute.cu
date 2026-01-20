@@ -43,9 +43,7 @@ static inline cudaError_t bind_globals(const double* d_input, int input_n,
 
 // Prevent the compiler from optimizing away the loads too aggressively
 __device__ __forceinline__ double mix_fma(double x) {
-    x = fma(x, 1.0000001192092896, 0.9999999403953552);
-    x = fma(x, 0.9999999403953552, 1.0000001192092896);
-    return x;
+    return fma(x, 1.0000001192092896, 0.9999999403953552);
 }
 
 __device__ __forceinline__ uint32_t hash32(uint32_t x){
@@ -57,31 +55,54 @@ __device__ __forceinline__ uint32_t hash32(uint32_t x){
     return x;
 }
 
-// 1-thread-per-task version:
-// - No shared memory reduction
-// - The executing thread performs all work sequentially
 __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters) {
     double acc = 0.0;
 
-    // per-node starting point
-    uint32_t base = hash32((uint32_t)node) % (uint32_t)g_indices_n;
+    uint32_t seed = hash32((uint32_t)node ^ 0x9e3779b9u);
+    uint32_t mask = (uint32_t)g_input_n - 1u;
 
-    // fixed number of random global loads (all by this thread)
     #pragma unroll 1
     for (int m = 0; m < mem_ops; ++m) {
-        int idx = g_indices[(base + (uint32_t)m) % (uint32_t)g_indices_n];
+        uint32_t r = hash32(seed + (uint32_t)m);
+        int idx = (int)(r & mask);            // if g_input_n is power of two
+        // int idx = (int)(r % (uint32_t)g_input_n); // general case
         acc += g_input[idx];
     }
 
-    // compute-heavy loop (all by this thread)
     double x = acc + (double)(node & 0xFF) * 1e-9;
     #pragma unroll 1
     for (int it = 0; it < compute_iters; ++it) {
         x = mix_fma(x);
     }
 
+    asm volatile("" :: "f"(x));
     return x;
 }
+
+// old ver.
+// // 1-thread-per-task version:
+// // - No shared memory reduction
+// // - The executing thread performs all work sequentially
+// __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters) {
+//     double acc = 0.0;
+
+//     // per-node starting point
+//     uint32_t base = hash32((uint32_t)node) % (uint32_t)g_indices_n;
+
+//     // fixed number of random global loads (all by this thread)
+//     for (int m = 0; m < mem_ops; ++m) {
+//         int idx = g_indices[(base + (uint32_t)m) % (uint32_t)g_indices_n];
+//         acc += g_input[idx];
+//     }
+
+//     // compute-heavy loop (all by this thread)
+//     double x = acc + (double)(node & 0xFF) * 1e-9;
+//     for (int it = 0; it < compute_iters; ++it) {
+//         x = mix_fma(x);
+//     }
+//     asm volatile("" :: "f"(x));
+//     return x;
+// }
 
 // ------------------------------
 // Tree task: spawn two children and join
@@ -109,12 +130,9 @@ __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) 
     // join
     #pragma gtap taskwait
 
-    // combine child results + own synthetic work
+    // own synthetic work only (no reduction of children)
     double own = do_memory_and_compute(node, mem_ops, compute_iters);
-
-    double lv = g_out[l];
-    double rv = g_out[r];
-    g_out[node] = (lv + rv) * 0.5 + own * 1e-6;
+    g_out[node] = own;
 }
 
 __global__ void exec_kernel(int height, int mem_ops, int compute_iters) {

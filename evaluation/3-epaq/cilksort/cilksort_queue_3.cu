@@ -121,7 +121,7 @@ __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
 
     #pragma gtap task queue(a_split + b_split < TASK_SPAWN_CUTOFF_MERGE ? 2 : 0)
     cilkmerge(a, a_split, b, b_split, dst);
-    #pragma gtap task queue(a_split + b_split < TASK_SPAWN_CUTOFF_MERGE ? 2 : 0)
+    #pragma gtap task queue((a_len - a_split) + (b_len - b_split) < TASK_SPAWN_CUTOFF_MERGE ? 2 : 0)
     cilkmerge(a + a_split, a_len - a_split, b + b_split, b_len - b_split, dst + a_split + b_split);
     #pragma gtap taskwait
     return;

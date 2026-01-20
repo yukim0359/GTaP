@@ -39,12 +39,8 @@ static inline cudaError_t bind_globals(const double* d_input, int input_n,
     return cudaSuccess;
 }
 
-// Prevent the compiler from optimizing away the loads too aggressively
 __device__ __forceinline__ double mix_fma(double x) {
-    // a small deterministic mix; uses fma to keep ALU busy
-    x = fma(x, 1.0000001192092896, 0.9999999403953552);
-    x = fma(x, 0.9999999403953552, 1.0000001192092896);
-    return x;
+    return fma(x, 1.0000001192092896, 0.9999999403953552);
 }
 
 __device__ __forceinline__ uint32_t hash32(uint32_t x){
@@ -57,45 +53,60 @@ __device__ __forceinline__ uint32_t hash32(uint32_t x){
 }
 
 __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters) {
-    // 1) fixed number of random global loads
+    // 1) fixed number of irregular global loads from g_input
     double acc = 0.0;
-    // make per-node starting point different
-    uint32_t base = hash32((uint32_t)node) % (uint32_t)g_indices_n;
+
+    // Per-node seed (same logical random stream as thread/OMP versions).
+    // Threads within a block cooperate by iterating m = threadIdx.x, threadIdx.x + blockDim.x, ...
+    // so the overall sequence of mem_ops indices per node matches the CPU / 1-thread-per-task GPU version.
+    uint32_t seed = hash32((uint32_t)node ^ 0x9e3779b9u);
+
+    // If g_input_n is a power of two (your default is 1<<20), masking is valid and fast.
+    // Otherwise, replace "& mask" with "% g_input_n".
+    uint32_t mask = (uint32_t)g_input_n - 1u;
 
     for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
-        int idx = g_indices[(base + m) % g_indices_n];
-        // idx in [0, g_input_n)
+        uint32_t r = hash32(seed + (uint32_t)m);
+        int idx = (int)(r & mask);              // power-of-two case
+        // int idx = (int)(r % (uint32_t)g_input_n); // general case
         acc += g_input[idx];
     }
 
-    // reduction within the block (simple; deterministic)
-    __shared__ double sh[GTAP_BLOCK_SIZE]; // THREADS_PER_BLK is 1024 in your config
-    sh[threadIdx.x] = acc;
-    __syncthreads();
-
-    // tree-reduction
-    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
-        if (threadIdx.x < offset) sh[threadIdx.x] += sh[threadIdx.x + offset];
-        __syncthreads();
-    }
-    acc = sh[0];
-
-    // 2) variable compute: FMA-heavy loop
-    // all threads run to model compute, but only thread0 returns final
+    // 2) compute loop (distributed across threads as before)
     double x = acc + (double)(node & 0xFF) * 1e-9;
     for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
         x = mix_fma(x);
     }
 
-    // fold x across threads similarly (so compute isn't trivially dead)
-    sh[threadIdx.x] = x;
-    __syncthreads();
-    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
-        if (threadIdx.x < offset) sh[threadIdx.x] += sh[threadIdx.x + offset];
-        __syncthreads();
-    }
-    return sh[0];
+    asm volatile("" :: "f"(x));
+    return x; // per-thread value (not reduced)
 }
+
+// old ver.
+// __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters) {
+//     // 1) fixed number of random global loads
+//     double acc = 0.0;
+//     // make per-node starting point different
+//     uint32_t base = hash32((uint32_t)node) % (uint32_t)g_indices_n;
+
+//     for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
+//         int idx = g_indices[(base + m) % g_indices_n];
+//         // idx in [0, g_input_n)
+//         acc += g_input[idx];
+//     }
+
+//     // 2) variable compute: FMA-heavy loop
+//     // per-thread compute (no block-wide reduction)
+//     double x = acc + (double)(node & 0xFF) * 1e-9;
+//     for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
+//         x = mix_fma(x);
+//     }
+
+//     // Prevent dead-code elimination without adding any reduction/atomic.
+//     // This keeps the random loads + FMA work "real" for every participating thread.
+//     asm volatile("" :: "f"(x));
+//     return x; // per-thread value (not reduced)
+// }
 
 // ------------------------------
 // Tree task: spawn two children and join
@@ -106,8 +117,8 @@ __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) 
     // if (threadIdx.x == 0) printf("tree_work: node=%d height=%d mem_ops=%d compute_iters=%d\n", node, height, mem_ops, compute_iters);
     if (height == 0) {
         // leaf
-        double v = do_memory_and_compute(node, mem_ops, compute_iters);
-        if (threadIdx.x == 0) g_out[node] = v;
+        double v = do_memory_and_compute(node, mem_ops, compute_iters); // all threads do work
+        if (threadIdx.x == 0) g_out[node] = v; // store thread0's per-thread result (no reduction)        
         __syncthreads();
         return;
     } else {
@@ -122,15 +133,10 @@ __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) 
         __syncthreads();
         #pragma gtap taskwait
 
-        // combine child results + own synthetic work
-        double own = do_memory_and_compute(node, mem_ops, compute_iters);
-        // if (threadIdx.x == 0) g_out[node] = own;
-        if (threadIdx.x == 0) {
-            double lv = g_out[node * 2 + 1];
-            double rv = g_out[node * 2 + 2];
-            // cheap combine; you can choose any associative-ish op
-            g_out[node] = (lv + rv) * 0.5 + own * 1e-6;
-        }
+        // own synthetic work only (no combine/reduction)
+        double own = do_memory_and_compute(node, mem_ops, compute_iters); // all threads do work
+        if (threadIdx.x == 0) g_out[node] = own;
+        __syncthreads();
         return;
     }
 }

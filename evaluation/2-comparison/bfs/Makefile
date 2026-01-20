@@ -19,7 +19,7 @@ OUT_GTAP_THREAD   := $(OUT_DIR)/gtap_thread_$(BENCHMARK_NAME)
 OUT_GTAP_BLOCK   := $(OUT_DIR)/gtap_block_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings ----
-GTAP_GRID_SIZE           ?= 4000
+GTAP_GRID_SIZE           ?= 2000
 GTAP_BLOCK_SIZE          ?= 32
 GTAP_MAX_TASKS_PER_BLOCK ?= 80000
 GTAP_MAX_TASKS_PER_WARP  ?= 80000
