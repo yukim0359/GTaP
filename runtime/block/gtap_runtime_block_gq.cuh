@@ -11,7 +11,8 @@
 #define GTAP_MAX_TASKS_PER_BLOCK 10000
 #endif
 
-#define QUEUE_SIZE (GTAP_MAX_TASKS_PER_BLOCK)
+// Global queue size - single queue shared by all blocks
+#define GQ_QUEUE_SIZE (GTAP_MAX_TASKS_PER_BLOCK * GTAP_GRID_SIZE)
 
 #define MAX_TASKS_GLOBAL (GTAP_MAX_TASKS_PER_BLOCK * GTAP_GRID_SIZE)
 
@@ -31,9 +32,9 @@ struct TaskHeader {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
     int   child_ids[0];
 #else
+    int   child_ids[GTAP_MAX_CHILD_TASKS];
     int   total_child_count;
     int   waiting_child_count;
-    int   child_ids[GTAP_MAX_CHILD_TASKS];
 #endif
 };
 
@@ -45,18 +46,11 @@ struct TaskContext {
     int id_list_free_pos_stale;  // stale copy of free_pos to avoid L2 load on every allocation
     int task_id_resumable;
     TaskHeader cached_task_header;  // cached task header for reuse in task function
-#if (GTAP_MAX_CHILD_TASKS <= GTAP_MAX_CHILD_TASKS_FOR_SHARED)
-    // Shared child_ids array for the block (only when using shared memory)
-    int shared_child_ids[GTAP_MAX_CHILD_TASKS + 1];
-#endif
 };
 
-struct BlockTaskQueue {
-    int queue[QUEUE_SIZE];
-    int queue_head;
-    // int queue_tail;
-    int count;
-    int queue_lock;
+// Global task queue structure (single queue shared by all blocks)
+struct GlobalTaskQueue {
+    int queue[GQ_QUEUE_SIZE];
 };
 
 struct TaskIdList {
@@ -65,8 +59,10 @@ struct TaskIdList {
 };
 
 // Exposed device globals
-// Note: d_task_data_bytes is now char* (byte array) to support type-erased task data (static allocation)
-__device__ BlockTaskQueue* d_block_task_queues;
+__device__ GlobalTaskQueue* d_global_task_queue;  // Single global queue
+__device__ unsigned int d_queue_head;     // Global queue head (consumer reads from here)
+__device__ unsigned int d_queue_tail;     // Global queue tail (consumer-visible, committed)
+__device__ unsigned int d_queue_alloc;    // Write allocation position (producers reserve here)
 __device__ TaskIdList* d_task_id_lists;
 __device__ TaskHeader* d_task_headers;
 __device__ char* d_task_data_bytes;  // Type-erased: byte array storing task data statically
@@ -150,9 +146,10 @@ cudaError_t __gtap_init_task_runtime() {
         CUDA_TRY(cudaStreamCreate(&streams[i]));
     }
 
-    BlockTaskQueue* d_block_task_queues_ptr = nullptr;
-    CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_block_task_queues_ptr), sizeof(BlockTaskQueue) * GTAP_GRID_SIZE));
-    CUDA_TRY(cudaMemsetAsync(d_block_task_queues_ptr, 0, sizeof(BlockTaskQueue) * GTAP_GRID_SIZE, streams[0]));
+    // Allocate single global task queue
+    GlobalTaskQueue* d_global_task_queue_ptr = nullptr;
+    CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_global_task_queue_ptr), sizeof(GlobalTaskQueue)));
+    CUDA_TRY(cudaMemsetAsync(d_global_task_queue_ptr, 0, sizeof(GlobalTaskQueue), streams[0]));
     
     TaskIdList* d_task_id_lists_ptr = nullptr;
     CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_task_id_lists_ptr), sizeof(TaskIdList) * GTAP_GRID_SIZE));
@@ -179,7 +176,7 @@ cudaError_t __gtap_init_task_runtime() {
         CUDA_TRY(cudaStreamSynchronize(streams[i]));
     }
 
-    CUDA_TRY(cudaMemcpyToSymbol(d_block_task_queues, &d_block_task_queues_ptr, sizeof(BlockTaskQueue*)));
+    CUDA_TRY(cudaMemcpyToSymbol(d_global_task_queue, &d_global_task_queue_ptr, sizeof(GlobalTaskQueue*)));
     CUDA_TRY(cudaMemcpyToSymbol(d_task_id_lists, &d_task_id_lists_ptr, sizeof(TaskIdList*)));
     CUDA_TRY(cudaMemcpyToSymbol(d_task_headers, &d_task_headers_ptr, sizeof(TaskHeader*)));
     CUDA_TRY(cudaMemcpyToSymbol(d_task_data_bytes, &d_task_data_bytes_ptr, sizeof(char*)));
@@ -197,9 +194,13 @@ cudaError_t __gtap_init_task_runtime() {
     }
 
     int zero = 0;
+    unsigned int uzero = 0;
     CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
     CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished_flag, &zero, sizeof(int)));
     CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
+    CUDA_TRY(cudaMemcpyToSymbol(d_queue_head, &uzero, sizeof(unsigned int)));
+    CUDA_TRY(cudaMemcpyToSymbol(d_queue_tail, &uzero, sizeof(unsigned int)));
+    CUDA_TRY(cudaMemcpyToSymbol(d_queue_alloc, &uzero, sizeof(unsigned int)));
     int one = 1;
     CUDA_TRY(cudaMemcpyToSymbol(d_active_worker_count, &one, sizeof(int)));
     
@@ -209,8 +210,8 @@ cudaError_t __gtap_init_task_runtime() {
 
 cudaError_t __gtap_finalize_task_runtime() {
     // Get device pointers from symbols
-    BlockTaskQueue* d_block_task_queues_ptr = nullptr;
-    CUDA_TRY(cudaMemcpyFromSymbol(&d_block_task_queues_ptr, d_block_task_queues, sizeof(BlockTaskQueue*)));
+    GlobalTaskQueue* d_global_task_queue_ptr = nullptr;
+    CUDA_TRY(cudaMemcpyFromSymbol(&d_global_task_queue_ptr, d_global_task_queue, sizeof(GlobalTaskQueue*)));
     
     TaskIdList* d_task_id_lists_ptr = nullptr;
     CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_lists_ptr, d_task_id_lists, sizeof(TaskIdList*)));
@@ -224,9 +225,9 @@ cudaError_t __gtap_finalize_task_runtime() {
     int* d_task_id_generated_ptr = nullptr;
     CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_generated_ptr, d_task_id_generated, sizeof(int*)));
     
-    // Free allocated memory
-    if (d_block_task_queues_ptr != nullptr) {
-        CUDA_TRY(cudaFree(d_block_task_queues_ptr));
+    // Free global queue
+    if (d_global_task_queue_ptr != nullptr) {
+        CUDA_TRY(cudaFree(d_global_task_queue_ptr));
     }
     
     if (d_task_id_lists_ptr != nullptr) {
@@ -263,8 +264,6 @@ cudaError_t gtap_finalize() {
 }
 
 // Reset task runtime state for re-execution
-// This function clears all runtime state without reallocating memory
-// Call this before each execution after the initial init_task_runtime call
 cudaError_t __gtap_reset_task_runtime() {
     constexpr int NUM_STREAMS = 5;
     cudaStream_t streams[NUM_STREAMS];
@@ -273,8 +272,8 @@ cudaError_t __gtap_reset_task_runtime() {
     }
 
     // Get device pointers from symbols
-    BlockTaskQueue* d_block_task_queues_ptr = nullptr;
-    CUDA_TRY(cudaMemcpyFromSymbol(&d_block_task_queues_ptr, d_block_task_queues, sizeof(BlockTaskQueue*)));
+    GlobalTaskQueue* d_global_task_queue_ptr = nullptr;
+    CUDA_TRY(cudaMemcpyFromSymbol(&d_global_task_queue_ptr, d_global_task_queue, sizeof(GlobalTaskQueue*)));
     
     TaskIdList* d_task_id_lists_ptr = nullptr;
     CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_lists_ptr, d_task_id_lists, sizeof(TaskIdList*)));
@@ -288,9 +287,9 @@ cudaError_t __gtap_reset_task_runtime() {
     int* d_task_id_generated_ptr = nullptr;
     CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_generated_ptr, d_task_id_generated, sizeof(int*)));
     
-    // Clear task queues
-    if (d_block_task_queues_ptr != nullptr) {
-        CUDA_TRY(cudaMemsetAsync(d_block_task_queues_ptr, 0, sizeof(BlockTaskQueue) * GTAP_GRID_SIZE, streams[0]));
+    // Clear global task queue
+    if (d_global_task_queue_ptr != nullptr) {
+        CUDA_TRY(cudaMemsetAsync(d_global_task_queue_ptr, 0, sizeof(GlobalTaskQueue), streams[0]));
     }
     
     // Reset task ID lists (0xFF = -1 for lazy initialization)
@@ -329,9 +328,13 @@ cudaError_t __gtap_reset_task_runtime() {
     
     // Reset global state
     int zero = 0;
+    unsigned int uzero = 0;
     CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
     CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished_flag, &zero, sizeof(int)));
     CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
+    CUDA_TRY(cudaMemcpyToSymbol(d_queue_head, &uzero, sizeof(unsigned int)));
+    CUDA_TRY(cudaMemcpyToSymbol(d_queue_tail, &uzero, sizeof(unsigned int)));
+    CUDA_TRY(cudaMemcpyToSymbol(d_queue_alloc, &uzero, sizeof(unsigned int)));
     int one = 1;
     CUDA_TRY(cudaMemcpyToSymbol(d_active_worker_count, &one, sizeof(int)));
     
@@ -429,132 +432,125 @@ __global__ void get_final_working_time_indices(int* indices) {
 }
 #endif
 
-// define pop, steal, push
-__device__ __forceinline__ int pop(int* taskId, int* shared_tail) {
-    BlockTaskQueue* myQueue = &d_block_task_queues[blockIdx.x];
+// ============================================================================
+// Global Queue Operations (no steal needed - all workers pop from global queue)
+// ============================================================================
+
+// Pop from global queue - block pops a single task
+template<TerminationMode M>
+__device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev_get_task) {
+    GlobalTaskQueue* q = d_global_task_queue;
     bool pop_success = false;
+    unsigned int head;
+    // Try to claim a slot from global queue
     while (true) {
-        int old_queue_count = load_L2(&myQueue->count);
-        if (old_queue_count <= 0) break;
-        if (atomicCAS(&myQueue->count, old_queue_count, old_queue_count - 1) == old_queue_count) {
+        unsigned int old_head = load_L2(&d_queue_head);
+        unsigned int tail = load_L2(&d_queue_tail);
+        unsigned int available = tail - old_head;  // unsigned subtraction handles wrap-around
+        
+        if (available == 0) break;
+        
+        // CAS to claim slot
+        unsigned int new_head = old_head + 1;
+        if (atomicCAS(&d_queue_head, old_head, new_head) == old_head) {
+            head = old_head;
             pop_success = true;
-            (*shared_tail)--;
+            // Increment active worker count if this worker was previously idle
+            if (M == TERMINATE_ON_ALL_TASKS_FINISH && !prev_get_task) {
+                atomicAdd(&d_active_worker_count, 1);
+            }
             break;
         }
+        // CAS failed, retry
     }
-
+    
     if (pop_success) {
-        int pop_task_id = load_L2(&myQueue->queue[*shared_tail % QUEUE_SIZE]);
-        *taskId = pop_task_id;
+        int idx = head % GQ_QUEUE_SIZE;
+        *execute_task_id = load_L2(&q->queue[idx]);
 #ifdef DEBUG
-        printf("pop: %d (block: %d)\n", pop_task_id, blockIdx.x);
+        printf("pop_global: tid=%d in block %d\n", *execute_task_id, blockIdx.x);
 #endif
     } else {
-        *taskId = -1;
+        *execute_task_id = -1;
     }
     return pop_success;
 }
 
+// Push to global queue
 template<TerminationMode M>
-__device__ __forceinline__ int steal(int* taskId, bool prev_get_task) {
-    int targetBlock;
-    int old_head;
-    bool steal_success = false;
-    BlockTaskQueue* targetBq = nullptr;
-    while (true) {
-        targetBlock = get_random_blocknum(blockIdx.x);
-        targetBq = &d_block_task_queues[targetBlock];
-        if (atomicCAS(&targetBq->queue_lock, 0, 1) == 0) break;
-    }
-    while (true) {
-        int old_queue_count = load_L2(&targetBq->count);
-        if (old_queue_count <= 0) break;
-        if (atomicCAS(&targetBq->count, old_queue_count, old_queue_count - 1) == old_queue_count) {
-            steal_success = true;
-            old_head = load_L2(&targetBq->queue_head);
-            if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                if (!prev_get_task) atomicAdd(&d_active_worker_count, 1);
-            }
-            break;
-        }
-    }
-    
-    if (!steal_success) {
-        unlock(&targetBq->queue_lock);
-        *taskId = -1;
-        return false;
-    }
-    
-    int steal_task_id = load_L2(&targetBq->queue[old_head % QUEUE_SIZE]);
-    *taskId = steal_task_id;
-    
-    targetBq->queue_head = old_head + 1;
-    __threadfence();
-    unlock(&targetBq->queue_lock);
-#ifdef DEBUG
-    printf("steal: %d (block: %d -> %d)\n", steal_task_id, targetBlock, blockIdx.x);
-#endif
-    return true;
-}
-
-// NOTE: the template parameter is not used
-template<TerminationMode M>
-__device__ __forceinline__ void push(
+__device__ __forceinline__ void push_global_queue(
     TaskContext* ctx,
-    int push_total,
     int* execute_task_id,
-    int* shared_tail
+    bool* have_execute_task
 ) {
-    BlockTaskQueue* myQueue = &d_block_task_queues[blockIdx.x];
+    GlobalTaskQueue* q = d_global_task_queue;
+    __shared__ unsigned int base_pos;
+    __shared__ int first_idx_to_push;
+    __shared__ int push_cnt;
     
-    int old_tail = *shared_tail;
+    int total_count = (ctx->have_task_id_resumable ? 1 : 0) + ctx->task_id_generated_count;
+    
+    if (total_count == 0) {
+        *have_execute_task = false;
+        return;
+    }
+    
+    // Determine task to execute immediately vs push to queue
     if (threadIdx.x == 0) {
-        int old_head = load_L2(&myQueue->queue_head);
-        if (old_tail + push_total - old_head > QUEUE_SIZE - QUEUE_MARGIN) {
+        first_idx_to_push = 0;
+        if (ctx->have_task_id_resumable) {
+            *execute_task_id = ctx->task_id_resumable;
+            *have_execute_task = true;
+        } else if (ctx->task_id_generated_count > 0) {
+            *execute_task_id = get_task_id_generated(blockIdx.x, 0);
+            *have_execute_task = true;
+            first_idx_to_push = 1;
+#ifdef DEBUG
+            printf("execute_immediately: tid=%d in block %d\n", *execute_task_id, blockIdx.x);
+#endif
+        } else {
+            *have_execute_task = false;
+        }
+        push_cnt = ctx->task_id_generated_count - first_idx_to_push;
+    }
+    __syncthreads();
+    
+    // Push remaining tasks to global queue
+    if (push_cnt <= 0) return;
+    
+    // Reserve slots in global queue (allocate exclusive range)
+    if (threadIdx.x == 0) {
+        base_pos = atomicAdd(&d_queue_alloc, (unsigned int)push_cnt);
+        // Overflow check (unsigned subtraction handles wrap-around)
+        unsigned int head_val = load_L2(&d_queue_head);
+        if (base_pos + (unsigned int)push_cnt - head_val > GQ_QUEUE_SIZE - QUEUE_MARGIN) {
             atomicExch(&d_runtime_error_code, GTAP_ERROR_QUEUE_OVERFLOW);
             __trap();
         }
     }
-
-    if (ctx->have_task_id_resumable) {
-        *execute_task_id = ctx->task_id_resumable;
-        for (int i = threadIdx.x; i < ctx->task_id_generated_count; i += blockDim.x) {
-            int queue_idx = (old_tail + i) % QUEUE_SIZE;
-#if (GTAP_MAX_CHILD_TASKS <= GTAP_MAX_CHILD_TASKS_FOR_SHARED)
-            int val = ctx->shared_child_ids[i];
-#else
-            int val = get_task_id_generated(blockIdx.x, i);
-#endif
-            myQueue->queue[queue_idx] = val;
+    __syncthreads();
+    
+    // Write tasks to reserved slots (parallel using block threads)
+    for (int j = threadIdx.x; j < push_cnt; j += blockDim.x) {
+        int tid = get_task_id_generated(blockIdx.x, first_idx_to_push + j);
+        unsigned int pos = (base_pos + (unsigned int)j) % GQ_QUEUE_SIZE;
+        store_L2(&q->queue[pos], tid);
 #ifdef DEBUG
-            printf("push: %d (block: %d)\n", val, blockIdx.x);
+        printf("push_global: tid=%d to pos %d in block %d\n", tid, pos, blockIdx.x);
 #endif
-        }
-    } else {
-#if (GTAP_MAX_CHILD_TASKS <= GTAP_MAX_CHILD_TASKS_FOR_SHARED)
-        *execute_task_id = ctx->shared_child_ids[0];
-#else
-        *execute_task_id = get_task_id_generated(blockIdx.x, 0);
-#endif
-        for (int i = threadIdx.x + 1; i < ctx->task_id_generated_count; i += blockDim.x) {
-            int queue_idx = (old_tail + i - 1) % QUEUE_SIZE;
-#if (GTAP_MAX_CHILD_TASKS <= GTAP_MAX_CHILD_TASKS_FOR_SHARED)
-            int val = ctx->shared_child_ids[i];
-#else
-            int val = get_task_id_generated(blockIdx.x, i);
-#endif
-            myQueue->queue[queue_idx] = val;
-        }
     }
-    // if (threadIdx.x < push_total) __threadfence();
     __threadfence();
     __syncthreads();
+    
+    // Wait for prior commits and update tail (ensures in-order visibility)
     if (threadIdx.x == 0) {
-        *shared_tail = old_tail + push_total;
-        atomicAdd(&myQueue->count, push_total);
+        while (load_L2(&d_queue_tail) != base_pos) {
+            // spin - wait for prior pushers to commit
+        }
+        atomicAdd(&d_queue_tail, (unsigned int)push_cnt);
     }
+    __syncthreads();
 }
-
 
 __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_count, int next_state) {
     if (threadIdx.x == 0) {
@@ -567,7 +563,6 @@ __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_cou
 #endif
     }
 }
-
 
 extern "C" {
 __device__ __forceinline__ int __gtap_get_task_state(int tid) {
@@ -607,7 +602,7 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
         if (tid != 0 && load_L2_u16t(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 #ifdef DEBUG
-            printf("finish_task: %d, parent_tid: %d, child_count: %d\n", tid, parent_tid, child_count);
+            printf("finish_task: %d, parent_tid: %d, child_count: %d\n", tid, parent_tid, cached_hdr->total_child_count);
 #endif
             notify_parent(parent_tid, ctx);
             // If child tasks are joined, release the task IDs of child tasks
@@ -616,11 +611,6 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
             for (int i = 0; i < child_count; i++) {
                 release_task_id_to_block_pool(load_L2(&child_ids[i]));
             }
-            // If the task is not waited by the parent, release the task ID of the task itself
-            // TODO: Is this really necessary?
-            // if (parent_waiting_child_count_old <= 0) {
-            //     release_task_id_to_block_pool(tid);
-            // }
 #else
             // NO_TASKWAIT: no need to notify parent or release child IDs
             release_task_id_to_block_pool(tid);
@@ -653,11 +643,7 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
 #endif
     
     int gen_idx = atomicAdd(&ctx->task_id_generated_count, 1);
-#if (GTAP_MAX_CHILD_TASKS <= GTAP_MAX_CHILD_TASKS_FOR_SHARED)
-    ctx->shared_child_ids[gen_idx] = new_tid;
-#else
     set_task_id_generated(blockIdx.x, gen_idx, new_tid);
-#endif
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     d_task_headers[self_tid].child_ids[cached_hdr->total_child_count + *child_count] = new_tid;
     (*child_count)++;
@@ -696,17 +682,12 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     new_hdr->total_child_count = 0;
     new_hdr->waiting_child_count = 0;
 #endif
-
+    
     void* dest_task = __gtap_get_task_data(new_tid);
     memcpy(dest_task, task_data_ptr, task_data_size);
-    // __gtap_copy_bytes(dest_task, task_data_ptr, task_data_size);
 
     int gen_idx = atomicAdd(&ctx->task_id_generated_count, 1);
-#if (GTAP_MAX_CHILD_TASKS <= GTAP_MAX_CHILD_TASKS_FOR_SHARED)
-    ctx->shared_child_ids[gen_idx] = new_tid;
-#else
     set_task_id_generated(blockIdx.x, gen_idx, new_tid);
-#endif
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     d_task_headers[self_tid].child_ids[cached_hdr->total_child_count + *child_count] = new_tid;
     (*child_count)++;
@@ -736,12 +717,16 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
     initial_hdr->waiting_child_count = 0;
 #endif
 
-    // Task data is copied from the compiler-generated code (out of this function)
-    
-    BlockTaskQueue* bq = &d_block_task_queues[blockIdx.x];
-    bq->queue[0] = 0;
-    __threadfence();
-    // if (blockIdx.x == 0) atomicExch(&d_active_worker_count, 1);
+    // Push to global queue (only block 0)
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        GlobalTaskQueue* gq = d_global_task_queue;
+        store_L2(&gq->queue[0], 0);
+        __threadfence();
+        store_L2(&d_queue_head, 0u);
+        store_L2(&d_queue_alloc, 1u);
+        store_L2(&d_queue_tail, 1u);
+        __threadfence();
+    }
 }
 
 extern "C" __device__ __forceinline__ void __gtap_push_initial_task(
@@ -756,7 +741,6 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
     __shared__ bool have_execute_task;
     __shared__ bool prev_get_task;
     __shared__ bool should_continue;
-    __shared__ int tail;
     __shared__ TaskContext block_ctx;
 #ifdef PROFILE
     __shared__ int having_task_time_idx;
@@ -773,17 +757,13 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         working_time_idx = 0;
 #endif
         if (blockIdx.x == 0) {
-            tail = 1;
             block_ctx.id_list_alloc_pos = 1;
             prev_get_task = true;
-            BlockTaskQueue* q = &d_block_task_queues[blockIdx.x];
-            store_L2(&q->count, 1);
 #ifdef PROFILE
             having_task_time_idx = 1;
             having_task_time[blockIdx.x][0] = get_global_time();
 #endif
         } else {
-            tail = 0;
             block_ctx.id_list_alloc_pos = 0;
             prev_get_task = false;
 #ifdef PROFILE
@@ -796,12 +776,8 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
     while (should_continue) {
         if (threadIdx.x == 0) {
             if (!have_execute_task) {
-                if (prev_get_task) {
-                    have_execute_task = pop(&execute_task_id, &tail);
-                }
-            }
-            if (!have_execute_task) {
-                have_execute_task = steal<M>(&execute_task_id, prev_get_task);
+                // Try to pop from global queue
+                have_execute_task = pop_global_queue<M>(&execute_task_id, prev_get_task);
             }
         }
         __syncthreads();
@@ -812,8 +788,11 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
                     if (prev_get_task) {
                         int active_worker_count = atomicSub(&d_active_worker_count, 1) - 1;
                         if (active_worker_count == 0) {
+                            // Check if queue is empty (unsigned comparison handles wrap-around)
                             bool all_tasks_finished = 1;
-                            if (d_block_task_queues[blockIdx.x].queue_head < tail) {
+                            unsigned int head = load_L2(&d_queue_head);
+                            unsigned int tail = load_L2(&d_queue_tail);
+                            if (tail - head > 0) {  // unsigned subtraction
                                 all_tasks_finished = 0;
                             }
                             atomicExch(&d_all_tasks_finished_flag, all_tasks_finished);
@@ -829,9 +808,6 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
                 prev_get_task = false;
                 if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
                     should_continue = (load_L2(&d_all_tasks_finished_flag) == 0);
-                    // if (active_worker_count == 0) consecutive_idle_count++;
-                    // else consecutive_idle_count = 0;
-                    // should_continue = (consecutive_idle_count != NUMBER_OF_CONSECUTIVE_IDLE_COUNTS_TO_TERMINATE);
                 } else {
                     should_continue = (load_L2(&d_first_task_finished) == 0);
                 }
@@ -882,7 +858,6 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &block_ctx);
             __threadfence();
-            // if(threadIdx.x == 0) printf("finish_execute_task: %d\n", tid);
         }
         __syncthreads();
 #ifdef PROFILE
@@ -894,12 +869,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         }
 #endif
 
-        int total_count = (block_ctx.have_task_id_resumable ? 1 : 0) + block_ctx.task_id_generated_count;
-        int push_total = max(total_count - 1, 0);
-        push<M>(&block_ctx, push_total, &execute_task_id, &tail);
-        if (threadIdx.x == 0) {
-            have_execute_task = (total_count > 0);
-        }
+        push_global_queue<M>(&block_ctx, &execute_task_id, &have_execute_task);
     }
 #ifdef DEBUG
     if (threadIdx.x == 0) printf("execute_task_loop: end (block_id = %d)\n", blockIdx.x);

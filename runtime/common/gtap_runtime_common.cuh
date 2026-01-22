@@ -22,6 +22,10 @@
 #define GTAP_MAX_CHILD_TASKS 32
 #endif
 
+#ifndef GTAP_MAX_CHILD_TASKS_FOR_SHARED
+#define GTAP_MAX_CHILD_TASKS_FOR_SHARED 10
+#endif
+
 #ifndef GTAP_MAX_TASK_DATA_SIZE
 #define GTAP_MAX_TASK_DATA_SIZE 16
 #endif
@@ -90,6 +94,12 @@ __device__ __forceinline__ int load_L2(int *ptr) {
     return val;
 }
 
+__device__ __forceinline__ unsigned int load_L2(unsigned int *ptr) {
+    unsigned int val;
+    asm volatile("ld.global.cg.u32 %0, [%1];\n" : "=r"(val) : "l"(ptr));
+    return val;
+}
+
 __device__ __forceinline__ uint16_t load_L2_u16t(uint16_t *ptr) {
     uint16_t val;
     asm volatile("ld.global.cg.u16 %0, [%1];\n" : "=r"(val) : "l"(ptr));
@@ -118,6 +128,10 @@ __device__ __forceinline__ T* load_L2_ptr(T** ptr) {
 
 __device__ __forceinline__ void store_L2(int *ptr, int val) {
     asm volatile("st.global.cg.s32 [%0], %1;\n" :: "l"(ptr), "r"(val));
+}
+
+__device__ __forceinline__ void store_L2(unsigned int *ptr, unsigned int val) {
+    asm volatile("st.global.cg.u32 [%0], %1;\n" :: "l"(ptr), "r"(val));
 }
 
 __device__ __forceinline__ void store_L2_release(int *ptr, int val) {
