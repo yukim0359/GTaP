@@ -25,15 +25,15 @@ df = pd.read_csv(csv_path)
 queue1_df = df[df["1queue_med"] > 0].copy() if "1queue_med" in df.columns else pd.DataFrame()
 queue3_df = df[df["3queue_med"] > 0].copy() if "3queue_med" in df.columns else pd.DataFrame()
 
-# Speedup data: merge both dataframes on cutoff to calculate speedup
+# Relative time data: merge both dataframes on cutoff to calculate relative time
 speedup_df = pd.DataFrame()
 if not queue1_df.empty and not queue3_df.empty:
     merged = pd.merge(queue1_df[["cutoff", "1queue_med"]],
                      queue3_df[["cutoff", "3queue_med"]],
                      on="cutoff", how="inner")
     if not merged.empty:
-        # Calculate speedup: 1queue / 3queue (median comparison)
-        merged["speedup"] = merged["1queue_med"] / merged["3queue_med"]
+        # Calculate relative time: 3queue / 1queue (1queue as baseline)
+        merged["speedup"] = merged["3queue_med"] / merged["1queue_med"]
         speedup_df = merged
 
 fig, ax = plt.subplots()
@@ -83,29 +83,27 @@ plt.tight_layout()
 plt.savefig(out_path_comparison)
 print(f"Saved: {out_path_comparison}")
 
-# Speedup plot (median comparison only, no error bars)
+# Relative time plot (median comparison only, no error bars)
 if not speedup_df.empty:
     fig2, ax2 = plt.subplots()
     
     x = speedup_df["cutoff"].to_numpy()
     y = speedup_df["speedup"].to_numpy()
     
-    ax2.plot(x, y, "o-", color=COL_SPEEDUP, label="Speedup (1 queue / 3 queues)")
-    ax2.axhline(y=1.0, color=COL_QUEUE3, linestyle='--', linewidth=1, alpha=0.5, label="No speedup")
+    ax2.plot(x, y, "o-", color=COL_QUEUE3, label=r"3 queues / 1 queue")
+    ax2.axhline(y=1.0, color=COL_QUEUE1, linestyle='--', label="Parity")
     ax2.set_xlabel("Cutoff Depth")
-    ax2.set_ylabel("Speedup (1 queue / 3 queues)")
+    ax2.set_ylabel(r"Normalized time" + "\n" + r"($T_{3\mathrm{queues}}/T_{1\mathrm{queue}}$)")
     ax2.grid(True)
-    ax2.set_title(f"EPAQ Speedup for {TITLE_BENCHMARK_NAME}")
-    # Set y-axis upper limit to at least 1.2
-    y_max = max(y.max() if len(y) > 0 else 0, 2.2)
-    ax2.set_ylim(bottom=0, top=y_max)
+    ax2.set_title(f"EPAQ Relative Time for {TITLE_BENCHMARK_NAME}")
+    ax2.set_ylim(bottom=0)
     ax2.legend()
     
     plt.tight_layout()
     plt.savefig(out_path_speedup)
     print(f"Saved: {out_path_speedup}")
 else:
-    print("Warning: Could not calculate speedup (missing data)")
+    print("Warning: Could not calculate relative time (missing data)")
 
 # Combined figure: stack execution time and speedup (shared x-axis)
 if not queue1_df.empty and not speedup_df.empty:
@@ -122,21 +120,20 @@ if not queue1_df.empty and not speedup_df.empty:
     if not queue3_df.empty:
         plot_with_iqr(ax_top, queue3_df, "3 queues", "s", "3queue", color=COL_QUEUE3)
     ax_top.set_ylabel("Execution Time (ms)")
+    ax_top.set_ylim(bottom=0)
     ax_top.grid(True)
     ax_top.legend()
     ax_top.set_title(f"EPAQ Comparison: {TITLE_BENCHMARK_NAME}")
 
-    # Bottom: speedup (1 queue / 3 queues)
+    # Bottom: relative time (3 queues / 1 queue)
     x = speedup_df["cutoff"].to_numpy()
     y = speedup_df["speedup"].to_numpy()
-    ax_bot.plot(x, y, "o-", color=COL_SPEEDUP, label="Speedup (3 queues vs 1 queue)")
-    ax_bot.axhline(y=1.0, color="0.5", linestyle="--", linewidth=1, alpha=0.8, label="Parity (=1)")
+    ax_bot.plot(x, y, "o-", color=COL_QUEUE3, label=r"3 queues / 1 queue")
+    ax_bot.axhline(y=1.0, color=COL_QUEUE1, linestyle="--", label="Parity")
     ax_bot.set_xlabel("Cutoff Depth")
-    ax_bot.set_ylabel("Speedup" + "\n" + r"($T_{1\mathrm{queue}} / T_{3\mathrm{queues}}$)")
+    ax_bot.set_ylabel(r"Normalized time" + "\n" + r"($T_{3\mathrm{queues}}/T_{1\mathrm{queue}}$)")
     ax_bot.grid(True)
-    # y-limit consistent with standalone speedup
-    y_max = max(y.max() if len(y) > 0 else 0, 2.2)
-    ax_bot.set_ylim(bottom=0, top=y_max)
+    ax_bot.set_ylim(bottom=0)
     ax_bot.legend()
 
     plt.tight_layout()

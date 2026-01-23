@@ -4,7 +4,7 @@
 #include <random>
 #include <algorithm>
 #include <stdint.h>
-
+// #define PROFILE
 #define GTAP_MAX_TASK_DATA_SIZE 24
 #include "gtap_thread.cuh"
 
@@ -213,6 +213,10 @@ int main(int argc, char** argv) {
 
     printf("Root: %.6e\n", root);
     printf("Execution time: %.3f ms\n", ms);
+
+#ifdef PROFILE
+    visualize_profile("tree_thread");
+#endif
 
     cudaFree(d_input);
     cudaFree(d_indices);

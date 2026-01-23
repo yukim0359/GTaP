@@ -23,53 +23,52 @@ __host__ __device__ __forceinline__ uint32_t hash32(uint32_t x){
 }
 
 __device__ __forceinline__ double mix_fma(double x) {
-    x = fma(x, 1.0000001192092896, 0.9999999403953552);
-    x = fma(x, 0.9999999403953552, 1.0000001192092896);
-    return x;
+    return fma(x, 1.0000001192092896, 0.9999999403953552);
 }
 
 // ------------------------------
 // One-node work kernel (leaf)
 //   out[node] = work(node)
 // ------------------------------
-__global__ void leaf_kernel(int node, int mem_ops, int compute_iters,
-                            const double* __restrict__ input, int input_n,
-                            const int* __restrict__ indices, int indices_n,
-                            double* __restrict__ out) {
-    // 1) fixed number of random global loads
-    uint32_t base = hash32((uint32_t)node) % (uint32_t)indices_n;
-
+__device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters,
+                                         const double* __restrict__ input, int input_n) {
+    // 1) fixed number of irregular global loads from input
     double acc = 0.0;
+
+    // Per-node seed (same logical random stream as thread/OMP versions).
+    // Threads within a block cooperate by iterating m = threadIdx.x, threadIdx.x + blockDim.x, ...
+    // so the overall sequence of mem_ops indices per node matches the CPU / 1-thread-per-task GPU version.
+    uint32_t seed = hash32((uint32_t)node ^ 0x9e3779b9u);
+
+    // If input_n is a power of two (your default is 1<<20), masking is valid and fast.
+    // Otherwise, replace "& mask" with "% input_n".
+    uint32_t mask = (uint32_t)input_n - 1u;
+
     for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
-        int idx = indices[(base + (uint32_t)m) % (uint32_t)indices_n];
+        uint32_t r = hash32(seed + (uint32_t)m);
+        int idx = (int)(r & mask);              // power-of-two case
+        // int idx = (int)(r % (uint32_t)input_n); // general case
         acc += input[idx];
     }
 
-    // reduction in block
-    __shared__ double sh[GPU_BLOCK_SIZE];
-    sh[threadIdx.x] = acc;
-    __syncthreads();
-    for (int off = blockDim.x / 2; off > 0; off >>= 1) {
-        if (threadIdx.x < off) sh[threadIdx.x] += sh[threadIdx.x + off];
-        __syncthreads();
-    }
-    acc = sh[0];
-
-    // 2) compute
+    // 2) compute loop (distributed across threads as before)
     double x = acc + (double)(node & 0xFF) * 1e-9;
     for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
         x = mix_fma(x);
     }
 
-    // fold again (avoid dead-code)
-    sh[threadIdx.x] = x;
-    __syncthreads();
-    for (int off = blockDim.x / 2; off > 0; off >>= 1) {
-        if (threadIdx.x < off) sh[threadIdx.x] += sh[threadIdx.x + off];
-        __syncthreads();
-    }
+    asm volatile("" :: "f"(x));
+    return x; // per-thread value (not reduced)
+}
 
-    if (threadIdx.x == 0) out[node] = sh[0];
+__global__ void leaf_kernel(int node, int mem_ops, int compute_iters,
+                            const double* __restrict__ input, int input_n,
+                            double* __restrict__ out) {
+    // all threads do work
+    double v = do_memory_and_compute(node, mem_ops, compute_iters, input, input_n);
+    if (threadIdx.x == 0) {
+        out[node] = v; // store thread0's per-thread result (no reduction)
+    }
 }
 
 // ------------------------------
@@ -77,46 +76,15 @@ __global__ void leaf_kernel(int node, int mem_ops, int compute_iters,
 //   out[node] = combine(out[l], out[r], work(node))
 //   (caller ensures l/r are completed via stream waits)
 // ------------------------------
-__global__ void internal_kernel(int node, int l, int r, int mem_ops, int compute_iters,
+__global__ void internal_kernel(int node, int mem_ops, int compute_iters,
                                 const double* __restrict__ input, int input_n,
-                                const int* __restrict__ indices, int indices_n,
                                 double* __restrict__ out)
 {
-    // compute own work (same as leaf, but we'll combine)
-    uint32_t base = hash32((uint32_t)node) % (uint32_t)indices_n;
-
-    double acc = 0.0;
-    for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
-        int idx = indices[(base + (uint32_t)m) % (uint32_t)indices_n];
-        acc += input[idx];
-    }
-
-    __shared__ double sh[GPU_BLOCK_SIZE];
-    sh[threadIdx.x] = acc;
-    __syncthreads();
-    for (int off = blockDim.x / 2; off > 0; off >>= 1) {
-        if (threadIdx.x < off) sh[threadIdx.x] += sh[threadIdx.x + off];
-        __syncthreads();
-    }
-    acc = sh[0];
-
-    double x = acc + (double)(node & 0xFF) * 1e-9;
-    for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
-        x = mix_fma(x);
-    }
-
-    sh[threadIdx.x] = x;
-    __syncthreads();
-    for (int off = blockDim.x / 2; off > 0; off >>= 1) {
-        if (threadIdx.x < off) sh[threadIdx.x] += sh[threadIdx.x + off];
-        __syncthreads();
-    }
-    double own = sh[0];
-
+    // own synthetic work only (no combine/reduction)
+    // all threads do work
+    double own = do_memory_and_compute(node, mem_ops, compute_iters, input, input_n);
     if (threadIdx.x == 0) {
-        double lv = out[l];
-        double rv = out[r];
-        out[node] = (lv + rv) * 0.5 + own * 1e-6;
+        out[node] = own;
     }
 }
 
@@ -135,7 +103,6 @@ struct Ctx {
     int compute_iters;
 
     std::vector<cudaStream_t> streams; // [omp_threads]
-    std::vector<cudaEvent_t>  done;    // [total_nodes]
 };
 
 static inline void cuda_check(cudaError_t st, const char* msg) {
@@ -149,15 +116,12 @@ static void tree_omp_cuda(int node, int height, Ctx* ctx) {
     if (height == 0) {
         int tid = omp_get_thread_num();
         cudaStream_t s = ctx->streams[tid];
-
         leaf_kernel<<<1, GPU_BLOCK_SIZE, 0, s>>>(
             node, ctx->mem_ops, ctx->compute_iters,
             ctx->d_input, ctx->input_n,
-            ctx->d_indices, ctx->indices_n,
             ctx->d_out
         );
-        cuda_check(cudaGetLastError(), "launch leaf_kernel");
-        // cuda_check(cudaEventRecord(ctx->done[node], s), "EventRecord(leaf)");
+        cuda_check(cudaStreamSynchronize(s), "StreamSync");
         return;
     }
 
@@ -173,21 +137,14 @@ static void tree_omp_cuda(int node, int height, Ctx* ctx) {
     // wait until child OpenMP tasks have at least enqueued & recorded their events
     #pragma omp taskwait
 
-    // // ここで「子のGPU完了」まで待つ
-    // cuda_check(cudaEventSynchronize(ctx->done[l]), "EventSync(l)");
-    // cuda_check(cudaEventSynchronize(ctx->done[r]), "EventSync(r)");
-
     int tid = omp_get_thread_num();
     cudaStream_t s = ctx->streams[tid];
-
     internal_kernel<<<1, GPU_BLOCK_SIZE, 0, s>>>(
-        node, l, r, ctx->mem_ops, ctx->compute_iters,
+        node, ctx->mem_ops, ctx->compute_iters,
         ctx->d_input, ctx->input_n,
-        ctx->d_indices, ctx->indices_n,
         ctx->d_out
     );
-    cuda_check(cudaGetLastError(), "launch leaf_kernel");
-    // cuda_check(cudaEventRecord(ctx->done[node], s), "EventRecord(internal)");
+    cuda_check(cudaStreamSynchronize(s), "StreamSync");
 }
 
 // ------------------------------
@@ -255,13 +212,6 @@ int main(int argc, char** argv) {
                    "StreamCreate");
     }
 
-    // One event per node (disable timing to reduce overhead)
-    ctx.done.resize((size_t)total_nodes);
-    for (int i = 0; i < total_nodes; ++i) {
-        cuda_check(cudaEventCreateWithFlags(&ctx.done[i], cudaEventDisableTiming),
-                   "EventCreate");
-    }
-
     #pragma omp parallel
     {
         #pragma omp single
@@ -280,7 +230,6 @@ int main(int argc, char** argv) {
         }
     }
     // Wait for root completion, then stop timer
-    // cuda_check(cudaEventSynchronize(ctx.done[0]), "EventSync(root)");
     cuda_check(cudaDeviceSynchronize(), "DeviceSync");
     double t1 = omp_get_wtime();
     double ms = (t1 - t0) * 1000.0;
@@ -292,7 +241,6 @@ int main(int argc, char** argv) {
     std::printf("Execution time: %.3f ms\n", ms);
 
     // Cleanup
-    for (int i = 0; i < total_nodes; ++i) cudaEventDestroy(ctx.done[i]);
     for (int t = 0; t < omp_threads; ++t) cudaStreamDestroy(ctx.streams[t]);
 
     cudaFree(d_input);

@@ -12,8 +12,8 @@ DATA_MAX_LIMIT = 30000
 APP_TITLES = {
     'fib': 'Fibonacci (n=35)',
     'nq': 'N-Queens (n=16)',
-    'cilksort': 'CilkSort (Array Size=10^8)',
-    'mergesort': 'MergeSort (Array Size=2×10^5)',
+    'cilksort': 'CilkSort (Array Size=100,000,000)',
+    'mergesort': 'MergeSort (Array Size=200,000)',
     'tree_load_compute': 'Tree Load Compute',
 }
 

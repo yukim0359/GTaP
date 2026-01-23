@@ -25,7 +25,7 @@ GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 100000
 GTAP_MAX_CHILD_TASKS    ?= 2
 GTAP_NUM_QUEUES         ?= 1
-GTAP_CFLAGS             ?= -DGTAP_TERMINATE_ON_FIRST_TASK_FINISH
+GTAP_CFLAGS             ?= 
 
 # ---- OpenMP build settings ----
 CC_OMP           ?= $(CLANG_BIN)
@@ -63,7 +63,7 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
-	  -Xcuda-ptxas --warn-on-spills \
+	  -Xcuda-ptxas -v \
 	  -I"$(GT_INC)" \
 	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" -DGTAP_MAX_CHILD_TASKS="$(GTAP_MAX_CHILD_TASKS)" \

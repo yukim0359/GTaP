@@ -10,9 +10,9 @@ BENCHMARK_NAME=cilksort
 cd "$PBS_O_WORKDIR"
 
 COMPARE_DIR=$(pwd)
-PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
-BIN_DIR="$PROJECT_ROOT/bin"
-UTIL_DIR="$PROJECT_ROOT/../../util"
+PROJECT_ROOT=$(cd "$COMPARE_DIR/../../.." && pwd)
+BIN_DIR="$COMPARE_DIR/bin"
+UTIL_DIR="$PROJECT_ROOT/evaluation/util"
 TMP_DIR="$COMPARE_DIR/tmp"
 
 if [ ! -d "$BIN_DIR" ]; then
@@ -26,13 +26,29 @@ SIZES=(100000 200000 500000 1000000 2000000 5000000 10000000 20000000 50000000 1
 
 NUM_RUNS=20
 
+# OMP compiler settings (matching Makefile)
+CXX_OMP="${CXX_OMP:-$PROJECT_ROOT/clang-gtap/build/bin/clang++}"
+OMP_RESOURCE_DIR="${OMP_RESOURCE_DIR:-$PROJECT_ROOT/clang-gtap/build/lib/clang/21}"
+OMP_INC="$OMP_RESOURCE_DIR/include"
+OMP_LIB_DIR="${OMP_LIB_DIR:-$PROJECT_ROOT/clang-gtap/build/lib}"
+
+# Compile OMP with cutoff=256
+OMP256_SOURCE="$COMPARE_DIR/omp256_${BENCHMARK_NAME}.cpp"
+OMP256_BINARY="$BIN_DIR/omp256_${BENCHMARK_NAME}"
+if [ -f "$OMP256_SOURCE" ]; then
+    echo "Compiling OMP (cutoff=256) variant..."
+    "$CXX_OMP" -O3 -Wall -Wextra -fopenmp -I"$OMP_INC" \
+        -L"$OMP_LIB_DIR" -Wl,-rpath,"$OMP_LIB_DIR" -lomp \
+        "$OMP256_SOURCE" -o "$OMP256_BINARY" 2>&1 | grep -v "warning" || true
+fi
+
 # Results CSV (median + IQR error bars)
 RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_performance_results.csv"
-echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,OMP_med,OMP_err_low,OMP_err_high,SEQ_med,SEQ_err_low,SEQ_err_high,Speedup_med(OMP/GTAP)" > "$RESULTS_FILE"
+echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,OMP_med,OMP_err_low,OMP_err_high,OMP256_med,OMP256_err_low,OMP256_err_high,SEQ_med,SEQ_err_low,SEQ_err_high,Speedup_med(OMP/GTAP)" > "$RESULTS_FILE"
 
 # Pretty header (fixed width columns)
-printf "%6s | %25s | %25s | %25s | %10s\n" "size" "GTAP (ms)" "OpenMP (ms)" "Seq (ms)" "Speedup"
-printf "%6s-+-%25s-+-%25s-+-%25s-+-%10s\n" "------" "-------------------------" "-------------------------" "-------------------------" "----------"
+printf "%6s | %25s | %25s | %25s | %25s | %10s\n" "size" "GTAP (ms)" "OpenMP (ms)" "OMP256 (ms)" "Seq (ms)" "Speedup"
+printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" "------" "-------------------------" "-------------------------" "-------------------------" "-------------------------" "----------"
 
 run_stats() {
     local program=$1
@@ -119,6 +135,12 @@ for size in "${SIZES[@]}"; do
         read OMP_MED _ _ OMP_ELO OMP_EHI < <(run_stats "$BIN_DIR/omp_$BENCHMARK_NAME" "$TMP_DIR/$DATA_FILE" "Execution time")
     fi
 
+    # --- OpenMP (cutoff=256) ---
+    OMP256_MED=0 OMP256_ELO=0 OMP256_EHI=0
+    if [ -x "$OMP256_BINARY" ]; then
+        read OMP256_MED _ _ OMP256_ELO OMP256_EHI < <(run_stats "$OMP256_BINARY" "$TMP_DIR/$DATA_FILE" "Execution time")
+    fi
+
     # --- Sequential ---
     SEQ_MED=0 SEQ_ELO=0 SEQ_EHI=0
     if [ -x "$BIN_DIR/seq_$BENCHMARK_NAME" ]; then
@@ -137,6 +159,7 @@ for size in "${SIZES[@]}"; do
     printf "%6d | " "$size"
     fmt_med_iqr "$GTAP_MED" "$GTAP_ELO" "$GTAP_EHI"; printf " | "
     fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
+    fmt_med_iqr "$OMP256_MED" "$OMP256_ELO" "$OMP256_EHI"; printf " | "
     fmt_med_iqr "$SEQ_MED"  "$SEQ_ELO"  "$SEQ_EHI";  printf " | "
     if [ "$SPEEDUP" = "0" ]; then
         printf "%10.2f\n" "N/A"
@@ -145,5 +168,5 @@ for size in "${SIZES[@]}"; do
     fi
 
     # CSV
-    echo "$size,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$SEQ_MED,$SEQ_ELO,$SEQ_EHI,$SPEEDUP" >> "$RESULTS_FILE"
+    echo "$size,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$OMP256_MED,$OMP256_ELO,$OMP256_EHI,$SEQ_MED,$SEQ_ELO,$SEQ_EHI,$SPEEDUP" >> "$RESULTS_FILE"
 done

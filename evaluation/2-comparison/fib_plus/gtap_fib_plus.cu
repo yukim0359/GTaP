@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 // #define PROFILE
-#include "gtap_block_gq.cuh"
+#include "gtap_block.cuh"
 
 #define DATA_LENGTH 2048
 

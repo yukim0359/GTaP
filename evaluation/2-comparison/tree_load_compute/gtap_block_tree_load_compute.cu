@@ -3,6 +3,7 @@
 #include <vector>
 #include <random>
 #include <algorithm>
+// #define PROFILE
 #define GTAP_MAX_TASK_DATA_SIZE 16
 #include "gtap_block.cuh"
 
@@ -119,7 +120,7 @@ __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) 
         // leaf
         double v = do_memory_and_compute(node, mem_ops, compute_iters); // all threads do work
         if (threadIdx.x == 0) g_out[node] = v; // store thread0's per-thread result (no reduction)        
-        __syncthreads();
+        // __syncthreads();
         return;
     } else {
         if (threadIdx.x == 0) {
@@ -130,13 +131,13 @@ __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) 
             #pragma gtap task
             tree_work(r, height - 1, mem_ops, compute_iters);
         }
-        __syncthreads();
+        // __syncthreads();
         #pragma gtap taskwait
 
         // own synthetic work only (no combine/reduction)
         double own = do_memory_and_compute(node, mem_ops, compute_iters); // all threads do work
         if (threadIdx.x == 0) g_out[node] = own;
-        __syncthreads();
+        // __syncthreads();
         return;
     }
 }
@@ -221,6 +222,10 @@ int main(int argc, char** argv) {
     // Here we just print root; for stronger validation, sum a subset.
     printf("Root: %.6e\n", root);
     printf("Execution time: %.3f ms\n", ms);
+
+#ifdef PROFILE
+    visualize_profile("tree_block");
+#endif
 
     cudaFree(d_input);
     cudaFree(d_indices);

@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
     cudaEventRecord(stop);
     cudaDeviceSynchronize();
     cudaEventSynchronize(stop);
-    
+
     int h_result;
     cudaMemcpyFromSymbol(&h_result, d_result, sizeof(int));
     printf("Fibonacci of %d is %d\n", n, h_result);
