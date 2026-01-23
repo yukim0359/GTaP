@@ -72,6 +72,38 @@ inline cudaError_t gtap_get_runtime_error_code(int* error_code) {
     return cudaMemcpyFromSymbol(error_code, d_runtime_error_code, sizeof(int));
 }
 
+// Get error code and return error message string
+inline const char* gtap_get_runtime_error_string(int error_code) {
+    switch (error_code) {
+        case GTAP_ERROR_NONE:
+            return "No error";
+        case GTAP_ERROR_INVALID_QUEUE_IDX:
+            return "Invalid queue index";
+        case GTAP_ERROR_QUEUE_OVERFLOW:
+            return "Queue overflow";
+        case GTAP_ERROR_TASK_ID_POOL_EXHAUSTED:
+            return "Task ID pool exhausted";
+        case GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN:
+            return "Invalid queue index after join";
+        default:
+            return "Unknown error";
+    }
+}
+
+// Convenience function to check and print error if any
+inline cudaError_t gtap_check_runtime_error() {
+    int error_code = 0;
+    cudaError_t cuda_err = gtap_get_runtime_error_code(&error_code);
+    if (cuda_err != cudaSuccess) {
+        printf("GTaP Runtime Error: Unable to read error code (CUDA error: %s)\n", cudaGetErrorString(cuda_err));
+        return cuda_err;
+    }
+    if (error_code != GTAP_ERROR_NONE) {
+        printf("GTaP Runtime Error: %s (code: %d)\n", gtap_get_runtime_error_string(error_code), error_code);
+    }
+    return cudaSuccess;
+}
+
 __device__ __forceinline__ void __gtap_copy_bytes(void* dst, const void* src, size_t nbytes) {
     uint32_t* d32 = reinterpret_cast<uint32_t*>(dst);
     const uint32_t* s32 = reinterpret_cast<const uint32_t*>(src);
@@ -132,6 +164,10 @@ __device__ __forceinline__ void store_L2(int *ptr, int val) {
 
 __device__ __forceinline__ void store_L2(unsigned int *ptr, unsigned int val) {
     asm volatile("st.global.cg.u32 [%0], %1;\n" :: "l"(ptr), "r"(val));
+}
+
+__device__ __forceinline__ void store_L2_u16t(uint16_t *ptr, uint16_t val) {
+    asm volatile("st.global.cg.u16 [%0], %1;\n" :: "l"(ptr), "r"(val));
 }
 
 __device__ __forceinline__ void store_L2_release(int *ptr, int val) {
