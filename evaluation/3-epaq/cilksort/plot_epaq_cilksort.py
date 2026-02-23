@@ -109,9 +109,10 @@ else:
 # Combined figure: stack execution time and speedup (shared x-axis)
 if not queue1_df.empty and not speedup_df.empty:
     _w, _h = plt.rcParams.get("figure.figsize", [6.4, 4.8])
+    fig_height = _w * 0.7
     fig3, (ax_top, ax_bot) = plt.subplots(
         2, 1, sharex=True,
-        figsize=(_w, _w),
+        figsize=(_w, fig_height),
         gridspec_kw={"height_ratios": [2.0, 1.0]},
     )
 

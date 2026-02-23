@@ -6,7 +6,7 @@
 #include <algorithm>
 
 // #define PROFILE
-#define GTAP_MAX_TASK_DATA_SIZE 8
+#define GTAP_MAX_TASK_DATA_SIZE 12
 #include "gtap_thread.cuh"
 
 // Device-side graph state
@@ -15,18 +15,41 @@ __device__ int* g_col_indices;   // size: num_edges
 __device__ int* g_depth;         // size: num_vertices; INF indicates unvisited
 __device__ int  g_num_vertices;  // number of vertices
 
+#ifndef BFS_SPLIT_THRESHOLD
+#define BFS_SPLIT_THRESHOLD 64
+#endif
+
 #pragma gtap function worker_size(thread)
-__device__ void bfs(int v) {
+__device__ void bfs(int v, int start, int end) {
     int dv = load_L2(&g_depth[v]);
     int row_start = g_row_offsets[v];
     int row_end   = g_row_offsets[v + 1];
 
-    for (int e = row_start; e < row_end; ++e) {
+    if (start < 0) {
+        int deg = row_end - row_start;
+        if (deg > BFS_SPLIT_THRESHOLD) {
+            for (int s = row_start; s < row_end; s += BFS_SPLIT_THRESHOLD) {
+                int e = s + BFS_SPLIT_THRESHOLD;
+                if (e > row_end) e = row_end;
+
+                #pragma gtap task
+                bfs(v, s, e);
+            }
+            return;
+        }
+        start = row_start;
+        end   = row_end;
+    }
+
+    // int arr_spawn[BFS_SPLIT_THRESHOLD];
+    // int cnt_spawn = 0;
+
+    for (int e = start; e < end; ++e) {
         int u = g_col_indices[e];
         int old = atomicMin(&g_depth[u], dv + 1);
         if (old > dv + 1) {
             #pragma gtap task
-            bfs(u);
+            bfs(u, -1, -1);
         }
     }
 }
@@ -34,7 +57,7 @@ __device__ void bfs(int v) {
 __global__ void my_kernel(int source) {
     g_depth[source] = 0;
     #pragma gtap entry
-    bfs(source);
+    bfs(source, -1, -1);
 }
 
 

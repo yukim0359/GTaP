@@ -12,7 +12,7 @@ import re
 plt.style.use("~/plot_style/thesis_plt.mplstyle")
 
 BENCHMARK_NAME = "tree_compute_heavy"
-TITLE_BENCHMARK_NAME = "Synthetic Tree (Height = 20, Compute Iters = 1024, Mem Ops = 64)"
+TITLE_BENCHMARK_NAME = "Full Binary Tree (D = 20, Compute Iters = 1024, Mem Ops = 64)"
 OUTPUT_FORMAT = "pdf"  # "png" or "pdf"
 
 # Paths

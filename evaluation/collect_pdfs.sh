@@ -1,20 +1,21 @@
 #!/bin/bash
-# Collect all PDF files from gtap/evaluation and organize them in pdf/ directory
-# preserving the original directory structure
+# Collect all PDF files (and specific PNG images)
+# from gtap/evaluation and organize them in pdf/ directory,
+# preserving the original directory structure.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EVAL_DIR="$SCRIPT_DIR"
 PDF_DIR="$EVAL_DIR/pdf"
 
-echo "=== Collecting PDFs from $EVAL_DIR ==="
-echo "Destination: $PDF_DIR"
+echo "=== Collecting files from $EVAL_DIR ==="
+echo "Destination directory: $PDF_DIR"
 echo ""
 
-# Find all PDF files, excluding the pdf/ directory itself
-pdf_files=$(find "$EVAL_DIR" -type f -name "*.pdf" ! -path "$PDF_DIR/*" 2>/dev/null)
+# Find all target files (PDFs and specific PNGs), excluding the pdf/ directory itself
+files=$(find "$EVAL_DIR" -type f \( -name "*.pdf" -o -name "tree_block_timeline.png" \) ! -path "$PDF_DIR/*" 2>/dev/null)
 
-if [ -z "$pdf_files" ]; then
-    echo "No PDF files found."
+if [ -z "$files" ]; then
+    echo "No target files found."
     exit 0
 fi
 
@@ -34,11 +35,11 @@ while IFS= read -r src_file; do
     cp "$src_file" "$dst_file"
     echo "  $rel_path"
     count=$((count + 1))
-done <<< "$pdf_files"
+done <<< "$files"
 
 echo ""
-echo "=== Done: $count PDF files collected ==="
+echo "=== Done: $count files collected ==="
 echo ""
 echo "Directory structure in $PDF_DIR:"
-find "$PDF_DIR" -type f -name "*.pdf" | sed "s|$PDF_DIR/||" | sort
+find "$PDF_DIR" -type f | sed "s|$PDF_DIR/||" | sort
 

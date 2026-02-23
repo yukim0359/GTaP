@@ -18,6 +18,7 @@ __device__ int  g_num_vertices;  // number of vertices
 
 #pragma gtap function worker_size(block)
 __device__ void bfs(int v) {
+    // printf("bfs: v=%d, threadIdx.x=%d, blockDim.x=%d\n", v, threadIdx.x, blockDim.x);
     int dv = g_depth[v];
     int row_start = g_row_offsets[v];
     int row_end   = g_row_offsets[v + 1];

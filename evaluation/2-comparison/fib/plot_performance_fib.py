@@ -106,21 +106,7 @@ if not omp_df.empty:
 if not seq_df.empty:
     plot_with_iqr(ax, seq_df, "CPU Sequential", "^", "SEQ", color=COL_SEQ)
 
-### draw guide line
-phi = (1.0 + np.sqrt(5.0)) / 2.0
-if not gtap_df.empty:
-    gtap40 = gtap_df.loc[gtap_df["n"] == 40, "GTAP_med"]
-    if not gtap40.empty:
-        y40 = float(gtap40.iloc[0])
-        C = (0.5 * y40) / (phi ** 40)
-        n_line = df.loc[df["n"] >= 17, "n"].to_numpy(dtype=float)
-        ax.plot(
-            n_line, C * (phi ** n_line),
-            linestyle="--",
-            color="black",
-            linewidth=1.5,
-            label="_nolegend_"
-        )
+### (guide line removed)
 
 ax.set_xlabel("Fibonacci Number (n)")
 ax.set_ylabel("Execution Time (ms)")
@@ -168,9 +154,10 @@ if not gtap_df.empty and not speedup_df.empty and ("omp_speedup" in speedup_df.c
     # Keep the style's default width (so fonts/scale match other figures),
     # but make the combined figure taller (roughly square) to avoid vertical squashing.
     _w, _h = plt.rcParams.get("figure.figsize", [6.4, 4.8])
+    fig_height = _w * 0.7
     fig3, (ax_top, ax_bot) = plt.subplots(
         2, 1, sharex=True,
-        figsize=(_w, _w),
+        figsize=(_w, fig_height),
         gridspec_kw={"height_ratios": [2.0, 1.0]}
     )
 
@@ -181,20 +168,7 @@ if not gtap_df.empty and not speedup_df.empty and ("omp_speedup" in speedup_df.c
         plot_with_iqr(ax_top, omp_df, "CPU OpenMP task-parallel", "s", "OMP", color=COL_OMP)
     if not seq_df.empty:
         plot_with_iqr(ax_top, seq_df, "CPU Sequential", "^", "SEQ", color=COL_SEQ)
-    if not gtap_df.empty:
-        phi = (1.0 + np.sqrt(5.0)) / 2.0
-        gtap40 = gtap_df.loc[gtap_df["n"] == 40, "GTAP_med"]
-        if not gtap40.empty:
-            y40 = float(gtap40.iloc[0])
-            C = (0.5 * y40) / (phi ** 40)
-            n_line = df.loc[df["n"] >= 17, "n"].to_numpy(dtype=float)
-            ax_top.plot(
-                n_line, C * (phi ** n_line),
-                linestyle="--",
-                color="black",
-                linewidth=1.5,
-                label="_nolegend_"
-            )
+    # (guide line removed for combined figure as well)
     ax_top.set_ylabel("Execution Time (ms)")
     ax_top.set_yscale("log")
     ax_top.grid(True)

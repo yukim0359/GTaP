@@ -3,6 +3,7 @@ venv/
 bin
 tmp*
 profile/
+pdf/
 
 # util
 gen_vector

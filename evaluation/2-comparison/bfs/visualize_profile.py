@@ -21,18 +21,39 @@ APP_TITLES = {
 OUTPUT_FORMAT = "png"  # "png" or "pdf"
 
 def compute_utilization_from_timeline(timeline_df, strong_state):
+    """Compute utilization (percentage of time in strong_state) per block_id.
+    
+    Utilization is calculated as working_time / program_total_time,
+    where program_total_time is the time span from the first to the last
+    event in the entire timeline (not per-worker lifetime).
+    
+    Args:
+        timeline_df: DataFrame containing timeline data for ALL workers.
+                     Must include all workers to correctly calculate program_total_time.
+        strong_state: The state that counts as "working" (e.g., "Working").
+    
+    Returns:
+        DataFrame with columns ['block_id', 'utilization_percent'].
+    """
     if 'block_id' not in timeline_df.columns or 'relative_time_ms' not in timeline_df.columns or 'state_description' not in timeline_df.columns:
         return pd.DataFrame(columns=['block_id', 'utilization_percent'])
+    
+    # Calculate program total time (first to last event across all workers)
+    program_first_time = float(timeline_df['relative_time_ms'].min())
+    program_last_time = float(timeline_df['relative_time_ms'].max())
+    program_total_time = max(0.0, program_last_time - program_first_time)
+    
+    if program_total_time <= 0.0:
+        # Fallback: return 0.0 for all if no valid time span
+        return pd.DataFrame([
+            {'block_id': block_id, 'utilization_percent': 0.0}
+            for block_id in timeline_df['block_id'].unique()
+        ])
+    
     util_rows = []
     for block_id, grp in timeline_df.groupby('block_id'):
         g = grp.sort_values('relative_time_ms').reset_index(drop=True)
         if g.empty:
-            util_rows.append({'block_id': block_id, 'utilization_percent': 0.0})
-            continue
-        first_time = float(g['relative_time_ms'].iloc[0])
-        last_time = float(g['relative_time_ms'].iloc[-1])
-        total_span = max(0.0, last_time - first_time)
-        if total_span <= 0.0:
             util_rows.append({'block_id': block_id, 'utilization_percent': 0.0})
             continue
         
@@ -56,9 +77,11 @@ def compute_utilization_from_timeline(timeline_df, strong_state):
         
         # 最後の状態がWorkingの場合、最後のタイムスタンプまで
         if working_start_time is not None:
+            last_time = float(g['relative_time_ms'].iloc[-1])
             working_time += max(0.0, last_time - working_start_time)
         
-        util = max(0.0, min(100.0, (working_time / total_span) * 100.0)) if total_span > 0.0 else 0.0
+        # Use program total time as denominator
+        util = max(0.0, min(100.0, (working_time / program_total_time) * 100.0)) if program_total_time > 0.0 else 0.0
         util_rows.append({'block_id': block_id, 'utilization_percent': util})
     return pd.DataFrame(util_rows)
 
@@ -273,7 +296,7 @@ def create_timeline_plot(timeline_df, stats_df, strong_state, app_name=None, max
     title = f'Worker Timeline Visualization: {title_suffix}'
     ax.set_title(title)
 
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, alpha=0)
     legend_elements = [
         patches.Patch(color=colors['Working'], alpha=0.8, label='Executing taskfn'),
         patches.Patch(color=colors['NotWorking'], alpha=0.5, label='Not executing taskfn')
