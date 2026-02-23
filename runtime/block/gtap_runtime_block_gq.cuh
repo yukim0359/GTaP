@@ -463,7 +463,7 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
         }
         // CAS failed, retry
     }
-    
+
     if (pop_success) {
         int idx = head % GQ_QUEUE_SIZE;
         *execute_task_id = load_L2(&q->queue[idx]);
@@ -538,7 +538,7 @@ __device__ __forceinline__ void push_global_queue(
 #ifdef DEBUG
         printf("push_global: tid=%d to pos %d in block %d\n", tid, pos, blockIdx.x);
 #endif
-    }
+        }
     __threadfence();
     __syncthreads();
     
@@ -546,7 +546,7 @@ __device__ __forceinline__ void push_global_queue(
     if (threadIdx.x == 0) {
         while (load_L2(&d_queue_tail) != base_pos) {
             // spin - wait for prior pushers to commit
-        }
+    }
         atomicAdd(&d_queue_tail, (unsigned int)push_cnt);
     }
     __syncthreads();
@@ -721,7 +721,7 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
     if (blockIdx.x == 0 && threadIdx.x == 0) {
         GlobalTaskQueue* gq = d_global_task_queue;
         store_L2(&gq->queue[0], 0);
-        __threadfence();
+    __threadfence();
         store_L2(&d_queue_head, 0u);
         store_L2(&d_queue_alloc, 1u);
         store_L2(&d_queue_tail, 1u);
