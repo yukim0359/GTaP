@@ -1,0 +1,3 @@
+[submodule "clang-gtap"]
+	path = clang-gtap
+	url = https://github.com/yukim0359/clang-gtap.git
