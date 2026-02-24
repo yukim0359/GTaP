@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
     free(h_depth_cpu);
 
     #ifdef PROFILE
-    visualize_profile("bfs_block");
+    gtap_visualize_profile("bfs_block");
     #endif
 
     free(h_row); free(h_col); free(h_depth);

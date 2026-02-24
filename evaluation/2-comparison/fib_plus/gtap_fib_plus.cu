@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %f ms\n", elapsed_time);
 
 #ifdef PROFILE
-    visualize_profile("fib_plus");
+    gtap_visualize_profile("fib_plus");
 #endif
 
     cudaEventDestroy(start);

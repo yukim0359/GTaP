@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
     free(h_depth_cpu);
 
     #ifdef PROFILE
-    visualize_profile("bfs");
+    gtap_visualize_profile("bfs");
     #endif
 
     free(h_row); free(h_col); free(h_depth);

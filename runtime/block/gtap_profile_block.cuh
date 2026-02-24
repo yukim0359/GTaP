@@ -354,7 +354,7 @@ static inline void visualize_working_time(const char* app_name) {
     cudaFree(d_indices);
 }
 
-void visualize_profile(const char* app_name) {
+void gtap_visualize_profile(const char* app_name) {
     visualize_having_task_time(app_name);
     visualize_working_time(app_name);
 }

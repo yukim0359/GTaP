@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
     printf("Execution time: %.3f ms\n", milliseconds);
 
 #ifdef PROFILE
-    visualize_working_time("nq");
+    gtap_visualize_profile("nq");
 #endif
 
     return 0;

@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", elapsed_time);
 
 #ifdef PROFILE
-    visualize_working_time("fib");
+    gtap_visualize_profile("fib");
 #endif
 
     cudaEventDestroy(start);

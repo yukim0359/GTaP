@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", ms);
 
 #ifdef PROFILE
-    visualize_profile("tree_queue_3");
+    gtap_visualize_profile("tree_queue_3");
 #endif
 
     cudaFree(d_input);

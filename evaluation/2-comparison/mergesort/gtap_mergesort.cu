@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", ms);
 
 #ifdef PROFILE
-    visualize_working_time("mergesort");
+    gtap_visualize_profile("mergesort");
 #endif
 
     cudaFree(d_data); cudaFree(d_buf);
