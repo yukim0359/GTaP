@@ -14,7 +14,7 @@ __device__ int fib_sequential(int n) {
     return result1 + result2;
 }
 
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ int fib(int n) {
     if (n < d_cutoff) return fib_sequential(n);
     int a, b;

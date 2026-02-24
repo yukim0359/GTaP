@@ -19,7 +19,7 @@ __device__ int  g_num_vertices;  // number of vertices
 #define BFS_SPLIT_THRESHOLD 64
 #endif
 
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void bfs(int v, int start, int end) {
     int dv = load_L2(&g_depth[v]);
     int row_start = g_row_offsets[v];

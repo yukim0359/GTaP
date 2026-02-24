@@ -97,7 +97,7 @@ __device__ __forceinline__ void sort_small_device(int* arr, int n) {
 }
 
 // Parallel merge task
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
     // Ensure a_len >= b_len
     if (a_len < b_len) {
@@ -137,7 +137,7 @@ __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
 }
 
 // Sort task
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void cilksort(int* arr, int n, int* tmp) {
     if (n < TASK_SPAWN_CUTOFF_SORT) {
         sort_small_device(arr, n);

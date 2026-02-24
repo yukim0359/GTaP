@@ -100,7 +100,7 @@ __device__ __forceinline__ void sink_store(uint32_t node_id, double x) {
 // - d=0: p=1 => always generate B children
 // - d=D: leaf
 // ------------------------------
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void tree_work(uint32_t node_id, int rem_h, int D, int B,
                           int mem_ops, int compute_iters) {
     // leaf

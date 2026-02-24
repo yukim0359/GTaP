@@ -16,7 +16,7 @@ __device__ int* g_col_indices;   // size: num_edges
 __device__ int* g_depth;         // size: num_vertices; INF indicates unvisited
 __device__ int  g_num_vertices;  // number of vertices
 
-#pragma gtap function worker_size(block)
+#pragma gtap function
 __device__ void bfs(int v) {
     // printf("bfs: v=%d, threadIdx.x=%d, blockDim.x=%d\n", v, threadIdx.x, blockDim.x);
     int dv = g_depth[v];

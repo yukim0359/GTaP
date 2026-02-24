@@ -135,7 +135,7 @@ __device__ double do_memory_or_compute_divergent(int node, int mem_ops, int comp
 // Each node writes one scalar result
 // 1 thread == 1 task
 // ------------------------------
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) {
     if (height == 0) {
         // leaf - use divergent version to cause warp divergence

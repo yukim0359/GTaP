@@ -91,7 +91,7 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
 // Each node writes one scalar result
 // 1 thread == 1 task
 // ------------------------------
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) {
     if (height == 0) {
         // leaf

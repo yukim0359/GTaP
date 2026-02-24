@@ -36,7 +36,7 @@ __device__ __forceinline__ void mergesort_rec_device(int* a, int left, int right
     return;
 }
 
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void mergesort(int left, int right) {
     int n, mid;
     n = right - left + 1;

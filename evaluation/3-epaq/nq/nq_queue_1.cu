@@ -22,7 +22,7 @@ __device__ void serial_search(int row, uint32_t column, uint32_t left, uint32_t 
     }
 }
 
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ void nq(int row, uint32_t column, uint32_t left, uint32_t down, uint32_t right) {
     int grid_size   = d_grid_size;
     int cutoff_depth = d_cutoff_depth;

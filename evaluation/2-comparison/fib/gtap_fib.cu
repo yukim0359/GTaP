@@ -6,7 +6,7 @@
 
 __device__ int d_result;
 
-#pragma gtap function worker_size(thread)
+#pragma gtap function
 __device__ int fib(int n) {
     if (n < 2) {
         return n;

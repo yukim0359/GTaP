@@ -117,7 +117,7 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
 // Tree task: spawn two children and join
 // Each node writes one scalar result
 // ------------------------------
-#pragma gtap function worker_size(block)
+#pragma gtap function
 __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) {
     // if (threadIdx.x == 0) printf("tree_work: node=%d height=%d mem_ops=%d compute_iters=%d\n", node, height, mem_ops, compute_iters);
     if (height == 0) {
