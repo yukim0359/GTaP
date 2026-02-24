@@ -1,0 +1,15 @@
+venv/
+*.sh.o*
+bin
+tmp*
+asynchronous_bfs/datasets/
+profile/
+pdf/
+
+# util
+gen_vector
+data.bin
+gen_spm
+spm_data.bin
+gen_spm_skew
+spm_data_skew.bin
