@@ -66,11 +66,11 @@ struct TaskContext {
 };
 
 struct WarpTaskQueue {
-    int queue[QUEUE_SIZE];
-    int queue_head;
-    int queue_head_stale;
     int count;
     int queue_lock;
+    int queue_head;
+    int queue_head_stale;
+    int queue[QUEUE_SIZE];
 };
 
 struct TaskIdList {
@@ -385,9 +385,9 @@ cudaError_t __gtap_init_task_runtime() {
     #ifdef INIT_PROFILE
     cudaEventRecord(start);
     #endif
-    CUDA_TRY(cudaMemset(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
     #ifdef INIT_PROFILE
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -549,9 +549,9 @@ cudaError_t __gtap_reset_task_runtime() {
 
     // Reset profile data if enabled
     #ifdef PROFILE
-    CUDA_TRY(cudaMemset(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
     #endif
     
     // Reinitialize warp ID pools metadata

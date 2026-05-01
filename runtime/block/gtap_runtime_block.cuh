@@ -195,8 +195,8 @@ cudaError_t __gtap_init_task_runtime() {
 #endif
     
 #ifdef PROFILE
-    CUDA_TRY(cudaMemsetAsync(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[0]));
-    CUDA_TRY(cudaMemsetAsync(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[1]));
+    CUDA_TRY(gtap_memset_symbol_async(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[0]));
+    CUDA_TRY(gtap_memset_symbol_async(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[1]));
     CUDA_TRY(cudaStreamSynchronize(streams[0]));
     CUDA_TRY(cudaStreamSynchronize(streams[1]));
 #endif
@@ -329,8 +329,8 @@ cudaError_t __gtap_reset_task_runtime() {
     
     // Reset profile data if enabled
 #ifdef PROFILE
-    CUDA_TRY(cudaMemsetAsync(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[0]));
-    CUDA_TRY(cudaMemsetAsync(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[1]));
+    CUDA_TRY(gtap_memset_symbol_async(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[0]));
+    CUDA_TRY(gtap_memset_symbol_async(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * MAX_PROFILE_DATA, streams[1]));
 #endif
     
     // Synchronize all streams

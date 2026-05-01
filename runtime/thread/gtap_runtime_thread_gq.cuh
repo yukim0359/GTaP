@@ -337,9 +337,9 @@ cudaError_t __gtap_init_task_runtime() {
     #ifdef INIT_PROFILE
     cudaEventRecord(start);
     #endif
-    CUDA_TRY(cudaMemset(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
     #ifdef INIT_PROFILE
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -450,9 +450,9 @@ cudaError_t __gtap_reset_task_runtime() {
         CUDA_TRY(cudaMemset(d_task_headers_ptr, 0, sizeof(TaskHeader) * MAX_TASKS_GLOBAL));
     }
     
-    size_t max_task_size = GTAP_MAX_TASK_DATA_SIZE;
     // Clear task data
     if (d_task_data_bytes_ptr != nullptr) {
+        size_t max_task_size = GTAP_MAX_TASK_DATA_SIZE;
         size_t task_data_size = max_task_size * MAX_TASKS_GLOBAL;
         CUDA_TRY(cudaMemset(d_task_data_bytes_ptr, 0, task_data_size));
     }
@@ -487,9 +487,9 @@ cudaError_t __gtap_reset_task_runtime() {
 
     // Reset profile data if enabled
     #ifdef PROFILE
-    CUDA_TRY(cudaMemset(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(cudaMemset(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
     #endif
     
     // Reinitialize warp ID pools metadata

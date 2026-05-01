@@ -50,6 +50,24 @@
 } while (0)
 #endif
 
+template <typename SymbolT>
+inline cudaError_t gtap_memset_symbol(SymbolT& symbol, int value, size_t count) {
+    void* symbol_ptr = nullptr;
+    cudaError_t st = cudaGetSymbolAddress(&symbol_ptr, symbol);
+    if (st != cudaSuccess) return st;
+    return cudaMemset(symbol_ptr, value, count);
+}
+
+template <typename SymbolT>
+inline cudaError_t gtap_memset_symbol_async(
+    SymbolT& symbol, int value, size_t count, cudaStream_t stream
+) {
+    void* symbol_ptr = nullptr;
+    cudaError_t st = cudaGetSymbolAddress(&symbol_ptr, symbol);
+    if (st != cudaSuccess) return st;
+    return cudaMemsetAsync(symbol_ptr, value, count, stream);
+}
+
 // Termination modes
 enum TerminationMode {
     TERMINATE_ON_ALL_TASKS_FINISH, // default
