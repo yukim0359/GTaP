@@ -16,7 +16,7 @@
 
 #define MAX_TASKS_GLOBAL (GTAP_MAX_TASKS_PER_BLOCK * GTAP_GRID_SIZE)
 
-inline constexpr size_t __gtap_max_task_size = GTAP_MAX_TASK_DATA_SIZE;
+inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
 
 struct TaskContext;
 
@@ -25,15 +25,12 @@ struct TaskHeader {
     // Info of current task
     uint16_t   generation;
     uint16_t   state;
+    uint16_t   retain_parent_result;
     // Info of parent task
     int   parent_tid;
     uint16_t   parent_generation;
     // Info of child tasks
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    int   child_ids[0];
-#else
-    int   child_ids[GTAP_MAX_CHILD_TASKS];
-    int   total_child_count;
+#ifndef GTAP_ASSUME_NO_TASKWAIT
     int   waiting_child_count;
 #endif
 };
@@ -129,9 +126,13 @@ __device__ __forceinline__ void release_task_id_to_block_pool(int id) {
     store_L2(&tid_list->id_list[old_free % GTAP_MAX_TASKS_PER_BLOCK], id);
 }
 
+extern "C" __device__ __forceinline__ void __gtap_release_task_id(int tid) {
+    release_task_id_to_block_pool(tid);
+}
+
 // Helper function to get task data pointer (type-erased byte array)
 __device__ __forceinline__ void* __gtap_get_task_data(int tid) {
-    return d_task_data_bytes + (size_t)tid * (size_t)GTAP_MAX_TASK_DATA_SIZE;
+    return d_task_data_bytes + (size_t)tid * gtap_device_task_data_stride();
 }
 
 template <typename TaskType>
@@ -162,7 +163,7 @@ cudaError_t __gtap_init_task_runtime() {
 
     // Allocate static storage for task data (type-erased as byte array)
     char* d_task_data_bytes_ptr = nullptr;
-    size_t max_task_size = GTAP_MAX_TASK_DATA_SIZE;
+    size_t max_task_size = gtap_host_task_data_stride();
     size_t task_data_size = max_task_size * MAX_TASKS_GLOBAL;
     CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_task_data_bytes_ptr), task_data_size));
     CUDA_TRY(cudaMemsetAsync(d_task_data_bytes_ptr, 0, task_data_size, streams[3]));
@@ -180,6 +181,7 @@ cudaError_t __gtap_init_task_runtime() {
     CUDA_TRY(cudaMemcpyToSymbol(d_task_id_lists, &d_task_id_lists_ptr, sizeof(TaskIdList*)));
     CUDA_TRY(cudaMemcpyToSymbol(d_task_headers, &d_task_headers_ptr, sizeof(TaskHeader*)));
     CUDA_TRY(cudaMemcpyToSymbol(d_task_data_bytes, &d_task_data_bytes_ptr, sizeof(char*)));
+    CUDA_TRY(gtap_init_device_task_data_stride());
     CUDA_TRY(cudaMemcpyToSymbol(d_task_id_generated, &d_task_id_generated_ptr, sizeof(int*)));
     
 #ifdef PROFILE
@@ -303,7 +305,7 @@ cudaError_t __gtap_reset_task_runtime() {
     }
     
     // Clear task data
-    size_t max_task_size = GTAP_MAX_TASK_DATA_SIZE;
+    size_t max_task_size = gtap_host_task_data_stride();
     if (d_task_data_bytes_ptr != nullptr) {
         size_t task_data_size = max_task_size * MAX_TASKS_GLOBAL;
         CUDA_TRY(cudaMemsetAsync(d_task_data_bytes_ptr, 0, task_data_size, streams[3]));
@@ -557,8 +559,6 @@ __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_cou
         TaskHeader* hdr = &d_task_headers[tid];
         hdr->state = next_state;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-        hdr->total_child_count = load_L2(&hdr->total_child_count) + child_count;
-        // NOTE: total_child_count can be updated during the execution of task function, so we cannot use cached value here
         hdr->waiting_child_count = child_count;
 #endif
     }
@@ -574,7 +574,11 @@ __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_cou
 }
 
 __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int child_index) {
-    return load_L2(&d_task_headers[parent_tid].child_ids[child_index]);
+    (void)parent_tid;
+    (void)child_index;
+    atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_TASKWAIT);
+    __trap();
+    return 0;
 }
 }
 
@@ -602,14 +606,11 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
         if (tid != 0 && load_L2_u16t(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 #ifdef DEBUG
-            printf("finish_task: %d, parent_tid: %d, child_count: %d\n", tid, parent_tid, cached_hdr->total_child_count);
+            printf("finish_task: %d, parent_tid: %d\n", tid, parent_tid);
 #endif
             notify_parent(parent_tid, ctx);
-            // If child tasks are joined, release the task IDs of child tasks
-            int child_count = cached_hdr->total_child_count;
-            int* child_ids = d_task_headers[tid].child_ids;
-            for (int i = 0; i < child_count; i++) {
-                release_task_id_to_block_pool(load_L2(&child_ids[i]));
+            if (cached_hdr->retain_parent_result == 0) {
+                release_task_id_to_block_pool(tid);
             }
 #else
             // NO_TASKWAIT: no need to notify parent or release child IDs
@@ -626,10 +627,15 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
     TaskContext* ctx,
     int self_tid,
     int* child_count,
-    void (*func)(void*, int, TaskContext*)
+    void (*func)(void*, int, TaskContext*),
+    int* out_tid,
+    bool retain_parent_result
 ) {
     TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
     int new_tid = get_task_id_from_block_pool(tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
+    if (out_tid != nullptr) {
+        *out_tid = new_tid;
+    }
     
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     TaskHeader* cached_hdr = &ctx->cached_task_header;
@@ -637,15 +643,14 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
     new_hdr->state = 0;
     new_hdr->parent_tid = self_tid;
     new_hdr->parent_generation = cached_hdr->generation;
+    new_hdr->retain_parent_result = retain_parent_result ? 1 : 0;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    new_hdr->total_child_count = 0;
     new_hdr->waiting_child_count = 0;
 #endif
     
     int gen_idx = atomicAdd(&ctx->task_id_generated_count, 1);
     set_task_id_generated(blockIdx.x, gen_idx, new_tid);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    d_task_headers[self_tid].child_ids[cached_hdr->total_child_count + *child_count] = new_tid;
     (*child_count)++;
 #endif
     return __gtap_get_task_data(new_tid);
@@ -656,9 +661,11 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     int self_tid,
     int* child_count,
     void (*func)(void*, int, TaskContext*),
-    int unused_value
+    int unused_value,
+    int* out_tid,
+    bool retain_parent_result
 ) {
-    return __gtap_spawn_task(ctx, self_tid, child_count, func);
+    return __gtap_spawn_task(ctx, self_tid, child_count, func, out_tid, retain_parent_result);
 }
 
 /*extern "C"*/ __device__ __forceinline__ void __gtap_spawn_task_raw(
@@ -678,8 +685,8 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     new_hdr->state = 0;
     new_hdr->parent_tid = self_tid;
     new_hdr->parent_generation = cached_hdr->generation;
+    new_hdr->retain_parent_result = 0;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    new_hdr->total_child_count = 0;
     new_hdr->waiting_child_count = 0;
 #endif
     
@@ -689,7 +696,6 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     int gen_idx = atomicAdd(&ctx->task_id_generated_count, 1);
     set_task_id_generated(blockIdx.x, gen_idx, new_tid);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    d_task_headers[self_tid].child_ids[cached_hdr->total_child_count + *child_count] = new_tid;
     (*child_count)++;
 #endif
 }
@@ -710,10 +716,10 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
     TaskHeader* initial_hdr = &d_task_headers[0];
     initial_hdr->func = func;
     initial_hdr->state = 0;
+    initial_hdr->retain_parent_result = 0;
     initial_hdr->parent_tid = 0;
     initial_hdr->parent_generation = 0;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    initial_hdr->total_child_count = 0;
     initial_hdr->waiting_child_count = 0;
 #endif
 
@@ -836,11 +842,9 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
                 TaskHeader* dst_hdr = &block_ctx.cached_task_header;
                 dst_hdr->generation = load_L2_u16t(&src_hdr->generation);
+                dst_hdr->retain_parent_result = load_L2_u16t(&src_hdr->retain_parent_result);
                 dst_hdr->parent_tid = load_L2(&src_hdr->parent_tid);
                 dst_hdr->parent_generation = load_L2_u16t(&src_hdr->parent_generation);
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-                dst_hdr->total_child_count = load_L2(&src_hdr->total_child_count);
-#endif
             }
             __syncthreads();
             

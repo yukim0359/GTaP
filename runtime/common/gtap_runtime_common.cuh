@@ -27,8 +27,49 @@
 #endif
 
 #ifndef GTAP_MAX_TASK_DATA_SIZE
+#define GTAP_USE_AUTO_TASK_DATA_SIZE 1
 #define GTAP_MAX_TASK_DATA_SIZE 16
+#else
+#define GTAP_USE_AUTO_TASK_DATA_SIZE 0
 #endif
+
+#if GTAP_USE_AUTO_TASK_DATA_SIZE
+extern const size_t __gtap_auto_task_data_size;
+__constant__ size_t d_gtap_task_data_stride;
+#endif
+
+inline constexpr size_t gtap_compile_time_task_data_size_limit() {
+#if GTAP_USE_AUTO_TASK_DATA_SIZE
+    return static_cast<size_t>(-1);
+#else
+    return GTAP_MAX_TASK_DATA_SIZE;
+#endif
+}
+
+inline size_t gtap_host_task_data_stride() {
+#if GTAP_USE_AUTO_TASK_DATA_SIZE
+    return __gtap_auto_task_data_size;
+#else
+    return GTAP_MAX_TASK_DATA_SIZE;
+#endif
+}
+
+__device__ __forceinline__ size_t gtap_device_task_data_stride() {
+#if GTAP_USE_AUTO_TASK_DATA_SIZE
+    return d_gtap_task_data_stride;
+#else
+    return GTAP_MAX_TASK_DATA_SIZE;
+#endif
+}
+
+inline cudaError_t gtap_init_device_task_data_stride() {
+#if GTAP_USE_AUTO_TASK_DATA_SIZE
+    size_t stride = __gtap_auto_task_data_size;
+    return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
+#else
+    return cudaSuccess;
+#endif
+}
 
 // Safety thresholds for error detection
 #define QUEUE_MARGIN 100
@@ -80,7 +121,8 @@ enum GTapRuntimeError {
     GTAP_ERROR_INVALID_QUEUE_IDX = 1,
     GTAP_ERROR_QUEUE_OVERFLOW = 2,
     GTAP_ERROR_TASK_ID_POOL_EXHAUSTED = 3,
-    GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN = 4
+    GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN = 4,
+    GTAP_ERROR_INVALID_TASKWAIT = 5
 };
 
 // Global error code
@@ -103,6 +145,8 @@ inline const char* gtap_get_runtime_error_string(int error_code) {
             return "Task ID pool exhausted";
         case GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN:
             return "Invalid queue index after join";
+        case GTAP_ERROR_INVALID_TASKWAIT:
+            return "Invalid taskwait lowering";
         default:
             return "Unknown error";
     }
