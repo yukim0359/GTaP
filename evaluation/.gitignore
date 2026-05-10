@@ -4,6 +4,7 @@ bin
 tmp*
 profile/
 pdf/
+__pycache__/
 
 # util
 gen_vector

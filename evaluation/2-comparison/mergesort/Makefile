@@ -1,9 +1,9 @@
 BENCHMARK_NAME := mergesort
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR   ?= /work/gc64/c64099/gtap
+PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
 
-CUDA_PATH  ?= /work/opt/local/aarch64/cores/nvidia/25.9/Linux_aarch64/25.9/cuda
+CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
 CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang
@@ -24,7 +24,6 @@ OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 GTAP_GRID_SIZE          ?= 1000
 GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 80000
-GTAP_MAX_CHILD_TASKS    ?= 2
 GTAP_NUM_QUEUES         ?= 1
 GTAP_CFLAGS             ?= -DGTAP_TERMINATE_ON_FIRST_TASK_FINISH
 
@@ -66,7 +65,7 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
 	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" -DGTAP_MAX_CHILD_TASKS="$(GTAP_MAX_CHILD_TASKS)" \
+	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \

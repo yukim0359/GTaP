@@ -728,7 +728,7 @@ __device__ __forceinline__ int __gtap_get_task_state(int tid) {
     return load_L2_u16t(&d_task_headers[tid].state);
 }
 
-__device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
+__device__ __forceinline__ bool __gtap_set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
     if (queue_idx_after_join >= GTAP_NUM_QUEUES) {
         atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN);
         __trap();
@@ -739,6 +739,7 @@ __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_cou
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     hdr->waiting_child_count = child_count;
 #endif
+    return child_count != 0;
 }
 
 // Get the child task ID by index (for result retrieval after taskwait)

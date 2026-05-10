@@ -4,7 +4,6 @@
 #include <random>
 #include <algorithm>
 // #define PROFILE
-#define GTAP_MAX_TASK_DATA_SIZE 16
 #include "gtap_block.cuh"
 
 // ------------------------------

@@ -6,7 +6,6 @@
 #include <limits>
 #include <cuda_runtime.h>
 // #define PROFILE
-#define GTAP_MAX_TASK_DATA_SIZE 48
 
 #ifdef GQ
 #include "gtap_thread_gq.cuh"

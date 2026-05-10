@@ -268,6 +268,12 @@ __device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
 }
 
 cudaError_t __gtap_init_task_runtime() {
+    constexpr int NUM_STREAMS = GTAP_NUM_QUEUES + 4;
+    cudaStream_t streams[NUM_STREAMS];
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        CUDA_TRY(cudaStreamCreate(&streams[i]));
+    }
+
     #ifdef INIT_PROFILE
     printf("\n=== init_task_runtime detailed profiling ===\n");
     cudaEvent_t start, stop;
@@ -302,12 +308,12 @@ cudaError_t __gtap_init_task_runtime() {
         printf("  cudaMalloc(queue plane %d, %zu bytes): %.3f ms\n", k, sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, elapsed);
         cudaEventRecord(start);
         #endif
-        CUDA_TRY(cudaMemset(plane_ptr, 0, sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS));
+        CUDA_TRY(cudaMemsetAsync(plane_ptr, 0, sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, streams[k]));
         #ifdef INIT_PROFILE
-        cudaEventRecord(stop);
+        cudaEventRecord(stop, streams[k]);
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&elapsed, start, stop);
-        printf("  cudaMemset(queue plane %d, %zu bytes): %.3f ms\n", k, sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, elapsed);
+        printf("  cudaMemsetAsync(queue plane %d, %zu bytes): %.3f ms\n", k, sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, elapsed);
         #endif
         h_warpTaskQueues_planes[k] = plane_ptr;
     }
@@ -333,12 +339,12 @@ cudaError_t __gtap_init_task_runtime() {
     printf("  cudaMalloc(TaskHeaders, %zu bytes): %.3f ms\n", sizeof(TaskHeader) * MAX_TASKS_GLOBAL, elapsed);
     cudaEventRecord(start);
     #endif
-    CUDA_TRY(cudaMemset(d_task_headers_ptr, 0, sizeof(TaskHeader) * MAX_TASKS_GLOBAL));
+    CUDA_TRY(cudaMemsetAsync(d_task_headers_ptr, 0, sizeof(TaskHeader) * MAX_TASKS_GLOBAL, streams[GTAP_NUM_QUEUES]));
     #ifdef INIT_PROFILE
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, streams[GTAP_NUM_QUEUES]);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMemset(TaskHeaders, %zu bytes): %.3f ms\n", sizeof(TaskHeader) * MAX_TASKS_GLOBAL, elapsed);
+    printf("  cudaMemsetAsync(TaskHeaders, %zu bytes): %.3f ms\n", sizeof(TaskHeader) * MAX_TASKS_GLOBAL, elapsed);
     cudaEventRecord(start);
     #endif
 
@@ -353,12 +359,12 @@ cudaError_t __gtap_init_task_runtime() {
     printf("  cudaMalloc(Task data storage, %zu bytes): %.3f ms\n", task_data_size, elapsed);
     cudaEventRecord(start);
     #endif
-    CUDA_TRY(cudaMemset(d_task_data_bytes_ptr, 0, task_data_size));
+    CUDA_TRY(cudaMemsetAsync(d_task_data_bytes_ptr, 0, task_data_size, streams[GTAP_NUM_QUEUES + 1]));
     #ifdef INIT_PROFILE
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, streams[GTAP_NUM_QUEUES + 1]);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMemset(Task data storage, %zu bytes): %.3f ms\n", task_data_size, elapsed);
+    printf("  cudaMemsetAsync(Task data storage, %zu bytes): %.3f ms\n", task_data_size, elapsed);
     cudaEventRecord(start);
     #endif
 
@@ -371,19 +377,23 @@ cudaError_t __gtap_init_task_runtime() {
     printf("  cudaMalloc(TaskIdLists, %zu bytes): %.3f ms\n", sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, elapsed);
     cudaEventRecord(start);
     #endif
-    CUDA_TRY(cudaMemset(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS));
+    CUDA_TRY(cudaMemsetAsync(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, streams[GTAP_NUM_QUEUES + 2]));
     #ifdef INIT_PROFILE
-    cudaEventRecord(stop);
+    cudaEventRecord(stop, streams[GTAP_NUM_QUEUES + 2]);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMemset(TaskIdLists, %zu bytes): %.3f ms\n", sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, elapsed);
+    printf("  cudaMemsetAsync(TaskIdLists, %zu bytes): %.3f ms\n", sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, elapsed);
     cudaEventRecord(start);
     #endif
 
     GTaPResultHandle* d_result_handles_ptr = nullptr;
     size_t result_handle_array_size = sizeof(GTaPResultHandle) * GTAP_RESULT_HANDLE_CAPACITY;
     CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_result_handles_ptr), result_handle_array_size));
-    CUDA_TRY(cudaMemset(d_result_handles_ptr, 0, result_handle_array_size));
+    CUDA_TRY(cudaMemsetAsync(d_result_handles_ptr, 0, result_handle_array_size, streams[GTAP_NUM_QUEUES + 3]));
+
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        CUDA_TRY(cudaStreamSynchronize(streams[i]));
+    }
 
     CUDA_TRY(cudaMemcpyToSymbol(d_warp_task_queues, &d_warp_task_queues_ptrptr, sizeof(WarpTaskQueue**)));
     #ifdef INIT_PROFILE
@@ -451,16 +461,23 @@ cudaError_t __gtap_init_task_runtime() {
     #ifdef INIT_PROFILE
     cudaEventRecord(start);
     #endif
-    CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol_async(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA, streams[0]));
+    CUDA_TRY(gtap_memset_symbol_async(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA, streams[1 % NUM_STREAMS]));
+    CUDA_TRY(gtap_memset_symbol_async(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA, streams[2 % NUM_STREAMS]));
+    CUDA_TRY(cudaStreamSynchronize(streams[0]));
+    CUDA_TRY(cudaStreamSynchronize(streams[1 % NUM_STREAMS]));
+    CUDA_TRY(cudaStreamSynchronize(streams[2 % NUM_STREAMS]));
     #ifdef INIT_PROFILE
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMemset(profile data): %.3f ms\n", elapsed);
     #endif
-#endif
+    #endif
+
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        CUDA_TRY(cudaStreamDestroy(streams[i]));
+    }
 
     #ifdef INIT_PROFILE
     cudaEventRecord(start);
@@ -546,6 +563,12 @@ cudaError_t gtap_finalize() {
 // This function clears all runtime state without reallocating memory
 // Call this before each execution after the initial init_task_runtime call
 cudaError_t __gtap_reset_task_runtime() {
+    constexpr int NUM_STREAMS = GTAP_NUM_QUEUES + 4;
+    cudaStream_t streams[NUM_STREAMS];
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        CUDA_TRY(cudaStreamCreate(&streams[i]));
+    }
+
     // Get device pointers from symbols
     WarpTaskQueue** d_warp_task_queues_ptrptr = nullptr;
     CUDA_TRY(cudaMemcpyFromSymbol(&d_warp_task_queues_ptrptr, d_warp_task_queues, sizeof(WarpTaskQueue**)));
@@ -569,31 +592,31 @@ cudaError_t __gtap_reset_task_runtime() {
     // Clear task queues
     for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
         if (h_warpTaskQueues_planes[k] != nullptr) {
-            CUDA_TRY(cudaMemset(h_warpTaskQueues_planes[k], 0, sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS));
+            CUDA_TRY(cudaMemsetAsync(h_warpTaskQueues_planes[k], 0, sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, streams[k]));
         }
     }
     free(h_warpTaskQueues_planes);
 
     // Clear task headers
     if (d_task_headers_ptr != nullptr) {
-        CUDA_TRY(cudaMemset(d_task_headers_ptr, 0, sizeof(TaskHeader) * MAX_TASKS_GLOBAL));
+        CUDA_TRY(cudaMemsetAsync(d_task_headers_ptr, 0, sizeof(TaskHeader) * MAX_TASKS_GLOBAL, streams[GTAP_NUM_QUEUES]));
     }
 
     size_t max_task_size = gtap_host_task_data_stride();
     // Clear task data
     if (d_task_data_bytes_ptr != nullptr) {
         size_t task_data_size = max_task_size * MAX_TASKS_GLOBAL;
-        CUDA_TRY(cudaMemset(d_task_data_bytes_ptr, 0, task_data_size));
+        CUDA_TRY(cudaMemsetAsync(d_task_data_bytes_ptr, 0, task_data_size, streams[GTAP_NUM_QUEUES + 1]));
     }
 
     // Reset task ID lists
     if (d_task_id_lists_ptr != nullptr) {
-        CUDA_TRY(cudaMemset(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS));
+        CUDA_TRY(cudaMemsetAsync(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS, streams[GTAP_NUM_QUEUES + 2]));
     }
 
     if (d_result_handles_ptr != nullptr) {
         size_t result_handle_array_size = sizeof(GTaPResultHandle) * GTAP_RESULT_HANDLE_CAPACITY;
-        CUDA_TRY(cudaMemset(d_result_handles_ptr, 0, result_handle_array_size));
+        CUDA_TRY(cudaMemsetAsync(d_result_handles_ptr, 0, result_handle_array_size, streams[GTAP_NUM_QUEUES + 3]));
     }
 
     // Reset global state
@@ -607,14 +630,22 @@ cudaError_t __gtap_reset_task_runtime() {
 
     // Reset profile data if enabled
     #ifdef PROFILE
-    CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
-    CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA));
+    CUDA_TRY(gtap_memset_symbol_async(having_task_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA, streams[0]));
+    CUDA_TRY(gtap_memset_symbol_async(working_time, 0, sizeof(long long) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA, streams[1 % NUM_STREAMS]));
+    CUDA_TRY(gtap_memset_symbol_async(tasks_processed_count, 0, sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS * MAX_PROFILE_DATA, streams[2 % NUM_STREAMS]));
     #endif
+
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        CUDA_TRY(cudaStreamSynchronize(streams[i]));
+    }
 
     // Reinitialize warp ID pools metadata
     init_warp_id_pools_metadata<<<GTAP_GRID_SIZE, GTAP_NUM_WARPS * WARP_SIZE>>>();
     CUDA_TRY(cudaDeviceSynchronize());
+
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        CUDA_TRY(cudaStreamDestroy(streams[i]));
+    }
 
     return cudaGetLastError();
 }
@@ -846,7 +877,7 @@ __device__ __forceinline__ int __gtap_get_task_state(int tid) {
 #endif
 }
 
-__device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
+__device__ __forceinline__ bool __gtap_set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
     if (queue_idx_after_join >= GTAP_NUM_QUEUES) {
         atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN);
         __trap();
@@ -860,6 +891,7 @@ __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_cou
     hdr->state = next_state;
     hdr->waiting_child_count = child_count;
 #endif
+    return child_count != 0;
 }
 
 // Static result retrieval stores child tids in compiler-generated task data.

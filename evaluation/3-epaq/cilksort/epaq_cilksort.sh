@@ -115,20 +115,21 @@ compile_with_cutoff() {
         return 1
     fi
     
-    # Use Makefile variables if available, otherwise use defaults
-    # Source Makefile to get variables (but Makefile syntax is not shell-compatible)
-    # So we'll use defaults that match the Makefile
-    local PROJ_DIR="${PROJ_DIR:-/work/gc64/c64099/gtap}"
-    local CUDA_PATH="${CUDA_PATH:-/work/opt/local/aarch64/cores/nvidia/25.9/Linux_aarch64/25.9/cuda}"
+    local PROJ_DIR="${PROJ_DIR:-$(cd "$COMPARE_DIR/../../.." && pwd)}"
+    local CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-}}"
     local CUDA_ARCH="${CUDA_ARCH:-sm_90}"
     local CXX_BIN="${CXX_BIN:-$PROJ_DIR/clang-gtap/build/bin/clang++}"
     local GT_INC="${GT_INC:-$PROJ_DIR/runtime}"
     local GTAP_GRID_SIZE="${GTAP_GRID_SIZE:-4000}"
     local GTAP_BLOCK_SIZE="${GTAP_BLOCK_SIZE:-32}"
     local GTAP_MAX_TASKS_PER_WARP="${GTAP_MAX_TASKS_PER_WARP:-80000}"
-    local GTAP_MAX_CHILD_TASKS="${GTAP_MAX_CHILD_TASKS:-7}"
     local GTAP_CFLAGS="${GTAP_CFLAGS:--DGTAP_TERMINATE_ON_FIRST_TASK_FINISH}"
     local GTAP_NUM_QUEUES=$queue_type
+
+    if [ -z "$CUDA_PATH" ]; then
+        echo "Error: set CUDA_PATH or CUDA_HOME to the CUDA installation root" >&2
+        return 1
+    fi
     
     mkdir -p "$BIN_DIR"
     
@@ -147,7 +148,7 @@ compile_with_cutoff() {
       $extra_flags \
       -I"$GT_INC" \
       -DGTAP_GRID_SIZE="$GTAP_GRID_SIZE" -DGTAP_BLOCK_SIZE="$GTAP_BLOCK_SIZE" \
-      -DGTAP_MAX_TASKS_PER_WARP="$GTAP_MAX_TASKS_PER_WARP" -DGTAP_MAX_CHILD_TASKS="$GTAP_MAX_CHILD_TASKS" \
+      -DGTAP_MAX_TASKS_PER_WARP="$GTAP_MAX_TASKS_PER_WARP" \
       -DGTAP_NUM_QUEUES="$GTAP_NUM_QUEUES" \
       -DTASK_SPAWN_CUTOFF_SORT="$cutoff" \
       -DTASK_SPAWN_CUTOFF_MERGE="$cutoff" \

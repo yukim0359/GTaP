@@ -18,8 +18,13 @@ TMP_BIN_DIR="$SCALING_DIR/tmp_bin_${BENCHMARK_NAME}"
 TMP_DATA_DIR="$SCALING_DIR/tmp_data_${BENCHMARK_NAME}"
 
 # Compiler paths (matching Makefile)
-CUDA_PATH="${CUDA_PATH:-/work/opt/local/aarch64/cores/nvidia/25.9/Linux_aarch64/25.9/cuda}"
+CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-}}"
 CXX_BIN="${CXX_BIN:-$PROJECT_ROOT/clang-gtap/build/bin/clang++}"
+
+if [ -z "$CUDA_PATH" ]; then
+    echo "Error: set CUDA_PATH or CUDA_HOME to the CUDA installation root"
+    exit 1
+fi
 
 if [ ! -d "$RUNTIME_DIR" ]; then
     echo "Error: Please submit this script from gtap/evaluation/1-worker_scalability/$BENCHMARK_NAME"
@@ -141,7 +146,7 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         COMMON_FLAGS="$COMMON_FLAGS -Wall -Wextra -Xcuda-ptxas --warn-on-spills"
         COMMON_FLAGS="$COMMON_FLAGS -I$RUNTIME_DIR"
         COMMON_FLAGS="$COMMON_FLAGS -DGTAP_GRID_SIZE=$grid_size -DGTAP_BLOCK_SIZE=$block_size"
-        COMMON_FLAGS="$COMMON_FLAGS -DGTAP_MAX_TASKS_PER_WARP=$max_tasks_per_warp -DGTAP_MAX_CHILD_TASKS=7"
+        COMMON_FLAGS="$COMMON_FLAGS -DGTAP_MAX_TASKS_PER_WARP=$max_tasks_per_warp"
         COMMON_FLAGS="$COMMON_FLAGS -DGTAP_NUM_QUEUES=1"
         LINK_FLAGS="-L$CUDA_PATH/lib64 -lcudart"
         
@@ -256,4 +261,3 @@ echo ""
 echo "=== Results saved to $RESULTS_FILE ==="
 echo "CSV contents:"
 cat "$RESULTS_FILE"
-

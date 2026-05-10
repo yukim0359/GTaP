@@ -3,7 +3,6 @@
 #include <vector>
 #include <random>
 #include <algorithm>
-#define GTAP_MAX_TASK_DATA_SIZE 16
 
 #ifdef GQ
 #include "gtap_block_gq.cuh"

@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <cmath>
 // #define PROFILE
-#define GTAP_MAX_TASK_DATA_SIZE 24
 #include "gtap_thread.cuh"
 
 // ------------------------------
