@@ -26,49 +26,24 @@
 #define GTAP_MAX_CHILD_TASKS_FOR_SHARED 10
 #endif
 
-#ifndef GTAP_MAX_TASK_DATA_SIZE
-#define GTAP_USE_AUTO_TASK_DATA_SIZE 1
-#define GTAP_MAX_TASK_DATA_SIZE 16
-#else
-#define GTAP_USE_AUTO_TASK_DATA_SIZE 0
-#endif
-
-#if GTAP_USE_AUTO_TASK_DATA_SIZE
 extern const size_t __gtap_auto_task_data_size;
 __constant__ size_t d_gtap_task_data_stride;
-#endif
 
 inline constexpr size_t gtap_compile_time_task_data_size_limit() {
-#if GTAP_USE_AUTO_TASK_DATA_SIZE
     return static_cast<size_t>(-1);
-#else
-    return GTAP_MAX_TASK_DATA_SIZE;
-#endif
 }
 
 inline size_t gtap_host_task_data_stride() {
-#if GTAP_USE_AUTO_TASK_DATA_SIZE
     return __gtap_auto_task_data_size;
-#else
-    return GTAP_MAX_TASK_DATA_SIZE;
-#endif
 }
 
 __device__ __forceinline__ size_t gtap_device_task_data_stride() {
-#if GTAP_USE_AUTO_TASK_DATA_SIZE
     return d_gtap_task_data_stride;
-#else
-    return GTAP_MAX_TASK_DATA_SIZE;
-#endif
 }
 
 inline cudaError_t gtap_init_device_task_data_stride() {
-#if GTAP_USE_AUTO_TASK_DATA_SIZE
     size_t stride = __gtap_auto_task_data_size;
     return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
-#else
-    return cudaSuccess;
-#endif
 }
 
 // Safety thresholds for error detection
