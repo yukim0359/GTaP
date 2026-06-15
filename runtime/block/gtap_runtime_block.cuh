@@ -94,8 +94,9 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
     int old_tail = atomicAdd(&ctx->queue_tail, 1);
     int top = load_L2(&q->top);
     if (old_tail + 1 - top > QUEUE_SIZE - QUEUE_MARGIN) {
-        atomicExch(&d_runtime_error_code, GTAP_ERROR_QUEUE_OVERFLOW);
-        __trap();
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_QUEUE_OVERFLOW, blockIdx.x, task_id, -1,
+            old_tail + 1 - top, QUEUE_SIZE - QUEUE_MARGIN, __LINE__);
     }
     store_L2(&q->queue[old_tail % QUEUE_SIZE], task_id);
     atomicAdd(&ctx->task_id_generated_count, 1);
@@ -136,8 +137,9 @@ __device__ __forceinline__ TaskIdFromPool get_task_id_from_block_pool(TaskIdList
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < TASK_ID_POOL_MIN_FREE) {
-            atomicExch(&d_runtime_error_code, GTAP_ERROR_TASK_ID_POOL_EXHAUSTED);
-            __trap();
+            gtap_record_runtime_error_and_trap(
+                GTAP_ERROR_TASK_ID_POOL_EXHAUSTED, block_id, id, -1,
+                free_count, TASK_ID_POOL_MIN_FREE, __LINE__);
         }
     }
     return TaskIdFromPool{id, first_use};
@@ -173,8 +175,9 @@ extern "C" __device__ __forceinline__ void __gtap_append_result_handle(
 #else
     int slot = atomicAdd(&d_result_handle_top, 1);
     if (slot >= GTAP_RESULT_HANDLE_CAPACITY) {
-        atomicExch(&d_runtime_error_code, GTAP_ERROR_QUEUE_OVERFLOW);
-        __trap();
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_QUEUE_OVERFLOW, blockIdx.x, child_tid, -1,
+            slot, GTAP_RESULT_HANDLE_CAPACITY, __LINE__);
     }
     d_result_handles[slot].child_tid = child_tid;
     d_result_handles[slot].kind = kind;
@@ -241,6 +244,8 @@ __device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
 }
 
 cudaError_t __gtap_init_task_runtime() {
+    CUDA_TRY(gtap_init_runtime_error_report());
+
     constexpr int NUM_STREAMS = 5;
     cudaStream_t streams[NUM_STREAMS];
     for (int i = 0; i < NUM_STREAMS; ++i) {
@@ -344,6 +349,8 @@ cudaError_t __gtap_finalize_task_runtime() {
         CUDA_TRY(cudaFree(d_result_handles_ptr));
     }
     
+    CUDA_TRY(gtap_finalize_runtime_error_report());
+
     return cudaGetLastError();
 }
 
@@ -359,6 +366,8 @@ cudaError_t gtap_finalize() {
 // This function clears all runtime state without reallocating memory
 // Call this before each execution after the initial init_task_runtime call
 cudaError_t __gtap_reset_task_runtime() {
+    gtap_reset_runtime_error_report_host();
+
     constexpr int NUM_STREAMS = 5;
     cudaStream_t streams[NUM_STREAMS];
     for (int i = 0; i < NUM_STREAMS; ++i) {
@@ -685,8 +694,9 @@ __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int chil
 #else
     (void)parent_tid;
     (void)child_index;
-    atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_TASKWAIT);
-    __trap();
+    gtap_record_runtime_error_and_trap(
+        GTAP_ERROR_INVALID_TASKWAIT, blockIdx.x, parent_tid, -1,
+        child_index, GTAP_MAX_CHILD_TASKS, __LINE__);
     return 0;
 #endif
 }

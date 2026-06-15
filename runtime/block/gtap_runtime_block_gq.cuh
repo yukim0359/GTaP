@@ -128,8 +128,9 @@ __device__ __forceinline__ int get_task_id_from_block_pool(TaskIdList* tid_list,
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < TASK_ID_POOL_MIN_FREE) {
-            atomicExch(&d_runtime_error_code, GTAP_ERROR_TASK_ID_POOL_EXHAUSTED);
-            __trap();
+            gtap_record_runtime_error_and_trap(
+                GTAP_ERROR_TASK_ID_POOL_EXHAUSTED, block_id, id, -1,
+                free_count, TASK_ID_POOL_MIN_FREE, __LINE__);
         }
     }
     return id;
@@ -165,8 +166,9 @@ extern "C" __device__ __forceinline__ void __gtap_append_result_handle(
 #else
     int slot = atomicAdd(&d_result_handle_top, 1);
     if (slot >= GTAP_RESULT_HANDLE_CAPACITY) {
-        atomicExch(&d_runtime_error_code, GTAP_ERROR_QUEUE_OVERFLOW);
-        __trap();
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_QUEUE_OVERFLOW, blockIdx.x, child_tid, -1,
+            slot, GTAP_RESULT_HANDLE_CAPACITY, __LINE__);
     }
     d_result_handles[slot].child_tid = child_tid;
     d_result_handles[slot].kind = kind;
@@ -233,6 +235,8 @@ __device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
 }
 
 cudaError_t __gtap_init_task_runtime() {
+    CUDA_TRY(gtap_init_runtime_error_report());
+
     constexpr int NUM_STREAMS = 5;
     cudaStream_t streams[NUM_STREAMS];
     for (int i = 0; i < NUM_STREAMS; ++i) {
@@ -354,6 +358,8 @@ cudaError_t __gtap_finalize_task_runtime() {
         CUDA_TRY(cudaFree(d_result_handles_ptr));
     }
     
+    CUDA_TRY(gtap_finalize_runtime_error_report());
+
     return cudaGetLastError();
 }
 
@@ -373,6 +379,8 @@ cudaError_t gtap_finalize() {
 
 // Reset task runtime state for re-execution
 cudaError_t __gtap_reset_task_runtime() {
+    gtap_reset_runtime_error_report_host();
+
     constexpr int NUM_STREAMS = 5;
     cudaStream_t streams[NUM_STREAMS];
     for (int i = 0; i < NUM_STREAMS; ++i) {
@@ -641,8 +649,10 @@ __device__ __forceinline__ void push_global_queue(
         // Overflow check (unsigned subtraction handles wrap-around)
         unsigned int head_val = load_L2(&d_queue_head);
         if (base_pos + (unsigned int)push_cnt - head_val > GQ_QUEUE_SIZE - QUEUE_MARGIN) {
-            atomicExch(&d_runtime_error_code, GTAP_ERROR_QUEUE_OVERFLOW);
-            __trap();
+            gtap_record_runtime_error_and_trap(
+                GTAP_ERROR_QUEUE_OVERFLOW, blockIdx.x, -1, -1,
+                static_cast<int>(base_pos + (unsigned int)push_cnt - head_val),
+                GQ_QUEUE_SIZE - QUEUE_MARGIN, __LINE__);
         }
     }
     __syncthreads();
@@ -712,8 +722,9 @@ __device__ __forceinline__ bool __gtap_set_state_for_join_block(
 __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int child_index) {
     (void)parent_tid;
     (void)child_index;
-    atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_TASKWAIT);
-    __trap();
+    gtap_record_runtime_error_and_trap(
+        GTAP_ERROR_INVALID_TASKWAIT, blockIdx.x, parent_tid, -1,
+        child_index, GTAP_MAX_CHILD_TASKS, __LINE__);
     return 0;
 }
 }

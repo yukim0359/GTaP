@@ -130,8 +130,9 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, 
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < TASK_ID_POOL_MIN_FREE) {
-            atomicExch(&d_runtime_error_code, GTAP_ERROR_TASK_ID_POOL_EXHAUSTED);
-            __trap();
+            gtap_record_runtime_error_and_trap(
+                GTAP_ERROR_TASK_ID_POOL_EXHAUSTED, warp_id_global, id, -1,
+                free_count, TASK_ID_POOL_MIN_FREE, __LINE__);
         }
     }
     return id;
@@ -159,6 +160,8 @@ __device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
 }
 
 cudaError_t __gtap_init_task_runtime() {
+    CUDA_TRY(gtap_init_runtime_error_report());
+
     #ifdef INIT_PROFILE
     printf("\n=== init_task_runtime (GQ) detailed profiling ===\n");
     cudaEvent_t start, stop;
@@ -407,6 +410,8 @@ cudaError_t __gtap_finalize_task_runtime() {
         CUDA_TRY(cudaFree(d_task_id_generated_by_queue_idx_ptr));
     }
     
+    CUDA_TRY(gtap_finalize_runtime_error_report());
+
     return cudaGetLastError();
 }
 
@@ -426,6 +431,8 @@ cudaError_t gtap_finalize() {
 
 // Reset task runtime state for re-execution
 cudaError_t __gtap_reset_task_runtime() {
+    gtap_reset_runtime_error_report_host();
+
     // Get device pointers from symbols
     GlobalTaskQueue* d_global_task_queue_ptr = nullptr;
     CUDA_TRY(cudaMemcpyFromSymbol(&d_global_task_queue_ptr, d_global_task_queue, sizeof(GlobalTaskQueue*)));
@@ -693,8 +700,10 @@ __device__ __forceinline__ void push_global_queue(
             // Overflow check
             int head_val = load_L2(&d_queue_head[kind]);
             if (base_pos + push_cnt - head_val > GQ_QUEUE_SIZE - QUEUE_MARGIN) {
-                atomicExch(&d_runtime_error_code, GTAP_ERROR_QUEUE_OVERFLOW);
-                __trap();
+                gtap_record_runtime_error_and_trap(
+                    GTAP_ERROR_QUEUE_OVERFLOW, get_warp_id_global(), -1, kind,
+                    base_pos + push_cnt - head_val, GQ_QUEUE_SIZE - QUEUE_MARGIN,
+                    __LINE__);
             }
         }
         base_pos = __shfl_sync(0xFFFFFFFFu, base_pos, 0);
@@ -730,8 +739,9 @@ __device__ __forceinline__ int __gtap_get_task_state(int tid) {
 
 __device__ __forceinline__ bool __gtap_set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
     if (queue_idx_after_join >= GTAP_NUM_QUEUES) {
-        atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN);
-        __trap();
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN, get_warp_id_global(), tid,
+            queue_idx_after_join, queue_idx_after_join, GTAP_NUM_QUEUES, __LINE__);
     }
     TaskHeader* hdr = &d_task_headers[tid];
     hdr->state = next_state;
@@ -746,8 +756,9 @@ __device__ __forceinline__ bool __gtap_set_state_for_join(int tid, int child_cou
 __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int child_index) {
     (void)parent_tid;
     (void)child_index;
-    atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_TASKWAIT);
-    __trap();
+    gtap_record_runtime_error_and_trap(
+        GTAP_ERROR_INVALID_TASKWAIT, get_warp_id_global(), parent_tid, -1,
+        child_index, GTAP_MAX_CHILD_TASKS, __LINE__);
     return 0;
 }
 
@@ -811,8 +822,9 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     bool retain_parent_result
 ) {
     if (child_queue_idx >= GTAP_NUM_QUEUES) {
-        atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_QUEUE_IDX);
-        __trap();
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_INVALID_QUEUE_IDX, get_warp_id_global(), self_tid,
+            child_queue_idx, child_queue_idx, GTAP_NUM_QUEUES, __LINE__);
     }
     int warp_id_global = get_warp_id_global();
     int lane = get_lane_id();
@@ -853,8 +865,9 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
     int child_queue_idx
 ) {
     if (child_queue_idx >= GTAP_NUM_QUEUES) {
-        atomicExch(&d_runtime_error_code, GTAP_ERROR_INVALID_QUEUE_IDX);
-        __trap();
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_INVALID_QUEUE_IDX, get_warp_id_global(), self_tid,
+            child_queue_idx, child_queue_idx, GTAP_NUM_QUEUES, __LINE__);
     }
 
     int warp_id_global = get_warp_id_global();
