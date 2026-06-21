@@ -7,7 +7,7 @@
 
 // Configuration (user may override before including this header)
 // launch parameters
-#define WARP_SIZE 32
+#define GTAP_WARP_SIZE 32
 
 #ifndef GTAP_GRID_SIZE
 #define GTAP_GRID_SIZE 1024
@@ -17,7 +17,7 @@
 #define GTAP_BLOCK_SIZE 256
 #endif
 
-#define GTAP_NUM_WARPS ((GTAP_BLOCK_SIZE + WARP_SIZE - 1) / WARP_SIZE)
+#define GTAP_NUM_WARPS ((GTAP_BLOCK_SIZE + GTAP_WARP_SIZE - 1) / GTAP_WARP_SIZE)
 
 #ifndef GTAP_MAX_CHILD_TASKS
 #define GTAP_MAX_CHILD_TASKS 32
@@ -52,8 +52,8 @@ inline cudaError_t gtap_init_device_task_data_stride() {
 }
 
 // Safety thresholds for error detection
-#define QUEUE_MARGIN 100
-#define TASK_ID_POOL_MIN_FREE 100  // Minimum free task IDs before overflow warning
+#define GTAP_QUEUE_MARGIN 100
+#define GTAP_TASK_ID_POOL_MIN_FREE 100  // Minimum free task IDs before overflow warning
 
 #ifdef PROFILE
 #ifndef MAX_PROFILE_DATA
@@ -61,8 +61,8 @@ inline cudaError_t gtap_init_device_task_data_stride() {
 #endif
 #endif
 
-#ifndef CUDA_TRY
-#define CUDA_TRY(call) do { \
+#ifndef GTAP_CUDA_TRY
+#define GTAP_CUDA_TRY(call) do { \
     cudaError_t __st = (call); \
     if (__st != cudaSuccess) { \
         if (!gtap_print_runtime_error_report()) { \

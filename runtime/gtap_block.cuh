@@ -1,6 +1,6 @@
 #pragma once
 
-#include "block/gtap_runtime_block.cuh"
+#include "detail/block/gtap_runtime_block.cuh"
 #ifdef PROFILE
-#include "block/gtap_profile_block.cuh"
+#include "detail/block/gtap_profile_block.cuh"
 #endif

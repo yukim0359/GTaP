@@ -1,6 +1,6 @@
 #pragma once
 
-#include "thread/gtap_runtime_thread.cuh"
+#include "detail/thread/gtap_runtime_thread.cuh"
 #ifdef PROFILE
-#include "thread/gtap_profile_thread.cuh"
+#include "detail/thread/gtap_profile_thread.cuh"
 #endif
