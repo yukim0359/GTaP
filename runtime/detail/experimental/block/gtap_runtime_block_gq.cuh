@@ -11,6 +11,8 @@
 #define GTAP_MAX_TASKS_PER_BLOCK 10000
 #endif
 
+GTAP_VALIDATE_BLOCK_CONFIG();
+
 // Global queue size - single queue shared by all blocks
 #define GTAP_GQ_QUEUE_SIZE (GTAP_MAX_TASKS_PER_BLOCK * GTAP_GRID_SIZE)
 

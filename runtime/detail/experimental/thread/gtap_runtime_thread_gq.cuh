@@ -15,6 +15,8 @@
 #define GTAP_MAX_TASKS_PER_WARP 20000
 #endif
 
+GTAP_VALIDATE_THREAD_CONFIG();
+
 // Global queue size - single queue shared by all warps
 #define GTAP_GQ_QUEUE_SIZE (GTAP_MAX_TASKS_PER_WARP * GTAP_GRID_SIZE * GTAP_NUM_WARPS / GTAP_NUM_QUEUES)
 

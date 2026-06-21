@@ -12,6 +12,8 @@ inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_
 #define GTAP_RESULT_HANDLE_CAPACITY 1000
 #endif
 
+GTAP_VALIDATE_RESULT_HANDLE_CONFIG();
+
 // #define DEBUG
 // #define INIT_PROFILE
 
