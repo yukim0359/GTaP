@@ -341,12 +341,6 @@ cudaError_t __gtap_finalize_task_runtime() {
     return cudaGetLastError();
 }
 
-// For backward compatibility
-template <typename TaskType>
-cudaError_t init_task_runtime() {
-    return __gtap_init_task_runtime();
-}
-
 cudaError_t gtap_initialize() {
     return __gtap_init_task_runtime();
 }
@@ -442,12 +436,6 @@ cudaError_t __gtap_reset_task_runtime() {
     GTAP_CUDA_TRY(cudaDeviceSynchronize());
     
     return cudaGetLastError();
-}
-
-// For backward compatibility
-template <typename TaskType>
-cudaError_t reset_task_runtime() {
-    return __gtap_reset_task_runtime();
 }
 
 cudaError_t gtap_reset() {

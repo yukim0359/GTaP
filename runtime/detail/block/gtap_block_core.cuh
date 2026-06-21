@@ -79,6 +79,11 @@ __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
 }
 
 __device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int task_id) {
+    if (idx >= GTAP_MAX_CHILD_TASKS) {
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_GENERATED_TASK_ID_BUFFER_OVERFLOW, block_id, task_id, -1,
+            idx, GTAP_MAX_CHILD_TASKS, __LINE__);
+    }
     int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
     d_task_id_generated[offset] = task_id;
 }

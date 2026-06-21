@@ -10,7 +10,8 @@ enum GTapRuntimeError {
     GTAP_ERROR_QUEUE_OVERFLOW = 2,
     GTAP_ERROR_TASK_ID_POOL_EXHAUSTED = 3,
     GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN = 4,
-    GTAP_ERROR_INVALID_TASKWAIT = 5
+    GTAP_ERROR_INVALID_TASKWAIT = 5,
+    GTAP_ERROR_GENERATED_TASK_ID_BUFFER_OVERFLOW = 6
 };
 
 struct GTapRuntimeErrorReport {
@@ -83,6 +84,8 @@ inline const char* gtap_get_runtime_error_string(int error_code) {
             return "Invalid queue index after join";
         case GTAP_ERROR_INVALID_TASKWAIT:
             return "Invalid taskwait lowering";
+        case GTAP_ERROR_GENERATED_TASK_ID_BUFFER_OVERFLOW:
+            return "Generated task ID buffer overflow";
         default:
             return "Unknown error";
     }

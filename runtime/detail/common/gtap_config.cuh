@@ -19,10 +19,6 @@
 #define GTAP_MAX_CHILD_TASKS 32
 #endif
 
-#ifndef GTAP_MAX_CHILD_TASKS_FOR_SHARED
-#define GTAP_MAX_CHILD_TASKS_FOR_SHARED 10
-#endif
-
 #ifdef PROFILE
 #ifndef MAX_PROFILE_DATA
 #define MAX_PROFILE_DATA 30000
@@ -37,7 +33,6 @@ static_assert(GTAP_BLOCK_SIZE > 0, "GTAP_BLOCK_SIZE must be positive");
 static_assert(GTAP_BLOCK_SIZE % GTAP_WARP_SIZE == 0, "GTAP_BLOCK_SIZE must be a multiple of GTAP_WARP_SIZE");
 static_assert(GTAP_NUM_WARPS > 0, "GTAP_NUM_WARPS must be positive");
 static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negative");
-static_assert(GTAP_MAX_CHILD_TASKS_FOR_SHARED >= 0, "GTAP_MAX_CHILD_TASKS_FOR_SHARED must be non-negative");
 
 #ifdef PROFILE
 static_assert(MAX_PROFILE_DATA > 0, "MAX_PROFILE_DATA must be positive when PROFILE is enabled");

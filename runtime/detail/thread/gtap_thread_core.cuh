@@ -94,6 +94,11 @@ __device__ __forceinline__ int get_task_id_generated(int warp_id_global, int que
 }
 
 __device__ __forceinline__ void set_task_id_generated(int warp_id_global, int queue_idx, int idx, int task_id) {
+    if (idx >= GTAP_TASK_ID_GEN_QUEUE_STRIDE) {
+        gtap_record_runtime_error_and_trap(
+            GTAP_ERROR_GENERATED_TASK_ID_BUFFER_OVERFLOW, warp_id_global, task_id,
+            queue_idx, idx, GTAP_TASK_ID_GEN_QUEUE_STRIDE, __LINE__);
+    }
     int offset = warp_id_global * GTAP_TASK_ID_GEN_WARP_STRIDE + queue_idx * GTAP_TASK_ID_GEN_QUEUE_STRIDE + idx;
     d_task_id_generated_by_queue_idx[offset] = task_id;
 }

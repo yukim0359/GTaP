@@ -160,12 +160,6 @@ cudaError_t __gtap_finalize_task_runtime() {
     return cudaGetLastError();
 }
 
-// For backward compatibility
-template <typename TaskType>
-cudaError_t init_task_runtime() {
-    return __gtap_init_task_runtime();
-}
-
 cudaError_t gtap_initialize() {
     return __gtap_init_task_runtime();
 }
@@ -270,12 +264,6 @@ cudaError_t __gtap_reset_task_runtime() {
     }
     
     return cudaGetLastError();
-}
-
-// For backward compatibility
-template <typename TaskType>
-cudaError_t reset_task_runtime() {
-    return __gtap_reset_task_runtime();
 }
 
 cudaError_t gtap_reset() {
@@ -567,7 +555,7 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
     }
 }
 
-/*extern "C"*/ __device__ __forceinline__ void* __gtap_spawn_task(
+__device__ __forceinline__ void* __gtap_spawn_task(
     TaskContext* ctx,
     int self_tid,
     int* child_count,
@@ -615,7 +603,7 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     return __gtap_spawn_task(ctx, self_tid, child_count, func, out_tid, retain_parent_result);
 }
 
-/*extern "C"*/ __device__ __forceinline__ void __gtap_spawn_task_raw(
+__device__ __forceinline__ void __gtap_spawn_task_raw(
     TaskContext* ctx,
     int self_tid,
     int* child_count,
@@ -662,7 +650,7 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
     __gtap_spawn_task_raw(ctx, self_tid, child_count, func, task_data_ptr, task_data_size);
 }
 
-/*extern "C"*/ __device__ __forceinline__ void __gtap_push_initial_task(
+__device__ __forceinline__ void __gtap_push_initial_task(
     void (*func)(void*, int, TaskContext*)
 ) { 
     TaskHeader* initial_hdr = &d_task_headers[0];
