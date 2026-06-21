@@ -30,12 +30,16 @@
 extern const size_t __gtap_auto_task_data_size;
 __constant__ size_t d_gtap_task_data_stride;
 
+inline constexpr size_t gtap_align_up(size_t value, size_t alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
 inline constexpr size_t gtap_compile_time_task_data_size_limit() {
     return static_cast<size_t>(-1);
 }
 
 inline size_t gtap_host_task_data_stride() {
-    return __gtap_auto_task_data_size;
+    return gtap_align_up(__gtap_auto_task_data_size, 16);
 }
 
 __device__ __forceinline__ size_t gtap_device_task_data_stride() {
@@ -43,7 +47,7 @@ __device__ __forceinline__ size_t gtap_device_task_data_stride() {
 }
 
 inline cudaError_t gtap_init_device_task_data_stride() {
-    size_t stride = __gtap_auto_task_data_size;
+    size_t stride = gtap_host_task_data_stride();
     return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
 }
 
