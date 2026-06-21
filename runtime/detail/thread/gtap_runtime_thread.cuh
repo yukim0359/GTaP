@@ -21,54 +21,7 @@
 
 #define GTAP_MAX_TASKS_GLOBAL (GTAP_QUEUE_SIZE * GTAP_NUM_QUEUES * GTAP_GRID_SIZE * GTAP_NUM_WARPS)
 
-inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
-
-// decided heuristically for now
-#ifndef GTAP_RESULT_HANDLE_CAPACITY
-#define GTAP_RESULT_HANDLE_CAPACITY 1000
-#endif
-
-// #define DEBUG
-// #define INIT_PROFILE
-
-struct TaskContext;
-
-struct TaskHeader {
-    void (*func)(void* task, int tid, TaskContext* __ctx);  // function pointer
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-#if (GTAP_NUM_QUEUES > 1)
-    uint16_t   queue_idx;
-#endif
-#else
-    // Info of current task
-    uint16_t   generation;
-    uint16_t   state;
-// #if (GTAP_NUM_QUEUES > 1)  // slow with this flag
-    uint16_t   queue_idx;
-// #endif
-    uint16_t   retain_parent_result;
-    // Info of parent task
-    int   parent_tid;
-    uint16_t   parent_generation;
-    // Info of child tasks
-    int   waiting_child_count;
-    int   result_handle_begin;
-    int   result_handle_last;
-    int   result_handle_count;
-#endif
-};
-
-// Grouped context passed to task functions to reduce parameter clutter
-struct TaskContext {
-    int queue_idx;  // the queue index of the current task
-    int task_id_generated_count_by_queue_idx[GTAP_NUM_QUEUES];  // how many tasks of each queue index were generated
-    int* tail_by_queue_idx;
-    int id_list_alloc_pos;  // position to allocate next ID from
-    int id_list_free_pos_stale;  // stale copy of free_pos to avoid L2 load on every allocation
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-    TaskHeader task_headers[GTAP_WARP_SIZE];  // task headers for each thread
-#endif
-};
+#include "gtap_thread_core.cuh"
 
 struct WarpTaskQueue {
     int count;
@@ -78,37 +31,7 @@ struct WarpTaskQueue {
     int queue[GTAP_QUEUE_SIZE];
 };
 
-struct TaskIdList {
-    int id_list[GTAP_TOTAL_TASK_IDS_PER_WARP];
-    int valid[GTAP_TOTAL_TASK_IDS_PER_WARP];
-    int id_list_free_pos;
-};
-
-struct GTaPResultHandle {
-    int child_tid;
-    int kind;
-    int next;
-    void* lhs_addr;
-};
-
-// Exposed device globals
-// Queues remain 2D pointer planes by kind; headers/tasks are 1D of size GTAP_NUM_QUEUES*GTAP_MAX_TASKS_GLOBAL
-// Note: d_task_data_bytes is now char* (byte array) to support type-erased task data (static allocation)
 __constant__ WarpTaskQueue** d_warp_task_queues;
-__constant__ TaskHeader* d_task_headers;
-__constant__ char* d_task_data_bytes;  // Type-erased: byte array storing task data statically
-__constant__ TaskIdList* d_task_id_lists;
-__constant__ GTaPResultHandle* d_result_handles;
-__device__ int d_result_handle_top;
-__device__ int d_first_task_finished;
-__device__ int d_all_tasks_finished_flag;
-__device__ int d_active_worker_count;
-
-#ifdef PROFILE
-__device__ long long having_task_time[GTAP_GRID_SIZE * GTAP_NUM_WARPS][MAX_PROFILE_DATA];
-__device__ long long working_time[GTAP_GRID_SIZE * GTAP_NUM_WARPS][MAX_PROFILE_DATA];
-__device__ int tasks_processed_count[GTAP_GRID_SIZE * GTAP_NUM_WARPS][MAX_PROFILE_DATA];
-#endif
 
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int queue_idx, int task_id) {
     WarpTaskQueue* q = &d_warp_task_queues[queue_idx][get_warp_id_global()];
@@ -121,154 +44,6 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
     }
     q->queue[old_tail % GTAP_QUEUE_SIZE] = task_id;
     atomicAdd(&ctx->task_id_generated_count_by_queue_idx[queue_idx], 1);
-}
-
-// Initialize only the free_pos fields (id_list is lazily initialized on first access)
-__global__ void init_warp_id_pools_metadata() {
-    int warp_id_in_block = get_warp_id_in_block();
-    int lane = get_lane_id();
-    if (warp_id_in_block < GTAP_NUM_WARPS && lane == 0) {
-        int qid = blockIdx.x * GTAP_NUM_WARPS + warp_id_in_block;
-        TaskIdList* tid_list = &d_task_id_lists[qid];
-        tid_list->id_list_free_pos = GTAP_TOTAL_TASK_IDS_PER_WARP;
-    }
-    __threadfence();
-}
-
-// Return value: tid and whether this slot is used for the first time.
-struct TaskIdFromPool {
-    int tid;
-    bool first_use;
-};
-
-__device__ __forceinline__ TaskIdFromPool get_task_id_from_warp_pool(TaskIdList* tid_list, int* id_list_alloc_pos, int* id_list_free_pos_stale) {
-    int old_alloc = atomicAdd(id_list_alloc_pos, 1);
-    int warp_id_global = (tid_list - d_task_id_lists);
-    int id = 0;
-    bool first_use = (old_alloc < GTAP_TOTAL_TASK_IDS_PER_WARP);
-    if (first_use) {
-        id = warp_id_global * GTAP_TOTAL_TASK_IDS_PER_WARP + old_alloc;
-    } else {
-        if (load_L2_acquire(&tid_list->valid[old_alloc % GTAP_TOTAL_TASK_IDS_PER_WARP]) == 1) {
-            id = load_L2(&tid_list->id_list[old_alloc % GTAP_TOTAL_TASK_IDS_PER_WARP]);
-            store_L2(&tid_list->valid[old_alloc % GTAP_TOTAL_TASK_IDS_PER_WARP], 0);
-        } else {
-            gtap_record_runtime_error_and_trap(
-                GTAP_ERROR_TASK_ID_POOL_EXHAUSTED, warp_id_global, id, -1,
-                old_alloc, GTAP_TOTAL_TASK_IDS_PER_WARP, __LINE__);
-        }
-    }
-    int free_count = *id_list_free_pos_stale - old_alloc;
-    if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
-        // Stale check failed, load actual value
-        int new_free_pos = load_L2(&tid_list->id_list_free_pos);
-        *id_list_free_pos_stale = new_free_pos;
-        free_count = new_free_pos - old_alloc;
-        if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
-            gtap_record_runtime_error_and_trap(
-                GTAP_ERROR_TASK_ID_POOL_EXHAUSTED, warp_id_global, id, -1,
-                free_count, GTAP_TASK_ID_POOL_MIN_FREE, __LINE__);
-        }
-    }
-    return TaskIdFromPool{id, first_use};
-}
-
-__device__ __forceinline__ void release_task_id_to_warp_pool(int id) {
-    // int warp_id_global = id / GTAP_TOTAL_TASK_IDS_PER_WARP;
-    int warp_id_global = get_warp_id_global();
-    TaskIdList* tid_list = &d_task_id_lists[warp_id_global];
-    int old_free = atomicAdd(&tid_list->id_list_free_pos, 1);
-    store_L2(&tid_list->id_list[old_free % GTAP_TOTAL_TASK_IDS_PER_WARP], id);
-    store_L2(&tid_list->valid[old_free % GTAP_TOTAL_TASK_IDS_PER_WARP], 1);
-}
-
-extern "C" __device__ __forceinline__ void __gtap_release_task_id(int tid) {
-    release_task_id_to_warp_pool(tid);
-}
-
-// Helper function to get task data pointer (type-erased byte array)
-__device__ __forceinline__ void* __gtap_get_task_data(int tid) {
-    return d_task_data_bytes + (size_t)tid * gtap_device_task_data_stride();
-}
-
-extern "C" __device__ __forceinline__ void __gtap_append_result_handle(
-    int parent_tid,
-    int kind,
-    int child_tid,
-    void* lhs_addr
-) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    (void)parent_tid;
-    (void)kind;
-    (void)child_tid;
-    (void)lhs_addr;
-#else
-    int slot = atomicAdd(&d_result_handle_top, 1);
-    if (slot >= GTAP_RESULT_HANDLE_CAPACITY) {
-        gtap_record_runtime_error_and_trap(
-            GTAP_ERROR_QUEUE_OVERFLOW, get_warp_id_global(), child_tid, -1,
-            slot, GTAP_RESULT_HANDLE_CAPACITY, __LINE__);
-    }
-    d_result_handles[slot].child_tid = child_tid;
-    d_result_handles[slot].kind = kind;
-    d_result_handles[slot].next = -1;
-    d_result_handles[slot].lhs_addr = lhs_addr;
-
-    TaskHeader* parent_hdr = &d_task_headers[parent_tid];
-    int prev_last = parent_hdr->result_handle_last;
-    if (prev_last >= 0) {
-        d_result_handles[prev_last].next = slot;
-    } else {
-        parent_hdr->result_handle_begin = slot;
-    }
-    parent_hdr->result_handle_last = slot;
-    atomicAdd(&parent_hdr->result_handle_count, 1);
-#endif
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_begin(int tid) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    return 0;
-#else
-    return load_L2(&d_task_headers[tid].result_handle_begin);
-#endif
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_count(int tid) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    return 0;
-#else
-    return load_L2(&d_task_headers[tid].result_handle_count);
-#endif
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_child_tid(int handle_index) {
-    return load_L2(&d_result_handles[handle_index].child_tid);
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_kind(int handle_index) {
-    return load_L2(&d_result_handles[handle_index].kind);
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_next(int handle_index) {
-    return load_L2(&d_result_handles[handle_index].next);
-}
-
-extern "C" __device__ __forceinline__ void* __gtap_get_result_handle_lhs_addr(int handle_index) {
-    return load_L2_ptr(&d_result_handles[handle_index].lhs_addr);
-}
-
-extern "C" __device__ __forceinline__ void __gtap_clear_result_handles(int tid) {
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-    d_task_headers[tid].result_handle_begin = -1;
-    d_task_headers[tid].result_handle_last = -1;
-    d_task_headers[tid].result_handle_count = 0;
-#endif
-}
-
-template <typename TaskType>
-__device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
-    return reinterpret_cast<TaskType*>(__gtap_get_task_data(tid));
 }
 
 cudaError_t __gtap_init_task_runtime() {
@@ -886,6 +661,7 @@ __device__ __forceinline__ void push_batch (
 // Get the current state of a task (reads from TaskHeader)
 __device__ __forceinline__ int __gtap_get_task_state(int tid) {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
+    (void)tid;
     return 0;
 #else
     return load_L2_u16t(&d_task_headers[tid].state);
@@ -898,14 +674,23 @@ __device__ __forceinline__ bool __gtap_set_state_for_join(int tid, int child_cou
             GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN, get_warp_id_global(), tid,
             queue_idx_after_join, queue_idx_after_join, GTAP_NUM_QUEUES, __LINE__);
     }
+#ifndef GTAP_ASSUME_NO_TASKWAIT
     TaskHeader* hdr = &d_task_headers[tid];
-    // queue_idx is only stored when we actually have multiple queues
 #if (GTAP_NUM_QUEUES > 1)
     hdr->queue_idx = queue_idx_after_join;
+#else
+    (void)queue_idx_after_join;
 #endif
-#ifndef GTAP_ASSUME_NO_TASKWAIT
     hdr->state = next_state;
     hdr->waiting_child_count = child_count;
+#else
+#if (GTAP_NUM_QUEUES > 1)
+    d_task_headers[tid].queue_idx = queue_idx_after_join;
+#else
+    (void)tid;
+    (void)queue_idx_after_join;
+#endif
+    (void)next_state;
 #endif
     return child_count != 0;
 }
@@ -914,6 +699,8 @@ __device__ __forceinline__ bool __gtap_set_state_for_join(int tid, int child_cou
 // This legacy fallback should not be emitted by the current transformer.
 __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int child_index) {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
+    (void)parent_tid;
+    (void)child_index;
     return 0;
 #else
     (void)parent_tid;
@@ -951,6 +738,7 @@ extern "C" __device__ __forceinline__ void __gtap_finish_task(int tid, TaskConte
 #endif
 
 #ifdef GTAP_ASSUME_NO_TASKWAIT
+    (void)ctx;
     release_task_id_to_warp_pool(tid);
 #else
     int lane = get_lane_id();
@@ -988,6 +776,9 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     int* out_tid,
     bool retain_parent_result
 ) {
+#ifdef GTAP_ASSUME_NO_TASKWAIT
+    (void)retain_parent_result;
+#endif
     if (child_queue_idx >= GTAP_NUM_QUEUES) {
         gtap_record_runtime_error_and_trap(
             GTAP_ERROR_INVALID_QUEUE_IDX, get_warp_id_global(), self_tid,
