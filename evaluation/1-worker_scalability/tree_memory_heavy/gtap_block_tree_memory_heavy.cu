@@ -5,7 +5,7 @@
 #include <algorithm>
 
 #ifdef GQ
-#include "gtap_block_gq.cuh"
+#include "experimental/gtap_block_gq.cuh"
 #else
 #include "gtap_block.cuh"
 #endif
