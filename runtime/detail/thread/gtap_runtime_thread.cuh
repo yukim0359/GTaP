@@ -40,9 +40,8 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
     int old_tail = atomicAdd(&ctx->tail_by_queue_idx[queue_idx], 1);
     int head = load_L2(&q->queue_head);
     if (old_tail + 1 - head > GTAP_QUEUE_SIZE - GTAP_QUEUE_MARGIN) {
-        gtap_record_runtime_error_and_trap(
-            GTAP_ERROR_QUEUE_OVERFLOW, get_warp_id_global(), task_id, queue_idx,
-            old_tail + 1 - head, GTAP_QUEUE_SIZE - GTAP_QUEUE_MARGIN, __LINE__);
+        GTAP_RECORD_QUEUE_OVERFLOW(
+            task_id, queue_idx, old_tail + 1 - head, GTAP_QUEUE_SIZE - GTAP_QUEUE_MARGIN);
     }
     q->queue[old_tail % GTAP_QUEUE_SIZE] = task_id;
     atomicAdd(&ctx->task_id_generated_count_by_queue_idx[queue_idx], 1);
@@ -672,9 +671,8 @@ __device__ __forceinline__ int __gtap_get_task_state(int tid) {
 
 __device__ __forceinline__ bool __gtap_set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
     if (queue_idx_after_join >= GTAP_NUM_QUEUES) {
-        gtap_record_runtime_error_and_trap(
-            GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN, get_warp_id_global(), tid,
-            queue_idx_after_join, queue_idx_after_join, GTAP_NUM_QUEUES, __LINE__);
+        GTAP_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(
+            tid, queue_idx_after_join, GTAP_NUM_QUEUES);
     }
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     TaskHeader* hdr = &d_task_headers[tid];
@@ -707,9 +705,7 @@ __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int chil
 #else
     (void)parent_tid;
     (void)child_index;
-    gtap_record_runtime_error_and_trap(
-        GTAP_ERROR_INVALID_TASKWAIT, get_warp_id_global(), parent_tid, -1,
-        child_index, GTAP_MAX_CHILD_TASKS, __LINE__);
+    GTAP_RECORD_INVALID_TASKWAIT(parent_tid, child_index, GTAP_MAX_CHILD_TASKS);
     return 0;
 #endif
 }
@@ -782,9 +778,7 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     (void)retain_parent_result;
 #endif
     if (child_queue_idx >= GTAP_NUM_QUEUES) {
-        gtap_record_runtime_error_and_trap(
-            GTAP_ERROR_INVALID_QUEUE_IDX, get_warp_id_global(), self_tid,
-            child_queue_idx, child_queue_idx, GTAP_NUM_QUEUES, __LINE__);
+        GTAP_RECORD_INVALID_QUEUE_IDX(self_tid, child_queue_idx, GTAP_NUM_QUEUES);
     }
     int warp_id_global = get_warp_id_global();
     TaskIdFromPool from_pool = get_task_id_from_warp_pool(&d_task_id_lists[warp_id_global], &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);

@@ -80,9 +80,8 @@ __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
 
 __device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int task_id) {
     if (idx >= GTAP_MAX_CHILD_TASKS) {
-        gtap_record_runtime_error_and_trap(
-            GTAP_ERROR_GENERATED_TASK_ID_BUFFER_OVERFLOW, block_id, task_id, -1,
-            idx, GTAP_MAX_CHILD_TASKS, __LINE__);
+        GTAP_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
+            task_id, -1, idx, GTAP_MAX_CHILD_TASKS);
     }
     int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
     d_task_id_generated[offset] = task_id;
@@ -122,9 +121,8 @@ __device__ __forceinline__ TaskIdFromPool get_task_id_from_block_pool(
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
-            gtap_record_runtime_error_and_trap(
-                GTAP_ERROR_TASK_ID_POOL_EXHAUSTED, block_id, id, -1,
-                free_count, GTAP_TASK_ID_POOL_MIN_FREE, __LINE__);
+            GTAP_RECORD_TASK_ID_POOL_LOW_HEADROOM(
+                id, free_count, GTAP_TASK_ID_POOL_MIN_FREE);
         }
     }
     return TaskIdFromPool{id, first_use};
@@ -164,9 +162,8 @@ extern "C" __device__ __forceinline__ void __gtap_append_result_handle(
 #else
     int slot = atomicAdd(&d_result_handle_top, 1);
     if (slot >= GTAP_RESULT_HANDLE_CAPACITY) {
-        gtap_record_runtime_error_and_trap(
-            GTAP_ERROR_QUEUE_OVERFLOW, blockIdx.x, child_tid, -1,
-            slot, GTAP_RESULT_HANDLE_CAPACITY, __LINE__);
+        GTAP_RECORD_RESULT_HANDLE_OVERFLOW(
+            parent_tid, child_tid, slot, GTAP_RESULT_HANDLE_CAPACITY);
     }
     d_result_handles[slot].child_tid = child_tid;
     d_result_handles[slot].kind = kind;

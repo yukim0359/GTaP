@@ -34,9 +34,8 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
     int old_tail = atomicAdd(&ctx->queue_tail, 1);
     int top = load_L2(&q->top);
     if (old_tail + 1 - top > GTAP_QUEUE_SIZE - GTAP_QUEUE_MARGIN) {
-        gtap_record_runtime_error_and_trap(
-            GTAP_ERROR_QUEUE_OVERFLOW, blockIdx.x, task_id, -1,
-            old_tail + 1 - top, GTAP_QUEUE_SIZE - GTAP_QUEUE_MARGIN, __LINE__);
+        GTAP_RECORD_QUEUE_OVERFLOW(
+            task_id, -1, old_tail + 1 - top, GTAP_QUEUE_SIZE - GTAP_QUEUE_MARGIN);
     }
     store_L2(&q->queue[old_tail % GTAP_QUEUE_SIZE], task_id);
     atomicAdd(&ctx->task_id_generated_count, 1);
@@ -493,9 +492,7 @@ __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int chil
 #else
     (void)parent_tid;
     (void)child_index;
-    gtap_record_runtime_error_and_trap(
-        GTAP_ERROR_INVALID_TASKWAIT, blockIdx.x, parent_tid, -1,
-        child_index, GTAP_MAX_CHILD_TASKS, __LINE__);
+    GTAP_RECORD_INVALID_TASKWAIT(parent_tid, child_index, GTAP_MAX_CHILD_TASKS);
     return 0;
 #endif
 }

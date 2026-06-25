@@ -434,10 +434,10 @@ __device__ __forceinline__ void push_global_queue(
         // Overflow check (unsigned subtraction handles wrap-around)
         unsigned int head_val = load_L2(&d_queue_head);
         if (base_pos + (unsigned int)push_cnt - head_val > GTAP_GQ_QUEUE_SIZE - GTAP_QUEUE_MARGIN) {
-            gtap_record_runtime_error_and_trap(
-                GTAP_ERROR_QUEUE_OVERFLOW, blockIdx.x, -1, -1,
+            GTAP_RECORD_QUEUE_OVERFLOW(
+                -1, kind,
                 static_cast<int>(base_pos + (unsigned int)push_cnt - head_val),
-                GTAP_GQ_QUEUE_SIZE - GTAP_QUEUE_MARGIN, __LINE__);
+                GTAP_GQ_QUEUE_SIZE - GTAP_QUEUE_MARGIN);
         }
     }
     __syncthreads();
@@ -507,9 +507,7 @@ __device__ __forceinline__ bool __gtap_set_state_for_join_block(
 __device__ __forceinline__ int __gtap_get_child_task_id(int parent_tid, int child_index) {
     (void)parent_tid;
     (void)child_index;
-    gtap_record_runtime_error_and_trap(
-        GTAP_ERROR_INVALID_TASKWAIT, blockIdx.x, parent_tid, -1,
-        child_index, GTAP_MAX_CHILD_TASKS, __LINE__);
+    GTAP_RECORD_INVALID_TASKWAIT(parent_tid, child_index, GTAP_MAX_CHILD_TASKS);
     return 0;
 }
 }
