@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include "gtap_runtime_error.cuh"
 
 // #define DEBUG
 
@@ -26,9 +27,25 @@
 #define GTAP_MAX_CHILD_TASKS_FOR_SHARED 10
 #endif
 
-#ifndef GTAP_MAX_TASK_DATA_SIZE
-#define GTAP_MAX_TASK_DATA_SIZE 16
-#endif
+extern const size_t __gtap_auto_task_data_size;
+__constant__ size_t d_gtap_task_data_stride;
+
+inline constexpr size_t gtap_compile_time_task_data_size_limit() {
+    return static_cast<size_t>(-1);
+}
+
+inline size_t gtap_host_task_data_stride() {
+    return __gtap_auto_task_data_size;
+}
+
+__device__ __forceinline__ size_t gtap_device_task_data_stride() {
+    return d_gtap_task_data_stride;
+}
+
+inline cudaError_t gtap_init_device_task_data_stride() {
+    size_t stride = __gtap_auto_task_data_size;
+    return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
+}
 
 // Safety thresholds for error detection
 #define QUEUE_MARGIN 100
@@ -44,7 +61,9 @@
 #define CUDA_TRY(call) do { \
     cudaError_t __st = (call); \
     if (__st != cudaSuccess) { \
-        printf("CUDA ERROR: %s\n", cudaGetErrorString(__st)); \
+        if (!gtap_print_runtime_error_report()) { \
+            printf("CUDA ERROR: %s\n", cudaGetErrorString(__st)); \
+        } \
         return __st; \
     } \
 } while (0)
@@ -73,54 +92,6 @@ enum TerminationMode {
     TERMINATE_ON_ALL_TASKS_FINISH, // default
     TERMINATE_ON_FIRST_TASK_FINISH  // finish when first task finishes
 };
-
-// Runtime error codes
-enum GTapRuntimeError {
-    GTAP_ERROR_NONE = 0,
-    GTAP_ERROR_INVALID_QUEUE_IDX = 1,
-    GTAP_ERROR_QUEUE_OVERFLOW = 2,
-    GTAP_ERROR_TASK_ID_POOL_EXHAUSTED = 3,
-    GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN = 4
-};
-
-// Global error code
-__device__ int d_runtime_error_code;  // 0: no error, >0: error code
-
-inline cudaError_t gtap_get_runtime_error_code(int* error_code) {
-    return cudaMemcpyFromSymbol(error_code, d_runtime_error_code, sizeof(int));
-}
-
-// Get error code and return error message string
-inline const char* gtap_get_runtime_error_string(int error_code) {
-    switch (error_code) {
-        case GTAP_ERROR_NONE:
-            return "No error";
-        case GTAP_ERROR_INVALID_QUEUE_IDX:
-            return "Invalid queue index";
-        case GTAP_ERROR_QUEUE_OVERFLOW:
-            return "Queue overflow";
-        case GTAP_ERROR_TASK_ID_POOL_EXHAUSTED:
-            return "Task ID pool exhausted";
-        case GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN:
-            return "Invalid queue index after join";
-        default:
-            return "Unknown error";
-    }
-}
-
-// Convenience function to check and print error if any
-inline cudaError_t gtap_check_runtime_error() {
-    int error_code = 0;
-    cudaError_t cuda_err = gtap_get_runtime_error_code(&error_code);
-    if (cuda_err != cudaSuccess) {
-        printf("GTaP Runtime Error: Unable to read error code (CUDA error: %s)\n", cudaGetErrorString(cuda_err));
-        return cuda_err;
-    }
-    if (error_code != GTAP_ERROR_NONE) {
-        printf("GTaP Runtime Error: %s (code: %d)\n", gtap_get_runtime_error_string(error_code), error_code);
-    }
-    return cudaSuccess;
-}
 
 __device__ __forceinline__ void __gtap_copy_bytes(void* dst, const void* src, size_t nbytes) {
     uint32_t* d32 = reinterpret_cast<uint32_t*>(dst);
@@ -235,15 +206,6 @@ __device__ __forceinline__ int atomicCAS_acquire(int* addr, int expected, int de
     asm volatile("atom.acquire.gpu.global.cas.b32 %0, [%1], %2, %3;" : "=r"(old) : "l"(addr), "r"(expected), "r"(desired) : "memory");
     return old;
 }
-
-// TODO: implement backoff implementation
-// __device__ __forceinline__ void lock(int* lock_var) {
-//     unsigned backoff = 32;
-//     while (atomicCAS(lock_var, 0, 1) != 0) {
-//         __nanosleep(backoff);
-//         backoff = min(backoff << 1, 1u << 12);
-//     }
-// }
 
 __device__ __forceinline__ void lock(int* lock_var) {
     while (atomicCAS(lock_var, 0, 1) != 0) {}

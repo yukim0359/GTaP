@@ -13,16 +13,14 @@ __device__ int* g_depth;         // size: num_vertices; INF indicates unvisited
 __device__ int  g_num_vertices;  // number of vertices
 
 #ifndef BFS_SPLIT_THRESHOLD
-#define BFS_SPLIT_THRESHOLD 64
+#define BFS_SPLIT_THRESHOLD 32
 #endif
 
 #pragma gtap function
 __device__ void bfs(int v, int start, int end) {
-    int dv = load_L2(&g_depth[v]);
-    int row_start = g_row_offsets[v];
-    int row_end   = g_row_offsets[v + 1];
-
     if (start < 0) {
+        int row_start = g_row_offsets[v];
+        int row_end = g_row_offsets[v + 1];
         int deg = row_end - row_start;
         if (deg > BFS_SPLIT_THRESHOLD) {
             for (int s = row_start; s < row_end; s += BFS_SPLIT_THRESHOLD) {
@@ -38,10 +36,12 @@ __device__ void bfs(int v, int start, int end) {
         end   = row_end;
     }
 
+    int dv = load_L2(&g_depth[v]);
     for (int e = start; e < end; ++e) {
         int u = g_col_indices[e];
-        int old = atomicMin(&g_depth[u], dv + 1);
-        if (old > dv + 1) {
+        int new_d = dv + 1;
+        int old = atomicMin(&g_depth[u], new_d);
+        if (old > new_d) {
             #pragma gtap task
             bfs(u, -1, -1);
         }
@@ -131,7 +131,6 @@ int main(int argc, char **argv) {
     my_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(source);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
-    cudaDeviceSynchronize();
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
 

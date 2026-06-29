@@ -6,7 +6,6 @@
 #include <limits>
 #include <cuda_runtime.h>
 // #define PROFILE
-#define GTAP_MAX_TASK_DATA_SIZE 16
 #include "gtap_thread.cuh"
 
 // Global device pointers to data and buffer

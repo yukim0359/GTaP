@@ -7,7 +7,6 @@
 #include <cmath>
 #define MAX_PROFILE_DATA 40000
 // #define PROFILE
-#define GTAP_MAX_TASK_DATA_SIZE 24
 #include "gtap_block.cuh"
 
 // ------------------------------

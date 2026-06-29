@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
-#define GTAP_MAX_TASK_DATA_SIZE 20
 // #define PROFILE
 
 #ifdef GQ

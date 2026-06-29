@@ -102,5 +102,4 @@ These macros must be defined before including `gtap_thread.cuh` / `gtap_block.cu
 | `GTAP_MAX_TASKS_PER_BLOCK` | block | Maximum number of pending tasks that can be held per block. |
 | `GTAP_MAX_CHILD_TASKS` | both | Maximum number of child tasks a single task may spawn within one task function invocation. |
 | `GTAP_NUM_QUEUES` | thread | Number of EPAQ queues. Default is `1`. Increase when `queue(expr)` hints are used. |
-| `GTAP_MAX_TASK_DATA_SIZE` | both | Upper bound (bytes) on the compiler-generated task-data record size. Compilation fails if the record exceeds this value. Set to the size of the largest argument tuple among all task functions (round up to a multiple of 8). |
 | `GTAP_ASSUME_NO_TASKWAIT` | both | When defined, omits join metadata (child task IDs). Safe only for programs that never execute `taskwait`. Reduces per-task memory overhead. |
