@@ -3,10 +3,10 @@
 // #define PROFILE
 
 #ifdef GQ
-#include "gtap_thread_gq.cuh"
+#include "experimental/gtap_thread_gq.cuh"
 #else
 #ifdef CHASELEV
-#include "gtap_thread_chaselev.cuh"
+#include "experimental/gtap_thread_chaselev.cuh"
 #else
 #include "gtap_thread.cuh"
 #endif

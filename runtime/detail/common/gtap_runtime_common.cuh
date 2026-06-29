@@ -2,40 +2,23 @@
 
 #include <cuda_runtime.h>
 #include "gtap_runtime_error.cuh"
+#include "gtap_config.cuh"
 
 // #define DEBUG
 
-// Configuration (user may override before including this header)
-// launch parameters
-#define WARP_SIZE 32
-
-#ifndef GTAP_GRID_SIZE
-#define GTAP_GRID_SIZE 1024
-#endif
-
-#ifndef GTAP_BLOCK_SIZE
-#define GTAP_BLOCK_SIZE 256
-#endif
-
-#define GTAP_NUM_WARPS ((GTAP_BLOCK_SIZE + WARP_SIZE - 1) / WARP_SIZE)
-
-#ifndef GTAP_MAX_CHILD_TASKS
-#define GTAP_MAX_CHILD_TASKS 32
-#endif
-
-#ifndef GTAP_MAX_CHILD_TASKS_FOR_SHARED
-#define GTAP_MAX_CHILD_TASKS_FOR_SHARED 10
-#endif
-
 extern const size_t __gtap_auto_task_data_size;
 __constant__ size_t d_gtap_task_data_stride;
+
+inline constexpr size_t gtap_align_up(size_t value, size_t alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+}
 
 inline constexpr size_t gtap_compile_time_task_data_size_limit() {
     return static_cast<size_t>(-1);
 }
 
 inline size_t gtap_host_task_data_stride() {
-    return __gtap_auto_task_data_size;
+    return gtap_align_up(__gtap_auto_task_data_size, 16);
 }
 
 __device__ __forceinline__ size_t gtap_device_task_data_stride() {
@@ -43,22 +26,16 @@ __device__ __forceinline__ size_t gtap_device_task_data_stride() {
 }
 
 inline cudaError_t gtap_init_device_task_data_stride() {
-    size_t stride = __gtap_auto_task_data_size;
+    size_t stride = gtap_host_task_data_stride();
     return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
 }
 
 // Safety thresholds for error detection
-#define QUEUE_MARGIN 100
-#define TASK_ID_POOL_MIN_FREE 100  // Minimum free task IDs before overflow warning
+#define GTAP_QUEUE_MARGIN 100
+#define GTAP_TASK_ID_POOL_MIN_FREE 100  // Minimum free task IDs before overflow warning
 
-#ifdef PROFILE
-#ifndef MAX_PROFILE_DATA
-#define MAX_PROFILE_DATA 30000
-#endif
-#endif
-
-#ifndef CUDA_TRY
-#define CUDA_TRY(call) do { \
+#ifndef GTAP_CUDA_TRY
+#define GTAP_CUDA_TRY(call) do { \
     cudaError_t __st = (call); \
     if (__st != cudaSuccess) { \
         if (!gtap_print_runtime_error_report()) { \
