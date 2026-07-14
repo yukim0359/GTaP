@@ -1,5 +1,6 @@
 venv/
 *.sh.o*
+*.pbs.o*
 bin
 tmp*
 profile/

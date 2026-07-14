@@ -2,6 +2,8 @@
 #include <cuda_runtime.h>
 // #define PROFILE
 
+#define GQ
+
 #ifdef GQ
 #include "experimental/gtap_thread_gq.cuh"
 #else
@@ -48,6 +50,7 @@ int main(int argc, char** argv) {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(n);
+    gtap_synchronize();
     cudaEventRecord(stop);
     cudaDeviceSynchronize();
     cudaEventSynchronize(stop);

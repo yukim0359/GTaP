@@ -24,14 +24,15 @@ plt.style.use([
     "~/plot_style/thesis_plt.mplstyle",
 ])
 
-# Allow importing `/work/gc64/c64099/plot_style/gtap_colors.py` when run from this repo
-# This file lives under: .../gtap/evaluation/2-comparison/tree_load_compute/
-# parents[4] == /work/gc64/c64099
+# Allow importing `plot_style/gtap_colors.py` from the workspace root.
+# This file lives under <workspace>/gtap/evaluation/2-comparison/<bench>/,
+# so parents[4] is the workspace root that contains plot_style/.
 sys.path.append(str(Path(__file__).resolve().parents[4]))
-from plot_style.gtap_colors import COL_GTAP_THREAD, COL_GTAP_BLOCK, COL_OMP, COL_SEQ
+from plot_style.gtap_colors import COL_GTAP_THREAD, COL_GTAP_BLOCK
 
 BENCHMARK_NAME = "binary_tree"
 OUTPUT_FORMAT = "pdf"  # "png" or "pdf"
+MARKER_SIZE = plt.rcParams.get("lines.markersize", 6.0) * 1.2
 
 IMG_DIR = Path("img")
 IMG_DIR.mkdir(parents=True, exist_ok=True)
@@ -44,6 +45,17 @@ def _col(df: pd.DataFrame, *candidates: str) -> Optional[str]:
     return None
 
 
+def _hollow_marker_kwargs(color: Optional[str] = None):
+    kw = dict(
+        markersize=MARKER_SIZE,
+        markerfacecolor="none",
+        markeredgewidth=1.2,
+    )
+    if color is not None:
+        kw.update(color=color, markeredgecolor=color)
+    return kw
+
+
 def plot_with_iqr(
     ax: plt.Axes,
     x: np.ndarray,
@@ -53,8 +65,10 @@ def plot_with_iqr(
     label: str,
     marker: str,
     color: Optional[str] = None,
-    linestyle: str = "-",
+    linestyle: Optional[str] = None,
 ):
+    if linestyle is None:
+        linestyle = "-" if "GTAP" in label.upper() else "--"
     med = np.asarray(med, dtype=float)
     x = np.asarray(x)
 
@@ -79,10 +93,10 @@ def plot_with_iqr(
             capsize=3,
             elinewidth=1,
             label=label,
-            color=color,
+            **_hollow_marker_kwargs(color),
         )
     else:
-        ax.plot(x, med, marker + linestyle, label=label, color=color)
+        ax.plot(x, med, marker, linestyle=linestyle, label=label, **_hollow_marker_kwargs(color))
 
 
 def _get_series(df: pd.DataFrame, prefix: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
@@ -112,9 +126,8 @@ def make_combined_plot(
     # detect columns (support both old/new naming)
     gtap_block_med, gtap_block_elo, gtap_block_ehi = _get_series(df, "GTAP_block")
     gtap_thread_med, gtap_thread_elo, gtap_thread_ehi = _get_series(df, "GTAP_thread")
-    omp_med, omp_elo, omp_ehi = _get_series(df, "OMP")
 
-    if gtap_block_med is None and gtap_thread_med is None and omp_med is None:
+    if gtap_block_med is None and gtap_thread_med is None:
         print(f"Warning: No recognized timing columns in {out_stem}, skipping.")
         return
 
@@ -153,18 +166,6 @@ def make_combined_plot(
             color=COL_GTAP_BLOCK,
         )
 
-    if omp_med is not None:
-        plot_with_iqr(
-            ax_top,
-            x,
-            df[omp_med],
-            df[omp_elo] if omp_elo else None,
-            df[omp_ehi] if omp_ehi else None,
-            "CPU OpenMP",
-            "^",
-            color=COL_OMP,
-        )
-
     ax_top.set_ylabel("Execution Time (ms)")
     if y_time_log:
         ax_top.set_yscale("log")
@@ -173,36 +174,33 @@ def make_combined_plot(
     if title:
         ax_top.set_title(title)
 
-    # --- Bottom: normalized time (relative to CPU OpenMP) ---
-    # We normalize GTaP (thread/block) against CPU OpenMP so that
-    # values < 1 mean "GTaP is faster than OpenMP".
-    label_gtap_thr = r"GTaP (Thread) / CPU OpenMP"
-    label_gtap_blk = r"GTaP (Block) / CPU OpenMP"
+    # --- Bottom: normalized time (Block / Thread) ---
+    label_blk_thr = r"GTaP (Block) / GTaP (Thread)"
 
     has_bottom = False
 
-    # GTaP (Thread) normalized by CPU OpenMP.
-    if omp_med is not None and gtap_thread_med is not None:
-        num = df[gtap_thread_med].to_numpy(dtype=float)
-        den = df[omp_med].to_numpy(dtype=float)
-        valid = (num > 0) & (den > 0)
-        if np.any(valid):
-            ax_bot.plot(x[valid], (num / den)[valid], "o-", label=label_gtap_thr, color=COL_GTAP_THREAD)
-            has_bottom = True
-
-    # GTaP (Block) normalized by CPU OpenMP.
-    if omp_med is not None and gtap_block_med is not None:
+    if gtap_thread_med is not None and gtap_block_med is not None:
         num = df[gtap_block_med].to_numpy(dtype=float)
-        den = df[omp_med].to_numpy(dtype=float)
+        den = df[gtap_thread_med].to_numpy(dtype=float)
         valid = (num > 0) & (den > 0)
         if np.any(valid):
-            ax_bot.plot(x[valid], (num / den)[valid], "s-", label=label_gtap_blk, color=COL_GTAP_BLOCK)
+            ax_bot.plot(
+                x[valid],
+                (num / den)[valid],
+                "s",
+                linestyle="-",
+                label=label_blk_thr,
+                **_hollow_marker_kwargs(COL_GTAP_BLOCK),
+            )
             has_bottom = True
 
-    # Parity line (GTaP == OpenMP) in OpenMP color.
-    ax_bot.axhline(y=1.0, color=COL_OMP, linestyle="--", label="Parity")
+    ax_bot.axhline(y=1.0, color=COL_GTAP_THREAD, linestyle="--", label="Parity")
     ax_bot.set_xlabel(x_label)
-    ax_bot.set_ylabel(r"Normalized time" + "\n" + r"($T_\mathrm{method}/T_\mathrm{OMP}$)")
+    ax_bot.set_ylabel(
+        r"Normalized time"
+        + "\n"
+        + r"($T_\mathrm{Block}/T_\mathrm{Thread}$)"
+    )
     if y_norm_log:
         ax_bot.set_yscale("log", base=norm_log_base)
     ax_bot.grid(True)
@@ -244,7 +242,7 @@ def main():
             x_col=x_col,
             x_label="Tree Maximum Depth",
             out_stem="tree_depth_performance_combined",
-            title="Varying D (mem_ops=256, compute_iters=256 fixed)",
+            title="Varying D (mem_ops=0, compute_iters=2048 fixed)",
         )
 
     # --- (2) memory variation (optionally multiple depths) ---
@@ -294,7 +292,7 @@ def main():
                 x_col=x_col,
                 x_label="Compute Iterations",
                 out_stem="tree_compute_performance_combined",
-                title="Varying compute_iters (D=20, mem_ops=256 fixed)",
+                title="Varying compute_iters (D=20, mem_ops=0 fixed)",
             )
 
     print("\nAll plots generated!")

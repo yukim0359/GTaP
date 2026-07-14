@@ -1,73 +1,75 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 #include <cuda_runtime.h>
 // #define PROFILE
 #include "gtap_thread.cuh"
 
-__device__ int d_answer;
-__device__ __constant__ int d_grid_size;
-__device__ __constant__ int d_cutoff_depth;
+__device__ unsigned long long d_answer;
+__device__ __constant__ int d_n;
+__device__ __constant__ int d_cutoff;
 
-__device__ void serial_search(int row, uint32_t column, uint32_t left, uint32_t down, uint32_t right) {
-    int grid_size = d_grid_size;
-    if (row == grid_size) {
-        atomicAdd(&d_answer, 1);
+__device__ void serial_search(int row, uint32_t col, uint32_t ld, uint32_t rd) {
+    int n = d_n;
+    if (row == n) {
+        atomicAdd(&d_answer, 1ULL);
         return;
     }
-    uint32_t mask = (grid_size < 32 ? (1u << grid_size) - 1 : 0xFFFFFFFFu);
-    uint32_t avail = mask & ~((column | left | right));
+    uint32_t mask = (n < 32 ? (1u << n) - 1 : 0xFFFFFFFFu);
+    uint32_t avail = mask & ~(col | ld | rd);
     while (avail) {
         uint32_t p = avail & -avail;
         avail -= p;
-        serial_search(row + 1, column | p, (left | p) << 1, down | p, (right | p) >> 1);
+        serial_search(row + 1, col | p, (ld | p) << 1, (rd | p) >> 1);
     }
 }
 
 #pragma gtap function
-__device__ void nq(int row, uint32_t column, uint32_t left, uint32_t down, uint32_t right) {
-    int grid_size   = d_grid_size;
-    int cutoff_depth = d_cutoff_depth;
+__device__ void nq(int row, uint32_t col, uint32_t ld, uint32_t rd) {
+    int n = d_n;
+    int cutoff = d_cutoff;
 
-    if (row > cutoff_depth) {
-        serial_search(row, column, left, down, right);
+    if (row > cutoff) {
+        serial_search(row, col, ld, rd);
         return;
     }
-    // if (row == grid_size) {
-    //     atomicAdd(&d_answer, 1);
-    //     return;
-    // }
 
-    uint32_t mask = (grid_size < 32 ? (1u << grid_size) - 1 : 0xFFFFFFFFu);
-    uint32_t avail = mask & ~((column | left | right));
+    uint32_t mask = (n < 32 ? (1u << n) - 1 : 0xFFFFFFFFu);
+    uint32_t avail = mask & ~(col | ld | rd);
 
     while (avail) {
         uint32_t p = avail & -avail;
         avail -= p;
-        int new_row = row + 1;
-        uint32_t new_column = column | p;
-        new_column = column | p;
-        uint32_t new_left = (left | p) << 1;
-        uint32_t new_down = down | p;
-        uint32_t new_right = (right | p) >> 1;
-
         #pragma gtap task
-        nq(new_row, new_column, new_left, new_down, new_right);
+        nq(row + 1, col | p, (ld | p) << 1, (rd | p) >> 1);
     }
 }
 
-__global__ void my_kernel() {
+__global__ void nq_kernel() {
     #pragma gtap entry
-    nq(0, 0, 0, 0, 0);
+    nq(0, 0, 0, 0);
+}
+
+static void usage(const char *prog) {
+    fprintf(stderr, "Usage: %s <n> [cutoff]\n", prog);
+    fprintf(stderr, "  n: board size (default 16)\n");
+    fprintf(stderr, "  cutoff: parallel depth limit (default 7)\n");
 }
 
 int main(int argc, char **argv) {
-    int GRID_SIZE = (argc > 1 ? atoi(argv[1]) : 16);
-    int CUTOFF_DEPTH = (argc > 2 ? atoi(argv[2]) : 7);
+    int n = 16;
+    int cutoff = 7;
+    if (argc > 1) n = atoi(argv[1]);
+    if (argc > 2) cutoff = atoi(argv[2]);
+    if (argc > 3 || n < 0 || cutoff < 0) {
+        usage(argv[0]);
+        return 1;
+    }
 
-    // Initialize device-side state
-    int zero = 0;
-    cudaMemcpyToSymbol(d_answer, &zero, sizeof(int));
-    cudaMemcpyToSymbol(d_grid_size, &GRID_SIZE, sizeof(int));
-    cudaMemcpyToSymbol(d_cutoff_depth, &CUTOFF_DEPTH, sizeof(int));
+    unsigned long long zero = 0ULL;
+    cudaMemcpyToSymbol(d_answer, &zero, sizeof(unsigned long long));
+    cudaMemcpyToSymbol(d_n, &n, sizeof(int));
+    cudaMemcpyToSymbol(d_cutoff, &cutoff, sizeof(int));
 
     cudaError_t err = gtap_initialize();
     if (err != cudaSuccess) {
@@ -79,16 +81,17 @@ int main(int argc, char **argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    my_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>();
+    nq_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>();
+    gtap_synchronize();
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
-    int result = 0;
-    cudaMemcpyFromSymbol(&result, d_answer, sizeof(int), 0, cudaMemcpyDeviceToHost);
+    unsigned long long result = 0ULL;
+    cudaMemcpyFromSymbol(&result, d_answer, sizeof(unsigned long long), 0, cudaMemcpyDeviceToHost);
 
-    printf("N-Queens(%d) = %d\n", GRID_SIZE, result);
+    printf("N-Queens(%d) = %llu\n", n, result);
     printf("Execution time: %.3f ms\n", milliseconds);
 
 #ifdef PROFILE

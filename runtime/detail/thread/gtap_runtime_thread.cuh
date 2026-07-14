@@ -36,6 +36,12 @@ struct WarpTaskQueue {
 __constant__ WarpTaskQueue** d_warp_task_queues;
 
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int queue_idx, int task_id) {
+    int gen_idx = atomicAdd(&ctx->task_id_generated_count_by_queue_idx[queue_idx], 1);
+    if (gen_idx < GTAP_WARP_SIZE) {
+        ctx->staged_task_ids[queue_idx * GTAP_WARP_SIZE + gen_idx] = task_id;
+        return;
+    }
+
     WarpTaskQueue* q = &d_warp_task_queues[queue_idx][get_warp_id_global()];
     int old_tail = atomicAdd(&ctx->tail_by_queue_idx[queue_idx], 1);
     int head = load_L2(&q->queue_head);
@@ -44,7 +50,6 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
             task_id, queue_idx, old_tail + 1 - head, GTAP_QUEUE_SIZE - GTAP_QUEUE_MARGIN);
     }
     q->queue[old_tail % GTAP_QUEUE_SIZE] = task_id;
-    atomicAdd(&ctx->task_id_generated_count_by_queue_idx[queue_idx], 1);
 }
 
 cudaError_t __gtap_init_task_runtime() {
@@ -623,16 +628,11 @@ __device__ __forceinline__ void push_batch (
     max_gen = __shfl_sync(0xFFFFFFFFu, max_gen, 0);
 
     *execute_task_count = max(0, min(GTAP_WARP_SIZE, max_gen));
-    WarpTaskQueue* direct_q = &d_warp_task_queues[k_max][warp_id_global];
-    int direct_start = tail_by_queue_idx[k_max] - *execute_task_count;
     if (lane < *execute_task_count) {
-        *execute_task_id = direct_q->queue[(direct_start + lane) % GTAP_QUEUE_SIZE];
+        *execute_task_id = ctx->staged_task_ids[k_max * GTAP_WARP_SIZE + lane];
 #ifdef DEBUG
         printf("push_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", *execute_task_id, k_max, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
-    }
-    if (lane == 0) {
-        tail_by_queue_idx[k_max] = direct_start;
     }
     __syncwarp();
 
@@ -645,8 +645,18 @@ __device__ __forceinline__ void push_batch (
         if (push_cnt <= 0) continue;
 
         WarpTaskQueue* q = &d_warp_task_queues[kind][warp_id_global];
-        // __threadfence();
-        // __syncwarp();
+        int total = ctx->task_id_generated_count_by_queue_idx[kind];
+        int staged_n = min(total, GTAP_WARP_SIZE);
+        if (kind != k_max) {
+            for (int j = lane; j < staged_n; j += GTAP_WARP_SIZE) {
+                q->queue[(tail_by_queue_idx[kind] + j) % GTAP_QUEUE_SIZE] =
+                    ctx->staged_task_ids[kind * GTAP_WARP_SIZE + j];
+            }
+            if (lane == 0) {
+                tail_by_queue_idx[kind] += staged_n;
+            }
+            __syncwarp();
+        }
         if (lane == 0) {
             atomicAdd(&q->count, push_cnt);
         }
@@ -859,6 +869,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 
     __shared__ TaskContext warp_contexts[GTAP_NUM_WARPS];
     __shared__ int tail_by_queue_idx[GTAP_NUM_WARPS][GTAP_NUM_QUEUES];
+    __shared__ int staged_task_ids[GTAP_NUM_WARPS][GTAP_NUM_QUEUES][GTAP_WARP_SIZE];
 
 #ifdef PROFILE
     __shared__ int having_time_idx[GTAP_NUM_WARPS];
@@ -873,6 +884,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
     if (lane == 0) {
         warp_contexts[warp_id_in_block].queue_idx = 0;
         warp_contexts[warp_id_in_block].tail_by_queue_idx = tail_by_queue_idx[warp_id_in_block];
+        warp_contexts[warp_id_in_block].staged_task_ids = &staged_task_ids[warp_id_in_block][0][0];
         warp_contexts[warp_id_in_block].id_list_free_pos_stale = GTAP_TOTAL_TASK_IDS_PER_WARP;
         #pragma unroll
         for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
@@ -896,20 +908,32 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
     while (should_continue) {
         if (execute_task_count == 0) {
 #if GTAP_NUM_QUEUES > 1
+            int queue_counts[GTAP_NUM_QUEUES];
+            if (lane == 0) {
+                #pragma unroll
+                for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
+                    queue_counts[k] = load_L2(&d_warp_task_queues[k][warp_id_global].count);
+                }
+            }
             #pragma unroll
-            for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
+            for (int attempt = 0; attempt < GTAP_NUM_QUEUES; ++attempt) {
+                int epaq_idx;
+                if (lane == 0) {
+                    epaq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
+                    warp_contexts[warp_id_in_block].queue_idx = epaq_idx;
+                }
+                epaq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
                 if (prev_get_task && execute_task_count < GTAP_WARP_SIZE) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
-                    int pop_count = pop_batch(&execute_task_id, remaining, &tail_by_queue_idx[warp_id_in_block][warp_contexts[warp_id_in_block].queue_idx], warp_contexts[warp_id_in_block].queue_idx);
+                    int pop_count = pop_batch(&execute_task_id, remaining, &tail_by_queue_idx[warp_id_in_block][epaq_idx], epaq_idx);
                     execute_task_count += pop_count;
                 }
                 if (execute_task_count < GTAP_WARP_SIZE) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
-                    int steal_count = steal_batch<M>(&execute_task_id, remaining, warp_contexts[warp_id_in_block].queue_idx, prev_get_task);
+                    int steal_count = steal_batch<M>(&execute_task_id, remaining, epaq_idx, prev_get_task);
                     execute_task_count += steal_count;
                 }
                 if (execute_task_count != 0) break;
-                warp_contexts[warp_id_in_block].queue_idx = (warp_contexts[warp_id_in_block].queue_idx + 1) % GTAP_NUM_QUEUES;
             }
 #else
             if (prev_get_task && execute_task_count < GTAP_WARP_SIZE) {
@@ -987,6 +1011,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         }
 
         if (lane < execute_task_count) {
+            prefetch_global_L2(__gtap_get_task_data(execute_task_id));
             // Copy task header to TaskContext for reuse in task function (using L2 load)
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             {
@@ -1015,9 +1040,10 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 #ifdef DEBUG
             printf("executed_task_id: %d in lane %d of warp %d of block %d\n", execute_task_id, lane, warp_id_in_block, blockIdx.x);
 #endif
-            __threadfence();
+            
         }
         __syncwarp();
+        __threadfence();
 #ifdef PROFILE
         if (lane == 0) {
             if (working_time_idx[warp_id_in_block] < MAX_PROFILE_DATA) {

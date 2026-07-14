@@ -46,6 +46,7 @@ struct TaskContext {
     int queue_idx;
     int task_id_generated_count_by_queue_idx[GTAP_NUM_QUEUES];
     int* tail_by_queue_idx;
+    int* staged_task_ids;
     int id_list_alloc_pos;
     int id_list_free_pos_stale;
 #ifndef GTAP_ASSUME_NO_TASKWAIT

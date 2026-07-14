@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
     cudaSetDevice(0);
 
     int height = 15;
-    int mem_ops = 64;
+    int mem_ops = 0;
     int compute_iters = 512;
     int input_n = 1 << 20;
     int indices_n = 1 << 20;

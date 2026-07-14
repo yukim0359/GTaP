@@ -149,6 +149,10 @@ __device__ __forceinline__ void store_L2_ptr(T** ptr, T* val) {
     store_L2_ptr(reinterpret_cast<void**>(ptr), reinterpret_cast<void*>(val));
 }
 
+__device__ __forceinline__ void prefetch_global_L2(const void* ptr) {
+    asm volatile("prefetch.global.L2 [%0];" :: "l"(ptr) : "memory");
+}
+
 // Store a structure to L2 cache using word-by-word store_L2
 // This ensures the entire structure is written to L2 cache
 template<typename T>
@@ -241,6 +245,23 @@ __device__ __forceinline__ bool get_random_bool() {
     seed ^= seed << 5;
     return (seed % 2) == 0;
 }
+
+#if GTAP_NUM_QUEUES > 1
+// EPAQ: pick the queue with the largest pending count; mark it tried (-1).
+__device__ __forceinline__ int gtap_select_next_fullest_queue_idx(int* queue_counts) {
+    int max_k = 0;
+    int max_count = -1;
+    #pragma unroll
+    for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
+        if (queue_counts[k] > max_count) {
+            max_count = queue_counts[k];
+            max_k = k;
+        }
+    }
+    queue_counts[max_k] = -1;
+    return max_k;
+}
+#endif
 
 #ifdef PROFILE
 __device__ __forceinline__ unsigned long long get_global_time() {

@@ -36,12 +36,8 @@ fi
 
 mkdir -p "$TMP_BIN_DIR"
 
-echo "=== ${BENCHMARK_NAME} Worker Scaling Analysis ==="
-echo "Testing different GTAP_GRID_SIZE and GTAP_BLOCK_SIZE combinations"
-echo "=============================================================="
-
-# Block sizes to test
-BLOCK_SIZES=(32 64 128 256)
+# Block sizes to test (override: BLOCK_SIZES="32 64")
+BLOCK_SIZES=(${BLOCK_SIZES:-32})
 
 # Total threads: 2^10 to 2^18 (9 points)
 # Total threads = gridDim × blockDim
@@ -50,8 +46,12 @@ TOTAL_THREADS_EXPONENTS=(10 11 12 13 14 15 16 17 18)
 # Number of runs (matching compare_fib.sh)
 NUM_RUNS=20
 
-### fib-specific settings ###
-INPUT_N=35
+### fib-specific settings (override: INPUT_N=40) ###
+INPUT_N="${INPUT_N:-40}"
+
+echo "=== ${BENCHMARK_NAME} Worker Scaling Analysis ==="
+echo "INPUT_N=$INPUT_N  BLOCK_SIZES=${BLOCK_SIZES[*]}"
+echo "=============================================================="
 
 # Results file
 RESULTS_FILE="$SCALING_DIR/${BENCHMARK_NAME}_scaling_results.csv"
@@ -59,9 +59,10 @@ echo "block_size,total_threads,grid_size,max_tasks_per_warp,ws_med,ws_err_low,ws
 
 # Compiler settings (matching Makefile)
 CUDA_ARCH="${CUDA_ARCH:-sm_90}"
+GTAP_CFLAGS="${GTAP_CFLAGS:--DGTAP_TERMINATE_ON_FIRST_TASK_FINISH}"
 
 # Constant: total_threads * MAX_TASKS_PER_WARP = 1024 * 96 * 150000
-CONSTANT_TOTAL_THREADS_MAX_TASKS=$((1024 * 96 * 150000))
+CONSTANT_TOTAL_THREADS_MAX_TASKS=$((4000 * 32 * 200000))
 
 # Function to compute median and IQR (matching compare_fib.sh)
 # Returns: median q1 q3 err_low err_high
@@ -131,6 +132,7 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         COMMON_FLAGS="$COMMON_FLAGS -DGTAP_GRID_SIZE=$grid_size -DGTAP_BLOCK_SIZE=$block_size"
         COMMON_FLAGS="$COMMON_FLAGS -DGTAP_MAX_TASKS_PER_WARP=$max_tasks_per_warp"
         COMMON_FLAGS="$COMMON_FLAGS -DGTAP_NUM_QUEUES=1"
+        WS_FLAGS="$COMMON_FLAGS $GTAP_CFLAGS"
         LINK_FLAGS="-L$CUDA_PATH/lib64 -lcudart"
         
         # Compile WS (default work-stealing) variant
@@ -138,7 +140,7 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         BINARY_WS_PATH="$TMP_BIN_DIR/$BINARY_WS"
         
         echo "    Compiling WS variant..."
-        $CLANG_BIN $COMMON_FLAGS $LINK_FLAGS \
+        $CLANG_BIN $WS_FLAGS $LINK_FLAGS \
             -o "$BINARY_WS_PATH" \
             "$SCALING_DIR/gtap_${BENCHMARK_NAME}.cu" 2>&1 | grep -v "warning" || true
         
@@ -168,7 +170,7 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         BINARY_CL_PATH="$TMP_BIN_DIR/$BINARY_CL"
         
         echo "    Compiling CHASELEV variant..."
-        $CLANG_BIN $COMMON_FLAGS $LINK_FLAGS \
+        $CLANG_BIN $WS_FLAGS $LINK_FLAGS \
             -DCHASELEV \
             -o "$BINARY_CL_PATH" \
             "$SCALING_DIR/gtap_${BENCHMARK_NAME}.cu" 2>&1 | grep -v "warning" || true

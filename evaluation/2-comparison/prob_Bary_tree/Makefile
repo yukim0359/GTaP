@@ -30,8 +30,8 @@ OUT_OMP_CUDA  := $(OUT_DIR)/omp_cuda_$(BENCHMARK_NAME)
 OUT_SEQ       := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings ----
-GTAP_GRID_SIZE           ?= 1000
-GTAP_BLOCK_SIZE          ?= 64
+GTAP_GRID_SIZE           ?= 2000
+GTAP_BLOCK_SIZE          ?= 32
 GTAP_MAX_TASKS_PER_WARP  ?= 100000
 GTAP_MAX_TASKS_PER_BLOCK ?= 100000
 GTAP_NUM_QUEUES          ?= 1

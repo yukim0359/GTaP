@@ -18,23 +18,24 @@ if [ ! -d "$BIN_DIR" ]; then
     exit 1
 fi
 
-export OMP_STACKSIZE=10M
+echo "Building GTaP binaries ..."
+make -C "$COMPARE_DIR" gtap_block gtap_thread
 
-# Vary compute iterations (compute_iters)
+# compute_iters sweep: D=20, mem_ops=0
 COMPUTE_VALUES=(64 128 256 512 1024 2048 4096 8192 16384 32768)
 DEPTH=20
-MEMORY=256
+MEMORY=0
 
 # Number of runs
 NUM_RUNS=20
 
 # Results CSV (median + IQR error bars)
 RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_compute_results.csv"
-echo "compute_iters,GTAP_block_med,GTAP_block_err_low,GTAP_block_err_high,GTAP_thread_med,GTAP_thread_err_low,GTAP_thread_err_high,OMP_med,OMP_err_low,OMP_err_high" > "$RESULTS_FILE"
+echo "compute_iters,GTAP_block_med,GTAP_block_err_low,GTAP_block_err_high,GTAP_thread_med,GTAP_thread_err_low,GTAP_thread_err_high" > "$RESULTS_FILE"
 
 # Pretty header (fixed width columns)
-printf "%12s | %25s | %25s | %25s\n" "compute_iters" "GTAP_block (ms)" "GTAP_thread (ms)" "OpenMP (ms)"
-printf "%12s-+-%25s-+-%25s-+-%25s\n" "------------" "-------------------------" "-------------------------" "-------------------------"
+printf "%12s | %25s | %25s\n" "compute_iters" "GTAP_block (ms)" "GTAP_thread (ms)"
+printf "%12s-+-%25s-+-%25s\n" "------------" "-------------------------" "-------------------------"
 
 run_stats() {
     local program=$1
@@ -117,19 +118,12 @@ for compute in "${COMPUTE_VALUES[@]}"; do
         read GTAP_THREAD_MED _ _ GTAP_THREAD_ELO GTAP_THREAD_EHI < <(run_stats "$BIN_DIR/gtap_thread_$BENCHMARK_NAME" "$DEPTH" "$compute" "$MEMORY" "Execution time")
     fi
 
-    # --- OpenMP ---
-    OMP_MED=0 OMP_ELO=0 OMP_EHI=0
-    if [ -x "$BIN_DIR/omp_$BENCHMARK_NAME" ]; then
-        read OMP_MED _ _ OMP_ELO OMP_EHI < <(run_stats "$BIN_DIR/omp_$BENCHMARK_NAME" "$DEPTH" "$compute" "$MEMORY" "Execution time")
-    fi
-
     # Print aligned row
     printf "%12d | " "$compute"
     fmt_med_iqr "$GTAP_BLOCK_MED" "$GTAP_BLOCK_ELO" "$GTAP_BLOCK_EHI"; printf " | "
-    fmt_med_iqr "$GTAP_THREAD_MED" "$GTAP_THREAD_ELO" "$GTAP_THREAD_EHI"; printf " | "
-    fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf "\n"
+    fmt_med_iqr "$GTAP_THREAD_MED" "$GTAP_THREAD_ELO" "$GTAP_THREAD_EHI"; printf "\n"
 
     # CSV
-    echo "$compute,$GTAP_BLOCK_MED,$GTAP_BLOCK_ELO,$GTAP_BLOCK_EHI,$GTAP_THREAD_MED,$GTAP_THREAD_ELO,$GTAP_THREAD_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI" >> "$RESULTS_FILE"
+    echo "$compute,$GTAP_BLOCK_MED,$GTAP_BLOCK_ELO,$GTAP_BLOCK_EHI,$GTAP_THREAD_MED,$GTAP_THREAD_ELO,$GTAP_THREAD_EHI" >> "$RESULTS_FILE"
 done
 

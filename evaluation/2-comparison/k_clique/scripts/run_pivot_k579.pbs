@@ -1,0 +1,14 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=12:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Benchmark mode: no KCGPU/GTAP profiling instrumentation.
+export KCGPU_PROFILE=0
+export GTAP_PROFILE=0
+
+./scripts/run_kcgpu_pivot_k579_graph_tuned.sh

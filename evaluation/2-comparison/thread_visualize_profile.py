@@ -1,5 +1,6 @@
 import os
 import argparse
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -7,6 +8,49 @@ import matplotlib as mpl
 plt.style.use("~/plot_style/profile.mplstyle")
 
 DATA_MAX_LIMIT = 30000
+DEFAULT_TIME_BINS = 1500
+MAX_TASKS_PER_BATCH = 32
+
+# visualize_profile.py timeline: NotWorking = #ff7f0e @ alpha 0.5; tasks = plt.cm.Blues.
+NOT_WORKING_COLOR = "#ff7f0e"
+NOT_WORKING_ALPHA = 0.5
+TASKS_IN_BATCH_CMAP = plt.cm.Blues
+
+
+def _blend_on_white(color, alpha=1.0):
+    r, g, b = mpl.colors.to_rgb(color)
+    inv = 1.0 - alpha
+    return mpl.colors.to_hex((alpha * r + inv, alpha * g + inv, alpha * b + inv))
+
+
+IDLE_WARP_COLOR = _blend_on_white(NOT_WORKING_COLOR, NOT_WORKING_ALPHA)
+
+
+def make_timeline_tasks_colormap(max_tasks=MAX_TASKS_PER_BATCH):
+    """Blues for tasks 1..max_tasks; idle (0) via cmap.set_under (blended orange)."""
+    cmap = TASKS_IN_BATCH_CMAP.copy()
+    cmap.set_under(IDLE_WARP_COLOR)
+    norm = mpl.colors.Normalize(vmin=1.0, vmax=float(max_tasks))
+    return cmap, norm
+
+
+TIMELINE_HEATMAP_CMAP, TIMELINE_HEATMAP_NORM = make_timeline_tasks_colormap()
+HEATMAP_CMAP = TIMELINE_HEATMAP_CMAP
+
+
+def tasks_in_batch_scalar_mappable(max_tasks=MAX_TASKS_PER_BATCH):
+    """Colorbar mappable: 1..max_tasks Blues; extend='min' shows idle (under) triangle."""
+    cmap, norm = make_timeline_tasks_colormap(max_tasks)
+    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    return sm
+
+
+COLORBAR_LABEL_TASKS = "Tasks in batch (0 = idle, orange)"
+
+
+def configure_tasks_in_batch_colorbar(cbar, max_tasks=MAX_TASKS_PER_BATCH):
+    cbar.set_ticks([1, 8, 16, 24, max_tasks])
 
 # App name to title string mapping
 APP_TITLES = {
@@ -85,7 +129,170 @@ def compute_utilization_from_timeline(timeline_df, strong_state):
         util_rows.append({'warp_id': warp_id, 'utilization_percent': util})
     return pd.DataFrame(util_rows)
 
-def load_and_process_data(app_name):
+def compute_busy_time_per_warp(timeline_df, program_t_min, program_t_max, strong_state="Working"):
+    """Return per-warp busy time (ms) over the program time span."""
+    program_total_time = max(0.0, float(program_t_max) - float(program_t_min))
+    busy = {}
+    if program_total_time <= 0.0:
+        for warp_id in timeline_df["warp_id"].unique():
+            busy[int(warp_id)] = 0.0
+        return busy
+
+    for warp_id, grp in timeline_df.groupby("warp_id"):
+        g = grp.sort_values("relative_time_ms").reset_index(drop=True)
+        working_time = 0.0
+        working_start_time = None
+        for _, row in g.iterrows():
+            state = row["state_description"]
+            t = float(row["relative_time_ms"])
+            if state == strong_state:
+                if working_start_time is None:
+                    working_start_time = t
+            elif working_start_time is not None:
+                working_time += max(0.0, t - working_start_time)
+                working_start_time = None
+        if working_start_time is not None:
+            last_time = float(g["relative_time_ms"].iloc[-1])
+            working_time += max(0.0, last_time - working_start_time)
+        busy[int(warp_id)] = working_time
+    return busy
+
+def ordered_warp_ids(stats_df, busy_times, *, sort_by_busy=True):
+    """All warps; busiest first when sort_by_busy is True."""
+    warp_ids = [int(w) for w in stats_df["warp_id"].tolist()]
+    if not sort_by_busy:
+        return warp_ids
+    return sorted(warp_ids, key=lambda wid: (-busy_times.get(wid, 0.0), wid))
+
+def build_warp_heatmap_matrix(
+    timeline_df,
+    warp_ids,
+    *,
+    n_bins,
+    t_min,
+    t_max,
+    strong_state="Working",
+):
+    """Build (n_warps, n_bins) array: 0=idle, >0=max tasks_in_batch in that bin."""
+    total_duration = max(0.0, float(t_max) - float(t_min))
+    n_warps = len(warp_ids)
+    matrix = np.zeros((n_warps, n_bins), dtype=np.float32)
+    if total_duration <= 0.0 or n_warps == 0:
+        return matrix
+
+    warp_to_row = {wid: i for i, wid in enumerate(warp_ids)}
+    bin_width = total_duration / n_bins
+    has_tasks = "tasks_in_batch" in timeline_df.columns
+    norm_end = total_duration
+
+    grouped = timeline_df.groupby("warp_id", sort=False)
+    for warp_id, grp in grouped:
+        wid = int(warp_id)
+        if wid not in warp_to_row:
+            continue
+        row = warp_to_row[wid]
+        g = grp.sort_values("relative_time_ms")
+        times = (g["relative_time_ms"].to_numpy(dtype=np.float64) - t_min)
+        states = g["state_description"].to_numpy()
+        if has_tasks:
+            tasks = pd.to_numeric(g["tasks_in_batch"], errors="coerce").fillna(0.0).to_numpy(dtype=np.float32)
+        else:
+            tasks = np.zeros(len(g), dtype=np.float32)
+
+        for i in range(len(g)):
+            t_start = max(0.0, float(times[i]))
+            t_end = float(times[i + 1]) if i + 1 < len(g) else norm_end
+            t_end = min(norm_end, max(t_start, t_end))
+            if states[i] == strong_state:
+                val = float(tasks[i])
+            else:
+                val = 0.0
+            if val <= 0.0 or t_end <= t_start:
+                continue
+            b0 = int(t_start / bin_width)
+            b1 = int(np.ceil(t_end / bin_width))
+            b0 = max(0, min(n_bins, b0))
+            b1 = max(0, min(n_bins, b1))
+            if b0 < b1:
+                matrix[row, b0:b1] = np.maximum(matrix[row, b0:b1], val)
+    return matrix
+
+def create_timeline_heatmap_plot(
+    timeline_df,
+    stats_df,
+    strong_state,
+    app_name=None,
+    *,
+    n_bins=DEFAULT_TIME_BINS,
+    sort_by_busy=True,
+):
+    """All-warps heatmap: y=warps (1 row / warp), x=time bins, color=busy intensity."""
+    print(f"Creating timeline heatmap ({n_bins} time bins)...")
+
+    t_min = float(timeline_df["relative_time_ms"].min())
+    t_max = float(timeline_df["relative_time_ms"].max())
+    total_duration = max(0.0, t_max - t_min)
+    if total_duration <= 0.0:
+        print("No data to visualize")
+        return None
+
+    busy_times = compute_busy_time_per_warp(timeline_df, t_min, t_max, strong_state=strong_state)
+    warp_ids = ordered_warp_ids(stats_df, busy_times, sort_by_busy=sort_by_busy)
+    matrix = build_warp_heatmap_matrix(
+        timeline_df,
+        warp_ids,
+        n_bins=n_bins,
+        t_min=t_min,
+        t_max=t_max,
+        strong_state=strong_state,
+    )
+
+    _w, _h = plt.rcParams.get("figure.figsize", [6.4, 4.8])
+    fig_width = _w * 1.6
+    fig_height = max(4.0, min(8.0, _h * 1.2))
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+    im = ax.imshow(
+        matrix,
+        aspect="auto",
+        origin="upper",
+        interpolation="nearest",
+        cmap=TIMELINE_HEATMAP_CMAP,
+        norm=TIMELINE_HEATMAP_NORM,
+        extent=[0.0, total_duration, len(warp_ids), 0.0],
+        rasterized=True,
+    )
+    ax.set_xlim(0.0, total_duration)
+    ax.set_ylim(len(warp_ids), 0.0)
+    ax.set_xlabel("Time (ms)")
+    if sort_by_busy:
+        ax.set_ylabel("Warps (sorted by total busy time)")
+    else:
+        ax.set_ylabel("Warps (by warp ID)")
+    title_suffix = APP_TITLES.get(app_name, app_name) if app_name else ""
+    ax.set_title(f"Worker Timeline Heatmap: {title_suffix}")
+    ax.grid(False)
+
+    cbar = fig.colorbar(
+        tasks_in_batch_scalar_mappable(), ax=ax, fraction=0.03, pad=0.02, extend="min",
+    )
+    cbar.set_label(COLORBAR_LABEL_TASKS)
+    configure_tasks_in_batch_colorbar(cbar)
+
+    n_active = int((stats_df["total_samples"] > 0).sum()) if "total_samples" in stats_df.columns else len(warp_ids)
+    ax.text(
+        0.01, 0.02,
+        f"{len(warp_ids)} warps ({n_active} active)",
+        transform=ax.transAxes,
+        fontsize=8,
+        va="bottom",
+        ha="left",
+    )
+
+    plt.tight_layout()
+    return fig
+
+def load_and_process_data(app_name, *, compute_utilization=False):
     """CSVデータ（working）を読み込んで処理"""
     print(f"Loading working data for app='{app_name}'...")
 
@@ -102,8 +309,7 @@ def load_and_process_data(app_name):
     timeline_df = pd.read_csv(tl_path)
     stats_df = pd.read_csv(st_path)
 
-    # Ensure utilization_percent exists (compute if missing)
-    if 'utilization_percent' not in stats_df.columns:
+    if compute_utilization and 'utilization_percent' not in stats_df.columns:
         util_df = compute_utilization_from_timeline(timeline_df, strong_state=strong_state)
         if not util_df.empty:
             stats_df = stats_df.merge(util_df, on='warp_id', how='left')
@@ -340,6 +546,34 @@ def print_summary_statistics(stats_df):
 def main():
     parser = argparse.ArgumentParser(description='Warp Timeline Visualization (Thread Runtime)')
     parser.add_argument('--app_name', type=str, default='fib', help='Prefix (app name) for CSV and image outputs')
+    parser.add_argument(
+        '--timeline-mode',
+        choices=['heatmap', 'legacy'],
+        default='heatmap',
+        help='heatmap: all-warps raster heatmap (default); legacy: per-warp rectangle timeline',
+    )
+    parser.add_argument(
+        '--time-bins',
+        type=int,
+        default=DEFAULT_TIME_BINS,
+        help='Number of horizontal time bins for heatmap mode (default: 1500)',
+    )
+    parser.add_argument(
+        '--no-sort-by-busy',
+        action='store_true',
+        help='Keep warp ID order in heatmap (default: sort by total busy time)',
+    )
+    parser.add_argument(
+        '--max-warps',
+        type=int,
+        default=15,
+        help='Max warps to draw in legacy timeline mode',
+    )
+    parser.add_argument(
+        '--with-utilization',
+        action='store_true',
+        help='Also print summary stats and save utilization histogram (slower)',
+    )
     args = parser.parse_args()
 
     print("Warp Timeline Visualization Tool (Thread Runtime)")
@@ -348,23 +582,43 @@ def main():
     try:
         img_dir = os.path.join(args.app_name, "img")
         os.makedirs(img_dir, exist_ok=True)
-        timeline_df, stats_df, strong_state = load_and_process_data(args.app_name)
-        print_summary_statistics(stats_df)
-        print("\nGenerating visualizations...")
+        timeline_df, stats_df, strong_state = load_and_process_data(
+            args.app_name,
+            compute_utilization=args.with_utilization,
+        )
+        if args.with_utilization:
+            print_summary_statistics(stats_df)
+        print("\nGenerating timeline visualization...")
 
-        # 1. タイムライン図（warpと時間軸のworking/not working）
-        timeline_fig = create_timeline_plot(timeline_df, stats_df, strong_state, app_name=args.app_name, max_warps=15)
+        # Timeline heatmap (default) or legacy rectangles
+        if args.timeline_mode == 'heatmap':
+            timeline_fig = create_timeline_heatmap_plot(
+                timeline_df,
+                stats_df,
+                strong_state,
+                app_name=args.app_name,
+                n_bins=args.time_bins,
+                sort_by_busy=not args.no_sort_by_busy,
+            )
+        else:
+            timeline_fig = create_timeline_plot(
+                timeline_df,
+                stats_df,
+                strong_state,
+                app_name=args.app_name,
+                max_warps=args.max_warps,
+            )
         if timeline_fig:
             out_path = os.path.join(img_dir, f"{args.app_name}_timeline.{OUTPUT_FORMAT}")
             timeline_fig.savefig(out_path, dpi=300, bbox_inches='tight')
             print(f"Saved: {out_path}")
 
-        # 2. Warpごとのworking時間割合のヒストグラム
-        util_fig = create_utilization_histogram(stats_df, app_name=args.app_name)
-        if util_fig:
-            out_path = os.path.join(img_dir, f"{args.app_name}_utilization.{OUTPUT_FORMAT}")
-            util_fig.savefig(out_path, dpi=300, bbox_inches='tight')
-            print(f"Saved: {out_path}")
+        if args.with_utilization:
+            util_fig = create_utilization_histogram(stats_df, app_name=args.app_name)
+            if util_fig:
+                out_path = os.path.join(img_dir, f"{args.app_name}_utilization.{OUTPUT_FORMAT}")
+                util_fig.savefig(out_path, dpi=300, bbox_inches='tight')
+                print(f"Saved: {out_path}")
 
         print("\nVisualization complete!")
 

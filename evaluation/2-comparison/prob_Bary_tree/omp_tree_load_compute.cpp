@@ -133,7 +133,7 @@ static void tree_work_omp(
 int main(int argc, char** argv) {
     int height = 15;
     int B = 3;
-    int mem_ops = 64;
+    int mem_ops = 0;
     int compute_iters = 512;
 
     int input_n = 1 << 20;    // power of two

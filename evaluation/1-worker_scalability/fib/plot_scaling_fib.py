@@ -13,7 +13,7 @@ import re
 plt.style.use("~/plot_style/thesis_plt.mplstyle")
 
 BENCHMARK_NAME = "fib"
-TITLE_BENCHMARK_NAME = "Fibonacci (n = 35)"
+TITLE_BENCHMARK_NAME = "Fibonacci (n = 40)"
 OUTPUT_FORMAT = "pdf"  # "png" or "pdf"
 
 # Paths

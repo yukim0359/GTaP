@@ -26,10 +26,12 @@ __global__ void exec_kernel(int n) {
     d_result = fib(n);
 }
 
-// static double elapsed_ms(timespec start, timespec end) {
-//     return (end.tv_sec - start.tv_sec) * 1000.0 +
-//            (end.tv_nsec - start.tv_nsec) / 1000000.0;
-// }
+#ifdef INIT_PROFILE
+static double elapsed_ms(timespec start, timespec end) {
+    return (end.tv_sec - start.tv_sec) * 1000.0 +
+           (end.tv_nsec - start.tv_nsec) / 1000000.0;
+}
+#endif
 
 int main(int argc, char** argv) {
     int n = 40;
@@ -41,14 +43,18 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // timespec init_start, init_end;
-    // clock_gettime(CLOCK_MONOTONIC, &init_start);
+#ifdef INIT_PROFILE
+    timespec init_start, init_end;
+    clock_gettime(CLOCK_MONOTONIC, &init_start);
+#endif
     err = gtap_initialize();
     if (err == cudaSuccess) {
         err = cudaDeviceSynchronize();
     }
-    // clock_gettime(CLOCK_MONOTONIC, &init_end);
-    // printf("Initialization time: %.3f ms\n", elapsed_ms(init_start, init_end));
+#ifdef INIT_PROFILE
+    clock_gettime(CLOCK_MONOTONIC, &init_end);
+    printf("Initialization time: %.3f ms\n", elapsed_ms(init_start, init_end));
+#endif
 
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
@@ -61,7 +67,12 @@ int main(int argc, char** argv) {
     cudaEventRecord(start);
     exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(n);
     cudaEventRecord(stop);
-    cudaDeviceSynchronize();
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        gtap_synchronize();
+        printf("Error: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
     cudaEventSynchronize(stop);
 
     int h_result;

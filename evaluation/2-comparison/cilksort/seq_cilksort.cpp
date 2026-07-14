@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <time.h>
 
+#include "cilksort_options.hpp"
+
 static inline double diff_sec(struct timespec a, struct timespec b) {
     return (b.tv_sec - a.tv_sec) + (b.tv_nsec - a.tv_nsec) / 1e9;
 }
@@ -75,13 +77,17 @@ void cilksort(std::vector<int>& a) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        printf("Usage: %s <data_file>\n", argv[0]);
+    const bool validate = cilksort_validate_enabled(argc, argv);
+    const char* data_file = cilksort_data_file_arg(argc, argv);
+
+    if (!data_file) {
+        printf("Usage: %s [--no-validate] <data_file>\n", argv[0]);
+        printf("  --no-validate: Skip correctness check (benchmark mode)\n");
         return 1;
     }
 
     size_t N;
-    std::vector<int> a = load_array(argv[1], N);
+    std::vector<int> a = load_array(data_file, N);
     if (a.empty()) return 1;
 
     struct timespec t0, t1;
@@ -90,9 +96,13 @@ int main(int argc, char** argv) {
     clock_gettime(CLOCK_MONOTONIC, &t1);
     double elapsed_sec = diff_sec(t0, t1);
 
-    bool ok = std::is_sorted(a.begin(), a.end());
-    printf("Cilksort(%zu) = %s\n", N, ok ? "Correct" : "Incorrect");
+    int exit_code = 0;
+    if (validate) {
+        bool ok = std::is_sorted(a.begin(), a.end());
+        printf("Cilksort(%zu) = %s\n", N, ok ? "Correct" : "Incorrect");
+        exit_code = ok ? 0 : 1;
+    }
     printf("Execution time: %.3f ms\n", elapsed_sec * 1000.0);
 
-    return ok ? 0 : 1;
+    return exit_code;
 }

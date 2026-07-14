@@ -1,203 +1,299 @@
 #!/usr/bin/env python3
-import pandas as pd
+"""Plot Cilksort: absolute time and GTaP-normalized time (combined figure)."""
+
+import argparse
+import sys
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
-import sys
+import pandas as pd
 
-# Allow importing `/work/gc64/c64099/plot_style/gtap_colors.py` when run from this repo
-# This file lives under: .../gtap/evaluation/2-comparison/cilksort/
-# parents[4] == /work/gc64/c64099
 sys.path.append(str(Path(__file__).resolve().parents[4]))
-plt.style.use([
-    "~/plot_style/thesis_plt.mplstyle",
-])
-
-from plot_style.gtap_colors import COL_GTAP_THREAD, COL_GTAP_BLOCK, COL_OMP, COL_SEQ
+plt.style.use(["~/plot_style/thesis_plt.mplstyle"])
+from plot_style.gtap_colors import (
+    COL_CILK,
+    COL_DYNASOAR,
+    COL_GTAP_THREAD,
+    COL_OMP,
+    COL_SEQ,
+    LABEL_CPU_CILK,
+    LABEL_CPU_OMP,
+    LABEL_GTAP_THREAD,
+    LABEL_KIUCHI,
+    LABEL_RATIO_CILK,
+    LABEL_RATIO_KIUCHI,
+    LABEL_RATIO_OMP,
+)
 
 BENCHMARK_NAME = "cilksort"
-OUTPUT_FORMAT = "pdf"  # "png" or "pdf"
+OUTPUT_FORMAT = "pdf"
+MARKER_SIZE = plt.rcParams.get("lines.markersize", 6.0) * 1.2
+MERGE_KEYS = ["n"]
 
 csv_path = Path(f"{BENCHMARK_NAME}_performance_results.csv")
-out_path_comparison = Path(f"img/{BENCHMARK_NAME}_performance_comparison.{OUTPUT_FORMAT}")
-out_path_speedup = Path(f"img/{BENCHMARK_NAME}_speedup_comparison.{OUTPUT_FORMAT}")
-out_path_combined = Path(f"img/{BENCHMARK_NAME}_performance_combined.{OUTPUT_FORMAT}")
-out_path_comparison.parent.mkdir(parents=True, exist_ok=True)
+img_dir = Path("img")
+img_dir.mkdir(parents=True, exist_ok=True)
+
+if not csv_path.exists():
+    raise SystemExit(f"Missing CSV: {csv_path} (run ./compare_cilksort.sh first)")
 
 df = pd.read_csv(csv_path)
 
-gtap_df = df[df["GTAP_med"] > 0].copy() if "GTAP_med" in df.columns else pd.DataFrame()
-omp_df  = df[df["OMP_med"]  > 0].copy() if "OMP_med"  in df.columns else pd.DataFrame()
-seq_df  = df[df["SEQ_med"]  > 0].copy() if "SEQ_med"  in df.columns else pd.DataFrame()
 
-# Speedup data: calculate speedup ratios independently, then outer-merge.
-speedup_df = pd.DataFrame()
-if not gtap_df.empty:
-    speedup_omp = None
-    speedup_seq = None
-    
-    if not omp_df.empty:
-        merged_omp = pd.merge(
-            gtap_df[["n", "GTAP_med"]],
-            omp_df[["n", "OMP_med"]],
-            on="n",
-            how="inner"
-        )
-        if not merged_omp.empty:
-            merged_omp["omp_speedup"] = merged_omp["OMP_med"] / merged_omp["GTAP_med"]
-            speedup_omp = merged_omp[["n", "omp_speedup"]]
-
-    if not seq_df.empty:
-        merged_seq = pd.merge(
-            gtap_df[["n", "GTAP_med"]],
-            seq_df[["n", "SEQ_med"]],
-            on="n",
-            how="inner"
-        )
-        if not merged_seq.empty:
-            merged_seq["seq_speedup"] = merged_seq["SEQ_med"] / merged_seq["GTAP_med"]
-            speedup_seq = merged_seq[["n", "seq_speedup"]]
-
-    pieces = []
-    if speedup_omp is not None:
-        pieces.append(speedup_omp)
-    if speedup_seq is not None:
-        pieces.append(speedup_seq)
-
-    if pieces:
-        speedup_df = pieces[0]
-        for p in pieces[1:]:
-            speedup_df = pd.merge(speedup_df, p, on="n", how="outer")
-
-fig, ax = plt.subplots()
-
-def plot_with_iqr(ax, d, label, marker, col_prefix, *, color=None):
-    y = d[f"{col_prefix}_med"].to_numpy()
-    x = d["n"].to_numpy()
-
-    low_col  = f"{col_prefix}_err_low"
-    high_col = f"{col_prefix}_err_high"
-    med_col = f"{col_prefix}_med"
-
-    if low_col in d.columns and high_col in d.columns:
-        low  = d[low_col].to_numpy(dtype=float)
-        high = d[high_col].to_numpy(dtype=float)
-        med  = d[med_col].to_numpy(dtype=float)
-
-        low[med - low == 0] = np.nan
-
-        yerr = np.vstack([low, high])
-
-        ax.errorbar(
-            x, y, yerr=yerr,
-            fmt=marker + "-",
-            capsize=3, elinewidth=1,
-            label=label,
-            color=color,
-        )
-    else:
-        ax.plot(x, y, marker + "-", label=label, color=color)
-
-if not gtap_df.empty:
-    plot_with_iqr(ax, gtap_df, "GTaP (Thread-level worker)", "o", "GTAP", color=COL_GTAP_THREAD)
-
-if not omp_df.empty:
-    plot_with_iqr(ax, omp_df, "CPU OpenMP task-parallel", "s", "OMP", color=COL_OMP)
-
-if not seq_df.empty:
-    plot_with_iqr(ax, seq_df, "CPU Sequential", "^", "SEQ", color=COL_SEQ)
-
-ax.set_xlabel("Array Size (n)")
-ax.set_ylabel("Execution Time (ms)")
-ax.grid(True)
-ax.set_xscale("log")
-ax.set_yscale("log")
-ax.legend()
-
-plt.tight_layout()
-plt.savefig(out_path_comparison)
-print(f"Saved: {out_path_comparison}")
-
-# Speedup plot (OMP/GTAP and SEQ/GTAP ratios)
-if not speedup_df.empty and ("omp_speedup" in speedup_df.columns or "seq_speedup" in speedup_df.columns):
-    fig2, ax2 = plt.subplots()
-    
-    x = speedup_df["n"].to_numpy()
-    
-    if "omp_speedup" in speedup_df.columns:
-        omp_speedup = speedup_df["omp_speedup"].to_numpy()
-        omp_valid = ~np.isnan(omp_speedup)
-        if np.any(omp_valid):
-            ax2.plot(x[omp_valid], omp_speedup[omp_valid], "s-", color=COL_OMP, label="Speedup to CPU OMP")
-    
-    if "seq_speedup" in speedup_df.columns:
-        seq_speedup = speedup_df["seq_speedup"].to_numpy()
-        seq_valid = ~np.isnan(seq_speedup)
-        if np.any(seq_valid):
-            ax2.plot(x[seq_valid], seq_speedup[seq_valid], "^-", color=COL_SEQ, label="Speedup to CPU Seq")
-    
-    ax2.axhline(y=1.0, color=COL_GTAP_THREAD, linestyle='--', linewidth=1, alpha=0.6, label="Parity")
-    ax2.set_xlabel("Array Size (n)")
-    ax2.set_ylabel("Speedup (compared to others)")
-    ax2.set_xscale("log")
-    ax2.grid(True)
-    ax2.set_ylim(bottom=0)
-    ax2.legend(loc='lower right')
-    
-    plt.tight_layout()
-    plt.savefig(out_path_speedup)
-    print(f"Saved: {out_path_speedup}")
-else:
-    print("Warning: Could not calculate speedup ratios (missing data)")
-
-# Combined figure: stack execution time and normalized time (shared x-axis)
-if not gtap_df.empty and not speedup_df.empty and ("omp_speedup" in speedup_df.columns or "seq_speedup" in speedup_df.columns):
-    _w, _h = plt.rcParams.get("figure.figsize", [6.4, 4.8])
-    fig_height = _w * 0.7
-    fig3, (ax_top, ax_bot) = plt.subplots(
-        2, 1, sharex=True,
-        figsize=(_w, fig_height),
-        gridspec_kw={"height_ratios": [2.0, 1.0]}
+def _hollow_marker_kwargs(color):
+    return dict(
+        color=color,
+        markersize=MARKER_SIZE,
+        markerfacecolor="none",
+        markeredgecolor=color,
+        markeredgewidth=1.2,
     )
 
-    # Top: execution time
-    if not gtap_df.empty:
-        plot_with_iqr(ax_top, gtap_df, "GTaP (Thread-level worker)", "o", "GTAP", color=COL_GTAP_THREAD)
-    if not omp_df.empty:
-        plot_with_iqr(ax_top, omp_df, "CPU OpenMP task-parallel", "s", "OMP", color=COL_OMP)
-    if not seq_df.empty:
-        plot_with_iqr(ax_top, seq_df, "CPU Sequential", "^", "SEQ", color=COL_SEQ)
-    ax_top.set_ylabel("Execution Time (ms)")
-    ax_top.set_xscale("log")
-    ax_top.set_yscale("log")
-    ax_top.grid(True)
-    ax_top.legend()
 
-    # Bottom: normalized time
-    x = speedup_df["n"].to_numpy()
-    label_omp = r"CPU OpenMP / GTaP"
-    label_seq = r"CPU Seq / GTaP"
-    if "omp_speedup" in speedup_df.columns:
-        omp_speedup = speedup_df["omp_speedup"].to_numpy()
-        omp_valid = ~np.isnan(omp_speedup)
-        if np.any(omp_valid):
-            ax_bot.plot(x[omp_valid], omp_speedup[omp_valid], "s-", color=COL_OMP, label=label_omp)
-    if "seq_speedup" in speedup_df.columns:
-        seq_speedup = speedup_df["seq_speedup"].to_numpy()
-        seq_valid = ~np.isnan(seq_speedup)
-        if np.any(seq_valid):
-            ax_bot.plot(x[seq_valid], seq_speedup[seq_valid], "^-", color=COL_SEQ, label=label_seq)
-    ax_bot.axhline(y=1.0, color=COL_GTAP_THREAD, linestyle='--', label="Parity")
-    ax_bot.set_xlabel("Array Size (n)")
-    ax_bot.set_ylabel(r"Normalized time" + "\n" + r"($T_\mathrm{method}/T_\mathrm{GTaP}$)")
-    ax_bot.set_xscale("log")
-    ax_bot.set_yscale("log", base=2)
-    ax_bot.grid(True)
-    # ax_bot.set_ylim(bottom=0)
-    ax_bot.legend()
+def _linestyle_for(col_prefix: str) -> str:
+    return "-" if col_prefix.upper().startswith("GTAP") else "--"
+
+
+def _series_plot_kwargs(color, col_prefix: str):
+    base_lw = plt.rcParams.get("lines.linewidth")
+    is_gtap = col_prefix.upper().startswith("GTAP")
+    return dict(
+        **_hollow_marker_kwargs(color),
+        linestyle=_linestyle_for(col_prefix),
+        linewidth=base_lw if is_gtap else max(0.5, base_lw - 0.8),
+    )
+
+
+def plot_series(ax, x, y, marker, col_prefix, color, label):
+    kw = _series_plot_kwargs(color, col_prefix)
+    ax.plot(x, y, marker=marker, label=label, **kw)
+
+
+def plot_with_iqr(ax, d, label, marker, col_prefix, *, color=None, x_col="n"):
+    y = d[f"{col_prefix}_med"].to_numpy()
+    x = d[x_col].to_numpy()
+    kw = _series_plot_kwargs(color, col_prefix)
+
+    low_col = f"{col_prefix}_err_low"
+    high_col = f"{col_prefix}_err_high"
+
+    if low_col in d.columns and high_col in d.columns:
+        low = d[low_col].to_numpy(dtype=float)
+        high = d[high_col].to_numpy(dtype=float)
+        low[(low < 0) | (high < 0)] = np.nan
+        yerr = np.vstack([low, high])
+        ax.errorbar(
+            x, y, yerr=yerr,
+            fmt=marker,
+            capsize=3, elinewidth=1,
+            label=label,
+            **kw,
+        )
+    else:
+        ax.plot(x, y, marker=marker, label=label, **kw)
+
+
+def _method_frames(sub: pd.DataFrame, *, include_seq: bool = False):
+    gtap = sub[sub["GTAP_med"] > 0].copy() if "GTAP_med" in sub.columns else pd.DataFrame()
+    omp = sub[sub["OMP_med"] > 0].copy() if "OMP_med" in sub.columns else pd.DataFrame()
+    cilk = sub[sub["CILK_med"] > 0].copy() if "CILK_med" in sub.columns else pd.DataFrame()
+    dynasoar = sub[sub["DYNASOAR_med"] > 0].copy() if "DYNASOAR_med" in sub.columns else pd.DataFrame()
+    if include_seq and "SEQ_med" in sub.columns:
+        seq = sub[sub["SEQ_med"] > 0].copy()
+    else:
+        seq = pd.DataFrame()
+    return gtap, omp, cilk, dynasoar, seq
+
+
+def configure_x_axis(ax, sub: pd.DataFrame, *, log_pad_frac: float = 0.06):
+    """Log-x limits with a small outward pad (like linear autoscale margins on fib)."""
+    n_vals = sub["n"].to_numpy(dtype=float)
+    n_min = float(np.min(n_vals))
+    n_max = float(np.max(n_vals))
+    log_min = np.log10(n_min)
+    log_max = np.log10(n_max)
+    span = max(log_max - log_min, 1e-9)
+    pad = span * log_pad_frac
+    ax.set_xscale("log")
+    ax.set_xlim(10.0 ** (log_min - pad), 10.0 ** (log_max + pad))
+    ax.margins(x=0)
+
+
+def plot_absolute_panel(ax, sub: pd.DataFrame, *, include_seq: bool = False):
+    gtap_df, omp_df, cilk_df, dynasoar_df, seq_df = _method_frames(sub, include_seq=include_seq)
+    if not gtap_df.empty:
+        plot_with_iqr(ax, gtap_df, LABEL_GTAP_THREAD, "o", "GTAP", color=COL_GTAP_THREAD)
+    if not dynasoar_df.empty:
+        plot_with_iqr(ax, dynasoar_df, LABEL_KIUCHI, "v", "DYNASOAR", color=COL_DYNASOAR)
+    if not omp_df.empty:
+        plot_with_iqr(ax, omp_df, LABEL_CPU_OMP, "s", "OMP", color=COL_OMP)
+    if not cilk_df.empty:
+        plot_with_iqr(ax, cilk_df, LABEL_CPU_CILK, "D", "CILK", color=COL_CILK)
+    if not seq_df.empty:
+        plot_with_iqr(ax, seq_df, "CPU Sequential", "^", "SEQ", color=COL_SEQ)
+    ax.set_ylabel("Execution Time (ms)")
+    ax.set_yscale("log")
+    ax.grid(True)
+    ax.legend(loc="best", fontsize=8)
+
+
+def _attach_normalized_method(
+    ratio_df: pd.DataFrame,
+    base: pd.DataFrame,
+    method_df: pd.DataFrame,
+    prefix: str,
+    ratio_col: str,
+) -> pd.DataFrame:
+    if method_df.empty:
+        return ratio_df
+
+    cols = MERGE_KEYS + [f"{prefix}_med"]
+    if f"{prefix}_err_low" in method_df.columns:
+        cols.extend([f"{prefix}_err_low", f"{prefix}_err_high"])
+    merged = pd.merge(base, method_df[cols], on=MERGE_KEYS, how="inner")
+    if merged.empty:
+        return ratio_df
+
+    g = merged["GTAP_med"].to_numpy(dtype=float)
+    m = merged[f"{prefix}_med"].to_numpy(dtype=float)
+    add = merged[MERGE_KEYS].copy()
+    ratio = m / g
+    add[ratio_col] = ratio
+    if f"{prefix}_err_low" in merged.columns:
+        d_lo = merged[f"{prefix}_err_low"].to_numpy(dtype=float)
+        d_hi = merged[f"{prefix}_err_high"].to_numpy(dtype=float)
+        add[f"{ratio_col}_err_low"] = ratio - (m - d_lo) / g
+        add[f"{ratio_col}_err_high"] = (m + d_hi) / g - ratio
+    return pd.merge(ratio_df, add, on=MERGE_KEYS, how="outer")
+
+
+def build_ratio_df(sub: pd.DataFrame, *, include_seq: bool = False) -> pd.DataFrame:
+    gtap_df, omp_df, cilk_df, dynasoar_df, seq_df = _method_frames(sub, include_seq=include_seq)
+    if gtap_df.empty:
+        return pd.DataFrame()
+
+    base = gtap_df[MERGE_KEYS + ["GTAP_med"]]
+    ratio_df = gtap_df[MERGE_KEYS].copy()
+    ratio_df = _attach_normalized_method(ratio_df, base, omp_df, "OMP", "omp_ratio")
+    ratio_df = _attach_normalized_method(ratio_df, base, cilk_df, "CILK", "cilk_ratio")
+    ratio_df = _attach_normalized_method(ratio_df, base, dynasoar_df, "DYNASOAR", "dynasoar_ratio")
+    if include_seq:
+        ratio_df = _attach_normalized_method(ratio_df, base, seq_df, "SEQ", "seq_ratio")
+    return ratio_df.sort_values(MERGE_KEYS)
+
+
+def plot_ratio_with_iqr(ax, ratio_df, label, marker, ratio_col, col_prefix, color):
+    d = ratio_df.dropna(subset=[ratio_col]).copy()
+    if d.empty:
+        return
+    x = d["n"].to_numpy(dtype=float)
+    y = d[ratio_col].to_numpy(dtype=float)
+    kw = _series_plot_kwargs(color, col_prefix)
+
+    lo_col = f"{ratio_col}_err_low"
+    hi_col = f"{ratio_col}_err_high"
+    if lo_col in d.columns and hi_col in d.columns:
+        low = d[lo_col].to_numpy(dtype=float)
+        high = d[hi_col].to_numpy(dtype=float)
+        low[(low < 0) | (high < 0)] = np.nan
+        yerr = np.vstack([low, high])
+        ax.errorbar(
+            x, y, yerr=yerr,
+            fmt=marker,
+            capsize=3, elinewidth=1,
+            label=label,
+            **kw,
+        )
+    else:
+        ax.plot(x, y, marker=marker, label=label, **kw)
+
+
+def plot_normalized_panel(ax, ratio_df: pd.DataFrame, *, include_seq: bool = False):
+    x = ratio_df["n"].to_numpy(dtype=float)
+    plot_series(
+        ax, x, np.ones_like(x), "o", "GTAP", COL_GTAP_THREAD,
+        "GTaP (parity)",
+    )
+    if "dynasoar_ratio" in ratio_df.columns:
+        plot_ratio_with_iqr(
+            ax, ratio_df, LABEL_RATIO_KIUCHI, "v",
+            "dynasoar_ratio", "DYNASOAR", COL_DYNASOAR,
+        )
+    if "omp_ratio" in ratio_df.columns:
+        plot_ratio_with_iqr(
+            ax, ratio_df, LABEL_RATIO_OMP, "s",
+            "omp_ratio", "OMP", COL_OMP,
+        )
+    if "cilk_ratio" in ratio_df.columns:
+        plot_ratio_with_iqr(
+            ax, ratio_df, LABEL_RATIO_CILK, "D",
+            "cilk_ratio", "CILK", COL_CILK,
+        )
+    if include_seq and "seq_ratio" in ratio_df.columns:
+        plot_ratio_with_iqr(
+            ax, ratio_df, r"CPU Seq / GTaP", "^",
+            "seq_ratio", "SEQ", COL_SEQ,
+        )
+    ax.set_xlabel("Array Size (n)")
+    ax.set_ylabel(
+        r"Normalized time" + "\n" + r"($T_\mathrm{method}/T_\mathrm{GTaP}$)"
+    )
+    ax.set_yscale("log", base=2)
+    ax.grid(True)
+    ax.legend(loc="best", fontsize=8)
+
+
+def save_absolute_only(sub: pd.DataFrame, *, include_seq: bool = False):
+    fig, ax = plt.subplots()
+    plot_absolute_panel(ax, sub, include_seq=include_seq)
+    configure_x_axis(ax, sub)
+    ax.set_xlabel("Array Size (n)")
+    plt.tight_layout()
+    out_path = img_dir / f"{BENCHMARK_NAME}_performance_comparison.{OUTPUT_FORMAT}"
+    plt.savefig(out_path)
+    plt.close(fig)
+    print(f"Saved: {out_path}")
+
+
+def save_combined(sub: pd.DataFrame, *, include_seq: bool = False):
+    ratio_df = build_ratio_df(sub, include_seq=include_seq)
+    if ratio_df.empty:
+        print("Warning: skip combined plot (no GTaP data)")
+        return
+
+    _w, _h = plt.rcParams.get("figure.figsize", [6.4, 4.8])
+    fig_height = _w * 0.85
+    fig, (ax_top, ax_bot) = plt.subplots(
+        2, 1, sharex=True,
+        figsize=(_w, fig_height),
+        gridspec_kw={"height_ratios": [2.0, 1.0]},
+    )
+
+    plot_absolute_panel(ax_top, sub, include_seq=include_seq)
+    plot_normalized_panel(ax_bot, ratio_df, include_seq=include_seq)
+    configure_x_axis(ax_bot, sub)
 
     plt.tight_layout()
-    plt.savefig(out_path_combined)
-    print(f"Saved: {out_path_combined}")
-else:
-    print("Warning: Combined plot skipped (missing GTaP or speedup data)")
+    out_path = img_dir / f"{BENCHMARK_NAME}_performance_combined.{OUTPUT_FORMAT}"
+    plt.savefig(out_path)
+    plt.close(fig)
+    print(f"Saved: {out_path}")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Plot Cilksort performance (GTaP vs CPU baselines).")
+    ap.add_argument(
+        "--include-seq",
+        action="store_true",
+        help="Include CPU sequential series (default: off).",
+    )
+    args = ap.parse_args()
+
+    sub = df.sort_values("n")
+    save_absolute_only(sub, include_seq=args.include_seq)
+    save_combined(sub, include_seq=args.include_seq)
+
+
+if __name__ == "__main__":
+    main()

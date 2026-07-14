@@ -6,6 +6,10 @@ __device__ int d_answer;
 __device__ __constant__ int d_grid_size;
 __device__ __constant__ int d_cutoff_depth;
 
+#ifndef NQ_HEAVY_QUEUE_THRESHOLD
+#define NQ_HEAVY_QUEUE_THRESHOLD 8
+#endif
+
 __device__ void serial_search(int row, uint32_t column, uint32_t left, uint32_t down, uint32_t right) {
     int grid_size = d_grid_size;
     if (row == grid_size) {
@@ -19,6 +23,32 @@ __device__ void serial_search(int row, uint32_t column, uint32_t left, uint32_t 
         avail -= p;
         serial_search(row + 1, column | p, (left | p) << 1, down | p, (right | p) >> 1);
     }
+}
+
+__device__ __forceinline__ int estimate_child_work(
+    int row,
+    uint32_t column,
+    uint32_t left,
+    uint32_t right
+) {
+    int grid_size = d_grid_size;
+    if (row >= grid_size) return 1;
+
+    uint32_t mask = (grid_size < 32 ? (1u << grid_size) - 1 : 0xFFFFFFFFu);
+    uint32_t avail = mask & ~(column | left | right);
+    int estimate = __popc(avail);
+    if (estimate >= NQ_HEAVY_QUEUE_THRESHOLD) return estimate;
+
+    while (avail) {
+        uint32_t p = avail & -avail;
+        avail -= p;
+        uint32_t next_column = column | p;
+        uint32_t next_left = (left | p) << 1;
+        uint32_t next_right = (right | p) >> 1;
+        estimate += __popc(mask & ~(next_column | next_left | next_right));
+        if (estimate >= NQ_HEAVY_QUEUE_THRESHOLD) return estimate;
+    }
+    return estimate;
 }
 
 #pragma gtap function
@@ -47,8 +77,9 @@ __device__ void nq(int row, uint32_t column, uint32_t left, uint32_t down, uint3
         uint32_t new_left = (left | p) << 1;
         uint32_t new_down = down | p;
         uint32_t new_right = (right | p) >> 1;
+        int child_work = estimate_child_work(new_row, new_column, new_left, new_right);
 
-        #pragma gtap task queue(new_row > cutoff_depth ? 1 : 0)
+        #pragma gtap task queue(child_work >= NQ_HEAVY_QUEUE_THRESHOLD ? 1 : 0)
         nq(new_row, new_column, new_left, new_down, new_right);
     }
 }

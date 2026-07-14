@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
     cudaSetDevice(0);
 
     int height = 15;
-    int mem_ops = 64;         // fixed memory "transactions"
+    int mem_ops = 0;
     int compute_iters = 512;  // sweep this for compute intensity
     int input_n = 1 << 20;    // size of global input (tune to exceed caches)
     int indices_n = 1 << 20;  // index stream length

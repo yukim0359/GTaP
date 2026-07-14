@@ -20,8 +20,8 @@ OUT_QUEUE_3   := $(OUT_DIR)/$(BENCHMARK_NAME)_queue_3
 # ---- GTAP build settings ----
 GTAP_GRID_SIZE          ?= 4000
 GTAP_BLOCK_SIZE         ?= 32
-GTAP_MAX_TASKS_PER_WARP ?= 140000
-GTAP_CFLAGS             ?= -DGTAP_TERMINATE_ON_FIRST_TASK_FINISH
+GTAP_MAX_TASKS_PER_WARP ?= 150000
+GTAP_CFLAGS             ?= 
 
 .PHONY: all queue_1 queue_3 clean print-vars
 

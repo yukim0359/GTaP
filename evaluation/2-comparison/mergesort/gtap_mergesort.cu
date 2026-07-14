@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <limits>
 #include <cuda_runtime.h>
-// #define PROFILE
+#define PROFILE
 #include "gtap_thread.cuh"
 
 // Global device pointers to data and buffer

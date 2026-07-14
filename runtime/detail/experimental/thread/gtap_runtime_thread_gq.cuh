@@ -896,15 +896,35 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
     
     while (should_continue) {
         if (execute_task_count == 0) {
+#if GTAP_NUM_QUEUES > 1
             // Try to pop from global queue (no steal needed)
+            int queue_counts[GTAP_NUM_QUEUES];
+            if (lane == 0) {
+                #pragma unroll
+                for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
+                    int head = load_L2(&d_queue_head[k]);
+                    int tail = load_L2(&d_queue_tail[k]);
+                    queue_counts[k] = max(0, tail - head);
+                }
+            }
             #pragma unroll
-            for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
+            for (int attempt = 0; attempt < GTAP_NUM_QUEUES; ++attempt) {
+                int epaq_idx;
+                if (lane == 0) {
+                    epaq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
+                    warp_contexts[warp_id_in_block].queue_idx = epaq_idx;
+                }
+                epaq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
                 int remaining = GTAP_WARP_SIZE - execute_task_count;
-                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, warp_contexts[warp_id_in_block].queue_idx, prev_get_task);
+                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, epaq_idx, prev_get_task);
                 execute_task_count += pop_count;
                 if (execute_task_count != 0) break;
-                warp_contexts[warp_id_in_block].queue_idx = (warp_contexts[warp_id_in_block].queue_idx + 1) % GTAP_NUM_QUEUES;
             }
+#else
+            int remaining = GTAP_WARP_SIZE - execute_task_count;
+            int pop_count = pop_global_queue<M>(&execute_task_id, remaining, 0, prev_get_task);
+            execute_task_count += pop_count;
+#endif
         }
 
         if (execute_task_count == 0) {
@@ -968,6 +988,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         }
 
         if (lane < execute_task_count) {
+            prefetch_global_L2(__gtap_get_task_data(execute_task_id));
             // Copy task header to TaskContext for reuse in task function (using L2 load)
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             {
