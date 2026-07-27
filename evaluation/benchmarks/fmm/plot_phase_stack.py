@@ -1225,9 +1225,17 @@ def main() -> None:
         raise SystemExit("--runs must be >= 1")
 
     env = dict(os.environ)
-    cuda_lib = "/work/opt/local/aarch64/cores/nvidia/25.9/Linux_aarch64/25.9/cuda/12.9/lib64"
-    toolset_lib = "/opt/rh/gcc-toolset-12/root/usr/lib64"
-    env["LD_LIBRARY_PATH"] = f"{cuda_lib}:{toolset_lib}:{env.get('LD_LIBRARY_PATH', '')}"
+    cuda_root = env.get("CUDA_PATH") or env.get("CUDA_HOME") or ""
+    prepend = []
+    if cuda_root:
+        prepend.append(os.path.join(cuda_root, "lib64"))
+    # Optional site-specific lib (e.g. gcc-toolset); leave unset on other machines.
+    toolset_lib = env.get("GCC_TOOLSET_LIB64", "")
+    if toolset_lib:
+        prepend.append(toolset_lib)
+    if prepend:
+        existing = env.get("LD_LIBRARY_PATH", "")
+        env["LD_LIBRARY_PATH"] = ":".join(prepend + ([existing] if existing else []))
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
 

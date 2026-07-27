@@ -55,7 +55,12 @@ ensure_dynasoar_bin() {
     [ -x "$DYNASOAR_NQ_BIN" ]
 }
 
-export CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-/work/opt/local/aarch64/cores/nvidia/25.9/Linux_aarch64/25.9/cuda}}"
+CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-}}"
+if [ -z "$CUDA_PATH" ]; then
+    echo "Error: set CUDA_PATH or CUDA_HOME to the CUDA installation root" >&2
+    exit 1
+fi
+export CUDA_PATH
 export LD_LIBRARY_PATH="${CUDA_PATH}/lib64:${LD_LIBRARY_PATH:-}"
 
 NUM_RUNS=20

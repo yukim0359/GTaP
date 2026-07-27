@@ -2,6 +2,17 @@
 import argparse
 import csv
 import sys
+from pathlib import Path
+
+
+def portable_raw_csv_label(raw_csv: str) -> str:
+    """Prefer a repo-relative label (raw/...) over an absolute host path."""
+    path = Path(raw_csv)
+    parts = path.parts
+    if "raw" in parts:
+        i = parts.index("raw")
+        return str(Path(*parts[i:]))
+    return path.name
 
 METRIC_COLUMNS = [
     "gpu__time_duration.sum",
@@ -71,7 +82,7 @@ def main():
                     name,
                     unit.strip(),
                     normalize_value(value),
-                    args.raw_csv,
+                    portable_raw_csv_label(args.raw_csv),
                 ]
             )
 
