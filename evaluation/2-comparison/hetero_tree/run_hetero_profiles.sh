@@ -47,5 +47,5 @@ echo "Profile CSVs under $PROFILE_DIR:"
 ls -la "$PROFILE_DIR"/*hetero_tree* 2>/dev/null || ls -la "$PROFILE_DIR"
 echo
 echo "Plot with:"
-echo "  python3 ../scripts/plot_hetero_tree_timeline_paper.py"
+echo "  python3 ../../scripts/plot_hetero_tree_timeline_paper.py"
 echo "  # or: make -C . plot-profile"

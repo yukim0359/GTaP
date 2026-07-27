@@ -63,7 +63,7 @@ run-profile: profile
 	bash "$(SCRIPT_DIR)/run_hetero_profiles.sh"
 
 plot-profile:
-	python3 "$(SCRIPT_DIR)/../scripts/plot_hetero_tree_timeline_paper.py"
+	python3 "$(SCRIPT_DIR)/../../scripts/plot_hetero_tree_timeline_paper.py"
 
 print-vars:
 	@echo "HETERO_TREE_K=$(HETERO_TREE_K)"
