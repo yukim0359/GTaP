@@ -18,20 +18,20 @@ This experiment profiles average active lanes per executed instruction for:
 Run from a GPU node with Nsight Compute:
 
 ```sh
-cd evaluation/3-epaq/analysis/ncu_warp_efficiency
+cd evaluation/daq/analysis/ncu_warp_efficiency
 ./run_ncu_warp_efficiency.sh
 ```
 
 The summary CSV is:
 
 ```text
-evaluation/3-epaq/analysis/ncu_warp_efficiency/warp_efficiency_summary.csv
+evaluation/daq/analysis/ncu_warp_efficiency/warp_efficiency_summary.csv
 ```
 
 Raw Nsight Compute CSV files are kept under:
 
 ```text
-evaluation/3-epaq/analysis/ncu_warp_efficiency/raw/
+evaluation/daq/analysis/ncu_warp_efficiency/raw/
 ```
 
 Default inputs:
