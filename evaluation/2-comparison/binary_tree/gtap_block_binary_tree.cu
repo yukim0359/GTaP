@@ -65,24 +65,40 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
     uint32_t seed = xorshift32((uint32_t)node ^ 0x9e3779b9u);
     uint32_t mask = (uint32_t)g_input_n - 1u;
 
-    #pragma unroll 1
-    for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
-        uint32_t r = xorshift32(seed + (uint32_t)m * 747796405u);
-        int idx = (int)(r & mask);
-        acc += g_input[idx];
+    // Equal-split (not grid-stride): contiguous ++ loops so the compiler can unroll,
+    // matching the per-iter cost of the thread-mode sequential loop (~12ns vs ~30ns).
+    const int nt = blockDim.x;
+    const int tid = threadIdx.x;
+
+    {
+        const int chunk = mem_ops / nt;
+        const int rem = mem_ops % nt;
+        const int start = tid * chunk + (tid < rem ? tid : rem);
+        const int count = chunk + (tid < rem ? 1 : 0);
+        for (int i = 0; i < count; ++i) {
+            const int m = start + i;
+            uint32_t r = xorshift32(seed + (uint32_t)m * 747796405u);
+            int idx = (int)(r & mask);
+            acc += g_input[idx];
+        }
     }
 
     double y = 0.0;
     uint32_t mix = (0x9e3779b9u ^ (uint32_t)node) + (uint32_t)acc;
 
-    #pragma unroll 1
-    for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
-        double x = (double)xorshift32(seed + (uint32_t)it * 747796405u);
-        y = mix_fma(x);
-        mix ^= (uint32_t)__double_as_longlong(y);
+    {
+        const int chunk = compute_iters / nt;
+        const int rem = compute_iters % nt;
+        const int start = tid * chunk + (tid < rem ? tid : rem);
+        const int count = chunk + (tid < rem ? 1 : 0);
+        for (int i = 0; i < count; ++i) {
+            const int it = start + i;
+            double x = (double)xorshift32(seed + (uint32_t)it * 747796405u);
+            y = mix_fma(x);
+            mix ^= (uint32_t)__double_as_longlong(y);
+        }
     }
 
-    // asm volatile("" :: "r"(mix), "f"(y));
     return (double)mix;
 }
 
@@ -118,31 +134,22 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
 // ------------------------------
 #pragma gtap function
 __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) {
-    // if (threadIdx.x == 0) printf("tree_work: node=%d height=%d mem_ops=%d compute_iters=%d\n", node, height, mem_ops, compute_iters);
     if (height == 0) {
-        // leaf
-        double v = do_memory_and_compute(node, mem_ops, compute_iters); // all threads do work
-        if (threadIdx.x == 0) g_out[node] = v; // store thread0's per-thread result (no reduction)        
-        // __syncthreads();
-        return;
-    } else {
-        if (threadIdx.x == 0) {
-            int l = node * 2 + 1;
-            int r = node * 2 + 2;
-            #pragma gtap task
-            tree_work(l, height - 1, mem_ops, compute_iters);
-            #pragma gtap task
-            tree_work(r, height - 1, mem_ops, compute_iters);
-        }
-        // __syncthreads();
-        #pragma gtap taskwait
-
-        // own synthetic work only (no combine/reduction)
-        double own = do_memory_and_compute(node, mem_ops, compute_iters); // all threads do work
-        if (threadIdx.x == 0) g_out[node] = own;
-        // __syncthreads();
+        // leaf only: block-tiled synthetic work
+        double v = do_memory_and_compute(node, mem_ops, compute_iters);
+        if (threadIdx.x == 0) g_out[node] = v;
         return;
     }
+
+    if (threadIdx.x == 0) {
+        int l = node * 2 + 1;
+        int r = node * 2 + 2;
+        #pragma gtap task
+        tree_work(l, height - 1, mem_ops, compute_iters);
+        #pragma gtap task
+        tree_work(r, height - 1, mem_ops, compute_iters);
+    }
+    #pragma gtap taskwait
 }
 
 __global__ void exec_kernel(int height, int mem_ops, int compute_iters) {
@@ -153,7 +160,7 @@ __global__ void exec_kernel(int height, int mem_ops, int compute_iters) {
 int main(int argc, char** argv) {
     cudaSetDevice(0);
 
-    int height = 15;
+    int height = 20;
     int mem_ops = 0;
     int compute_iters = 512;  // sweep this for compute intensity
     int input_n = 1 << 20;    // size of global input (tune to exceed caches)

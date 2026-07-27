@@ -12,6 +12,7 @@ GT_INC     ?= $(PROJ_DIR)/runtime
 # ---- Inputs / Outputs ----
 SRC_GTAP_THREAD := $(SCRIPT_DIR)/gtap_thread_$(BENCHMARK_NAME).cu
 SRC_GTAP_BLOCK  := $(SCRIPT_DIR)/gtap_block_$(BENCHMARK_NAME).cu
+SRC_GTAP_BLOCK_CUTOFF := $(SCRIPT_DIR)/gtap_block_$(BENCHMARK_NAME)_cutoff.cu
 SRC_OMP         := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).cpp
 SRC_GTAP_THREAD_SEQMEM := $(SCRIPT_DIR)/gtap_thread_$(BENCHMARK_NAME)_seqmem.cu
 SRC_GTAP_BLOCK_SEQMEM  := $(SCRIPT_DIR)/gtap_block_$(BENCHMARK_NAME)_seqmem.cu
@@ -22,6 +23,8 @@ SRC_SEQ         := $(SCRIPT_DIR)/seq_$(BENCHMARK_NAME).c
 OUT_DIR       := $(SCRIPT_DIR)/bin
 OUT_GTAP_THREAD := $(OUT_DIR)/gtap_thread_$(BENCHMARK_NAME)
 OUT_GTAP_BLOCK  := $(OUT_DIR)/gtap_block_$(BENCHMARK_NAME)
+OUT_GTAP_BLOCK_CUTOFF := $(OUT_DIR)/gtap_block_$(BENCHMARK_NAME)_cutoff
+OUT_GTAP_BLOCK_CUTOFF_FLAT := $(OUT_DIR)/gtap_block_$(BENCHMARK_NAME)_cutoff_flat
 OUT_OMP       := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_GTAP_THREAD_SEQMEM := $(OUT_DIR)/gtap_thread_$(BENCHMARK_NAME)_seqmem
 OUT_GTAP_BLOCK_SEQMEM  := $(OUT_DIR)/gtap_block_$(BENCHMARK_NAME)_seqmem
@@ -32,10 +35,11 @@ OUT_SEQ       := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 # ---- GTAP build settings ----
 GTAP_GRID_SIZE           ?= 2000
 GTAP_BLOCK_SIZE          ?= 32
-GTAP_MAX_TASKS_PER_WARP  ?= 100000
-GTAP_MAX_TASKS_PER_BLOCK ?= 100000
+GTAP_MAX_TASKS_PER_WARP  ?= 300000
+GTAP_MAX_TASKS_PER_BLOCK ?= 300000
 GTAP_NUM_QUEUES          ?= 1
-GTAP_CFLAGS              ?= -DGTAP_TERMINATE_ON_FIRST_TASK_FINISH
+BINARY_BLOCK_CUTOFF      ?= 5
+GTAP_CFLAGS              ?= 
 
 # ---- OpenMP build settings ----
 CC_OMP           ?= $(CXX_BIN)
@@ -56,9 +60,9 @@ LDFLAGS_OMP_CUDA      ?= -L"$(OMP_CUDA_LIB_DIR)" -Wl,-rpath,"$(OMP_CUDA_LIB_DIR)
 CC_SEQ           ?= $(CXX_BIN)
 CFLAGS_SEQ       ?= -O3 -Wall -Wextra
 
-.PHONY: all gtap_thread gtap_block omp omp_cuda seq clean print-vars
+.PHONY: all gtap_thread gtap_block gtap_block_cutoff gtap_block_cutoff_flat omp omp_cuda seq clean print-vars
 
-all: gtap_thread gtap_block omp omp_cuda 
+all: gtap_thread gtap_block gtap_block_cutoff omp omp_cuda
 
 print-vars:
 	@echo "SCRIPT_DIR=$(SCRIPT_DIR)"
@@ -106,6 +110,43 @@ $(OUT_GTAP_BLOCK): $(SRC_GTAP_BLOCK) | $(OUT_DIR)
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_GTAP_BLOCK)" -o "$(OUT_GTAP_BLOCK)"
 
+gtap_block_cutoff: $(OUT_GTAP_BLOCK_CUTOFF)
+
+$(OUT_GTAP_BLOCK_CUTOFF): $(SRC_GTAP_BLOCK_CUTOFF) | $(OUT_DIR)
+	"$(CXX_BIN)" -O3 -x cuda \
+	  --cuda-path="$(CUDA_PATH)" \
+	  --cuda-gpu-arch="$(CUDA_ARCH)" \
+	  -Wall -Wextra \
+	  -Xcuda-ptxas --warn-on-spills \
+	  -I"$(GT_INC)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_BLOCK="$(GTAP_MAX_TASKS_PER_BLOCK)" \
+	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
+	  -DBINARY_BLOCK_CUTOFF="$(BINARY_BLOCK_CUTOFF)" \
+	  -DBINARY_CUTOFF_FLAT=0 \
+	  $(GTAP_CFLAGS) \
+	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  "$(SRC_GTAP_BLOCK_CUTOFF)" -o "$(OUT_GTAP_BLOCK_CUTOFF)"
+
+# Flat leaf loop (no recursive process_subtree_seq) — for spill impact A/B test.
+gtap_block_cutoff_flat: $(OUT_GTAP_BLOCK_CUTOFF_FLAT)
+
+$(OUT_GTAP_BLOCK_CUTOFF_FLAT): $(SRC_GTAP_BLOCK_CUTOFF) | $(OUT_DIR)
+	"$(CXX_BIN)" -O3 -x cuda \
+	  --cuda-path="$(CUDA_PATH)" \
+	  --cuda-gpu-arch="$(CUDA_ARCH)" \
+	  -Wall -Wextra \
+	  -Xcuda-ptxas --warn-on-spills \
+	  -I"$(GT_INC)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_BLOCK="$(GTAP_MAX_TASKS_PER_BLOCK)" \
+	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
+	  -DBINARY_BLOCK_CUTOFF="$(BINARY_BLOCK_CUTOFF)" \
+	  -DBINARY_CUTOFF_FLAT=1 \
+	  $(GTAP_CFLAGS) \
+	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  "$(SRC_GTAP_BLOCK_CUTOFF)" -o "$(OUT_GTAP_BLOCK_CUTOFF_FLAT)"
+
 
 # ---- Build: omp_$(BENCHMARK_NAME).cpp ----
 omp: $(OUT_OMP)
@@ -134,5 +175,7 @@ $(OUT_OMP_CUDA): $(SRC_OMP_CUDA) | $(OUT_DIR)
 # 	"$(CC_SEQ)" $(CFLAGS_SEQ) "$(SRC_SEQ)" -o "$(OUT_SEQ)"
 
 clean:
-	rm -f $(OUT_GTAP_THREAD) $(OUT_GTAP_BLOCK) $(OUT_OMP) $(OUT_OMP_CUDA) $(OUT_SEQ) \
+	rm -f $(OUT_GTAP_THREAD) $(OUT_GTAP_BLOCK) $(OUT_GTAP_BLOCK_CUTOFF) \
+	  $(OUT_GTAP_BLOCK_CUTOFF_FLAT) \
+	  $(OUT_OMP) $(OUT_OMP_CUDA) $(OUT_SEQ) \
 	  $(OUT_GTAP_THREAD_SEQMEM) $(OUT_GTAP_BLOCK_SEQMEM) $(OUT_OMP_SEQMEM)

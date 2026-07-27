@@ -135,11 +135,11 @@ def _compute_utilization_from_timeline(timeline_df, strong_state, id_col):
     return pd.DataFrame(util_rows)
 
 
-def _load_thread_data():
-    """Load thread-runtime (warp) profile for tree_load_compute."""
-    print("Loading thread (warp) profile data for tree_load_compute...")
-    tl_path = os.path.join(PROFILE_DIR, "tree_thread_warp_timeline_working.csv")
-    st_path = os.path.join(PROFILE_DIR, "tree_thread_warp_statistics_working.csv")
+def _load_thread_data(prefix="tree_thread"):
+    """Load thread-runtime (warp) profile CSVs for the given app_name prefix."""
+    print(f"Loading thread (warp) profile data ({prefix})...")
+    tl_path = os.path.join(PROFILE_DIR, f"{prefix}_warp_timeline_working.csv")
+    st_path = os.path.join(PROFILE_DIR, f"{prefix}_warp_statistics_working.csv")
 
     timeline_df = pd.read_csv(tl_path)
     stats_df = pd.read_csv(st_path)
@@ -159,11 +159,11 @@ def _load_thread_data():
     return timeline_df, stats_df, strong_state
 
 
-def _load_block_data():
-    """Load block-runtime (block) profile for tree_load_compute."""
-    print("Loading block (block) profile data for tree_load_compute...")
-    tl_path = os.path.join(PROFILE_DIR, "tree_block_block_timeline_working.csv")
-    st_path = os.path.join(PROFILE_DIR, "tree_block_block_statistics_working.csv")
+def _load_block_data(prefix="tree_block"):
+    """Load block-runtime (block) profile CSVs for the given app_name prefix."""
+    print(f"Loading block (block) profile data ({prefix})...")
+    tl_path = os.path.join(PROFILE_DIR, f"{prefix}_block_timeline_working.csv")
+    st_path = os.path.join(PROFILE_DIR, f"{prefix}_block_statistics_working.csv")
 
     timeline_df = pd.read_csv(tl_path)
     stats_df = pd.read_csv(st_path)
@@ -507,8 +507,8 @@ def _create_working_duration_histogram(working_durations, label_prefix, title):
     return fig
 
 
-def visualize_thread(custom_title=None):
-    timeline_df, stats_df, strong_state = _load_thread_data()
+def visualize_thread(custom_title=None, prefix="tree_thread", out_stem="tree_thread"):
+    timeline_df, stats_df, strong_state = _load_thread_data(prefix=prefix)
     os.makedirs(IMG_DIR, exist_ok=True)
 
     default_title = "Full Binary Tree (Thread-level workers)"
@@ -529,13 +529,13 @@ def visualize_thread(custom_title=None):
         custom_title=timeline_title,
     )
     if tl_fig:
-        out_path = os.path.join(IMG_DIR, f"tree_thread_timeline.{OUTPUT_FORMAT}")
+        out_path = os.path.join(IMG_DIR, f"{out_stem}_timeline.{OUTPUT_FORMAT}")
         tl_fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
 
     util_fig = _create_utilization_histogram(stats_df, label_prefix="Warp")
     if util_fig:
-        out_path = os.path.join(IMG_DIR, f"tree_thread_utilization.{OUTPUT_FORMAT}")
+        out_path = os.path.join(IMG_DIR, f"{out_stem}_utilization.{OUTPUT_FORMAT}")
         util_fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
 
@@ -543,13 +543,13 @@ def visualize_thread(custom_title=None):
         working_durations, label_prefix="Warp", title=default_title
     )
     if dur_fig:
-        out_path = os.path.join(IMG_DIR, f"tree_thread_working_duration.{OUTPUT_FORMAT}")
+        out_path = os.path.join(IMG_DIR, f"{out_stem}_working_duration.{OUTPUT_FORMAT}")
         dur_fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
 
 
-def visualize_block(custom_title=None):
-    timeline_df, stats_df, strong_state = _load_block_data()
+def visualize_block(custom_title=None, prefix="tree_block", out_stem="tree_block"):
+    timeline_df, stats_df, strong_state = _load_block_data(prefix=prefix)
     os.makedirs(IMG_DIR, exist_ok=True)
 
     default_title = "Full Binary Tree (Block-level workers)"
@@ -570,26 +570,28 @@ def visualize_block(custom_title=None):
         custom_title=timeline_title,
     )
     if tl_fig:
-        out_path = os.path.join(IMG_DIR, f"tree_block_timeline.{OUTPUT_FORMAT}")
+        out_path = os.path.join(IMG_DIR, f"{out_stem}_timeline.{OUTPUT_FORMAT}")
         tl_fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
 
     util_fig = _create_utilization_histogram(stats_df, label_prefix="Block")
     if util_fig:
-        out_path = os.path.join(IMG_DIR, f"tree_block_utilization.{OUTPUT_FORMAT}")
+        out_path = os.path.join(IMG_DIR, f"{out_stem}_utilization.{OUTPUT_FORMAT}")
         util_fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
 
-    dur_fig = _create_working_duration_histogram(working_durations, label_prefix="Block", title=default_title)
+    dur_fig = _create_working_duration_histogram(
+        working_durations, label_prefix="Block", title=default_title
+    )
     if dur_fig:
-        out_path = os.path.join(IMG_DIR, f"tree_block_working_duration.{OUTPUT_FORMAT}")
+        out_path = os.path.join(IMG_DIR, f"{out_stem}_working_duration.{OUTPUT_FORMAT}")
         dur_fig.savefig(out_path, dpi=300, bbox_inches="tight")
         print(f"Saved: {out_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Timeline Visualization for tree_load_compute (thread & block)"
+        description="Timeline Visualization for binary / hetero-leaf tree profiles"
     )
     parser.add_argument(
         "--mode",
@@ -599,21 +601,38 @@ def main():
         help="Which profile to visualize",
     )
     parser.add_argument(
+        "--prefix",
+        type=str,
+        default=None,
+        help="CSV app_name prefix (default: tree_thread / tree_block). "
+             "e.g. hetero_leaf_thread or hetero_leaf_thread_daq",
+    )
+    parser.add_argument(
+        "--out-stem",
+        type=str,
+        default=None,
+        help="Output filename stem under img/ (default: same as --prefix or tree_*)",
+    )
+    parser.add_argument(
         "--title",
         type=str,
         default=None,
-        help="Custom title to show on figures (e.g., run config or dataset)",
+        help="Custom title to show on figures",
     )
     args = parser.parse_args()
 
-    print("tree_load_compute Profile Visualization")
+    print("Tree Profile Visualization")
     print("=" * 40)
 
     try:
         if args.mode in ("thread", "both"):
-            visualize_thread(custom_title=args.title)
-        if args.mode in ("block", "both"):
-            visualize_block(custom_title=args.title)
+            t_prefix = args.prefix or "tree_thread"
+            t_stem = args.out_stem or t_prefix
+            visualize_thread(custom_title=args.title, prefix=t_prefix, out_stem=t_stem)
+        if args.mode == "block" or (args.mode == "both" and not args.prefix):
+            b_prefix = args.prefix if args.mode == "block" and args.prefix else "tree_block"
+            b_stem = args.out_stem or b_prefix
+            visualize_block(custom_title=args.title, prefix=b_prefix, out_stem=b_stem)
         print("\nVisualization complete!")
     except FileNotFoundError as e:
         print(f"Error: Could not find required CSV files: {e}")
