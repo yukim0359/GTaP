@@ -36,28 +36,42 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
     double acc = 0.0;
 
     // Per-node seed (same logical random stream as thread/OMP versions).
-    // Threads within a block cooperate by iterating m = threadIdx.x, threadIdx.x + blockDim.x, ...
-    // so the overall sequence of mem_ops indices per node matches the CPU / 1-thread-per-task GPU version.
+    // Equal-split contiguous loops (not grid-stride) so the compiler can unroll.
     uint32_t seed = hash32((uint32_t)node ^ 0x9e3779b9u);
 
     // If input_n is a power of two (your default is 1<<20), masking is valid and fast.
     // Otherwise, replace "& mask" with "% input_n".
     uint32_t mask = (uint32_t)input_n - 1u;
 
-    for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
-        uint32_t r = hash32(seed + (uint32_t)m);
-        int idx = (int)(r & mask);              // power-of-two case
-        // int idx = (int)(r % (uint32_t)input_n); // general case
-        acc += input[idx];
+    const int nt = blockDim.x;
+    const int tid = threadIdx.x;
+
+    {
+        const int chunk = mem_ops / nt;
+        const int rem = mem_ops % nt;
+        const int start = tid * chunk + (tid < rem ? tid : rem);
+        const int count = chunk + (tid < rem ? 1 : 0);
+        for (int i = 0; i < count; ++i) {
+            const int m = start + i;
+            uint32_t r = hash32(seed + (uint32_t)m);
+            int idx = (int)(r & mask);              // power-of-two case
+            // int idx = (int)(r % (uint32_t)input_n); // general case
+            acc += input[idx];
+        }
     }
 
-    // 2) compute loop (distributed across threads as before)
+    // 2) compute loop (equal-split across threads)
     double x = acc + (double)(node & 0xFF) * 1e-9;
-    for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
-        x = mix_fma(x);
+    {
+        const int chunk = compute_iters / nt;
+        const int rem = compute_iters % nt;
+        const int count = chunk + (tid < rem ? 1 : 0);
+        for (int i = 0; i < count; ++i) {
+            x = mix_fma(x);
+        }
     }
 
-    asm volatile("" :: "f"(x));
+    asm volatile("" :: "l"(__double_as_longlong(x)));
     return x; // per-thread value (not reduced)
 }
 

@@ -62,24 +62,39 @@ __device__ double do_memory_and_compute(uint32_t node_id, int mem_ops, int compu
     uint32_t seed = xorshift32(node_id ^ 0x9e3779b9u);
     uint32_t mask = (uint32_t)g_input_n - 1u; // input_n is power of two
 
-    #pragma unroll 1
-    for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
-        uint32_t r = xorshift32(seed + (uint32_t)m * 747796405u);
-        int idx = (int)(r & mask);
-        acc += g_input[idx];
+    // Equal-split (not grid-stride): contiguous ++ loops so the compiler can unroll.
+    const int nt = blockDim.x;
+    const int tid = threadIdx.x;
+
+    {
+        const int chunk = mem_ops / nt;
+        const int rem = mem_ops % nt;
+        const int start = tid * chunk + (tid < rem ? tid : rem);
+        const int count = chunk + (tid < rem ? 1 : 0);
+        for (int i = 0; i < count; ++i) {
+            const int m = start + i;
+            uint32_t r = xorshift32(seed + (uint32_t)m * 747796405u);
+            int idx = (int)(r & mask);
+            acc += g_input[idx];
+        }
     }
 
     double y = 0.0;
     uint32_t mix = (0x9e3779b9u ^ node_id) + (uint32_t)acc;
 
-    #pragma unroll 1
-    for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
-        double x = (double)xorshift32(seed + (uint32_t)it * 747796405u);
-        y = mix_fma(x);
-        mix ^= (uint32_t)__double_as_longlong(y);
+    {
+        const int chunk = compute_iters / nt;
+        const int rem = compute_iters % nt;
+        const int start = tid * chunk + (tid < rem ? tid : rem);
+        const int count = chunk + (tid < rem ? 1 : 0);
+        for (int i = 0; i < count; ++i) {
+            const int it = start + i;
+            double x = (double)xorshift32(seed + (uint32_t)it * 747796405u);
+            y = mix_fma(x);
+            mix ^= (uint32_t)__double_as_longlong(y);
+        }
     }
 
-    // asm volatile("" :: "r"(mix), "f"(y));
     return (double)mix;
 }
 
@@ -158,10 +173,10 @@ __global__ void exec_kernel(int height, int B, int mem_ops, int compute_iters) {
 int main(int argc, char** argv) {
     cudaSetDevice(0);
 
-    int height = 15;
+    int height = 30;
     int B = 3;
     int mem_ops = 0;
-    int compute_iters = 512;
+    int compute_iters = 2048;
 
     int input_n = 1 << 20;    // power of two
     int sink_n  = 1 << 20;    // power of two (fixed-size)

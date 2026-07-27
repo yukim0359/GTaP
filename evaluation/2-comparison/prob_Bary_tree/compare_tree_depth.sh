@@ -12,11 +12,7 @@ cd "$PBS_O_WORKDIR"
 COMPARE_DIR=$(pwd)
 PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
 BIN_DIR="$PROJECT_ROOT/bin"
-
-if [ ! -d "$BIN_DIR" ]; then
-    echo "Error: Please submit this script from gtap/evaluation/2-comparison/$BENCHMARK_NAME"
-    exit 1
-fi
+mkdir -p "$BIN_DIR"
 
 echo "Building GTaP binaries ..."
 make -C "$COMPARE_DIR" gtap_block gtap_thread

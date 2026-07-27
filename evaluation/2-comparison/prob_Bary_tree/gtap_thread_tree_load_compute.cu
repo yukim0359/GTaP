@@ -150,10 +150,10 @@ __global__ void exec_kernel(int height, int B, int mem_ops, int compute_iters) {
 int main(int argc, char** argv) {
     cudaSetDevice(0);
 
-    int height = 15;
+    int height = 30;
     int B = 3;
     int mem_ops = 0;
-    int compute_iters = 512;
+    int compute_iters = 2048;
 
     int input_n = 1 << 20;    // power of two
     int sink_n  = 1 << 20;    // power of two (fixed-size)
