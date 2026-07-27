@@ -35,6 +35,22 @@ struct WarpTaskQueue {
 
 __device__ WarpTaskQueue** d_warp_task_queues;
 
+static size_t __gtap_runtime_device_allocation_bytes() {
+    const size_t queue_ptr_array_bytes = sizeof(WarpTaskQueue*) * GTAP_NUM_QUEUES;
+    const size_t queue_plane_bytes =
+        (size_t)GTAP_NUM_QUEUES * sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    const size_t header_bytes = sizeof(TaskHeader) * GTAP_MAX_TASKS_GLOBAL;
+    const size_t task_data_bytes = gtap_host_task_data_stride() * GTAP_MAX_TASKS_GLOBAL;
+    const size_t task_id_list_bytes = sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    const size_t task_id_generated_bytes = sizeof(int) * GTAP_GRID_SIZE * GTAP_NUM_WARPS *
+                                           GTAP_NUM_QUEUES * (GTAP_MAX_CHILD_TASKS + 1) *
+                                           GTAP_WARP_SIZE;
+    const size_t result_handle_bytes =
+        sizeof(GTaPResultHandle) * GTAP_RESULT_HANDLE_CAPACITY;
+    return queue_ptr_array_bytes + queue_plane_bytes + header_bytes + task_data_bytes +
+           task_id_list_bytes + task_id_generated_bytes + result_handle_bytes;
+}
+
 cudaError_t __gtap_init_task_runtime() {
     GTAP_CUDA_TRY(gtap_init_runtime_error_report());
 
@@ -341,8 +357,13 @@ cudaError_t __gtap_finalize_task_runtime() {
     return cudaGetLastError();
 }
 
-cudaError_t gtap_initialize() {
-    return __gtap_init_task_runtime();
+cudaError_t gtap_initialize(size_t* device_bytes_allocated = nullptr) {
+    cudaError_t err = __gtap_init_task_runtime();
+    if (err == cudaSuccess) {
+        gtap_store_optional_size(
+            device_bytes_allocated, __gtap_runtime_device_allocation_bytes());
+    }
+    return err;
 }
 
 cudaError_t gtap_finalize() {

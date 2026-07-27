@@ -2,13 +2,8 @@
 # GTAP orientation vs KCGPU (degree-oriented, binary encode) on DBLP / as-Skitter / Orkut
 # for k=5,7,9. GTAP build params come from gtap_graph_k_config.csv (per graph×k).
 #
-# KCGPU variants (KCGPU_VARIANT_MODE=k579_min, from prior best results):
-#   k=5  all graphs -> edge:o4b
-#   k=7  all graphs -> edge:o1b edge:o2b
-#   k=9  all graphs -> edge:o1b
-# Set KCGPU_VARIANT_MODE=full to restore edge o1b o2b o4b o8b sweep.
-#
-# Runs REPEATS=20 by default and writes averaged results via summarize_k579_repeats.py.
+# KCGPU variants: edge o1b o2b o4b o8b (oriented_binary)
+# Runs REPEATS=10 by default and writes averaged results via summarize_k579_repeats.py.
 #
 # Usage:
 #   ./run_kcgpu_orientation_k579_graph_tuned.sh
@@ -23,14 +18,13 @@ K579_DIR="$K_CLIQUE_DIR/k579"
 
 K_VALUES=${K_VALUES:-"5 7 9"}
 GRAPHS=${GRAPHS:-"DBLP as-Skitter Orkut"}
-REPEATS=${REPEATS:-20}
+REPEATS=${REPEATS:-10}
 GTAP_VARIANT=orientation
 KCGPU_ORIENT=${KCGPU_ORIENT:-degree}
 GTAP_ORIENT=${GTAP_ORIENT:-degree}
 KCGPU_PROFILE=${KCGPU_PROFILE:-0}
 GTAP_PROFILE=${GTAP_PROFILE:-0}
 KCGPU_VARIANT_SET=${KCGPU_VARIANT_SET:-oriented_binary}
-KCGPU_VARIANT_MODE=${KCGPU_VARIANT_MODE:-k579_min}
 RESULTS_FILE=${RESULTS_FILE:-"$K579_DIR/results/gtap_kcgpu_orientation_k579_results.csv"}
 AVG_RESULTS_FILE=${AVG_RESULTS_FILE:-"$K579_DIR/results/gtap_kcgpu_orientation_k579_results_avg.csv"}
 BEST_SUMMARY_FILE=${BEST_SUMMARY_FILE:-"$K579_DIR/results/gtap_kcgpu_orientation_k579_best_summary.csv"}
@@ -49,7 +43,6 @@ env \
     KCGPU_PROFILE="$KCGPU_PROFILE" \
     GTAP_PROFILE="$GTAP_PROFILE" \
     KCGPU_VARIANT_SET="$KCGPU_VARIANT_SET" \
-    KCGPU_VARIANT_MODE="$KCGPU_VARIANT_MODE" \
     RESULTS_FILE="$RESULTS_FILE" \
     LOG_DIR="$LOG_DIR" \
     "$SCRIPT_DIR/run_benchmark.sh"

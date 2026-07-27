@@ -575,7 +575,7 @@ def plot_sm_working_timeline(profile_dir, img_dir, app_name, tag, output_format,
     ax.set_ylabel("SM id")
     ax.set_title("SM Working Timeline (Binned Active Slots):\nKCGPU")
     cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Active worker slots")
+    cbar.set_label("Average active worker slots")
     fig.tight_layout()
     out_path = os.path.join(img_dir, f"{app_name}{tag}_sm_working_timeline.{output_format}")
     fig.savefig(out_path, dpi=300, bbox_inches="tight")

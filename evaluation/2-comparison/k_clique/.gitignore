@@ -1,0 +1,15 @@
+bin/
+profile/
+img/
+logs/
+__pycache__/
+*.sh.o*
+*.pbs.o*
+
+# Benchmark outputs (regenerate via scripts/)
+k579/logs/
+k579/results/*.csv
+
+legacy/
+data/
+k579/

@@ -190,38 +190,6 @@ __device__ __forceinline__ unsigned long long* pivot_cl_buffer(int level) {
 #error "K_PIVOT_STATE_LEVELS must be at least 2"
 #endif
 
-__device__ __forceinline__ void save_pivot_prefix_state(
-    KPivotPrefixState* state,
-    int level,
-    int pl_count,
-    int rsize,
-    int drop,
-    int pivot,
-    const unsigned long long* pl,
-    const unsigned long long* cl,
-    int words) {
-    state->pl_count = pl_count;
-    state->rsize = rsize;
-    state->drop = drop;
-    state->pivot = pivot;
-    state->level = level;
-    for (int w = 0; w < K_PIVOT_PREFIX_WORDS; ++w) {
-        state->pl[w] = (w < words) ? pl[w] : 0ULL;
-        state->cl[w] = (w < words) ? cl[w] : 0ULL;
-    }
-}
-
-__device__ __forceinline__ void load_pivot_prefix_state(
-    const KPivotPrefixState& state,
-    int words) {
-    unsigned long long* pl = pivot_pl_buffer(state.level);
-    unsigned long long* cl = pivot_cl_buffer(state.level);
-    for (int w = 0; w < words; ++w) {
-        pl[w] = state.pl[w];
-        cl[w] = state.cl[w];
-    }
-}
-
 __device__ __forceinline__ unsigned long long valid_bits_mask_for_word(int word, int words, int m) {
     if (word + 1 != words) return ~0ULL;
     int rem = m & 63;
@@ -601,3 +569,4 @@ __device__ __forceinline__ unsigned long long pivot_prefix_work_estimate(
     unsigned long long estimate = width * tail;
     return estimate > cap ? cap : estimate;
 }
+

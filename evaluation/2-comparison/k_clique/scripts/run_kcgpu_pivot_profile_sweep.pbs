@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=12:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#
+# KCGPU pivot: collect SM working-timeline CSVs/PDFs for k579 graphs.
+#   graphs: DBLP, as-Skitter, Orkut
+#   k:      5, 7, 9
+#   config: edge / degen / p1b
+#
+# Output PDFs:
+#   img/kcgpu/kcgpu_pivot_<GRAPH>_k<k>_edge_degen_p1b_sm_working_timeline.pdf
+#
+# Usage:
+#   qsub run_kcgpu_pivot_profile_sweep.pbs
+#   KCGPU_FIGURES_ONLY=1 KCGPU_SKIP_BUILD=1 ./run_kcgpu_pivot_profile_sweep.pbs
+
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+export KCGPU_SM_TIMELINE_ONLY=1
+export KCGPU_ORIENT=degen
+export KCGPU_Q=p1b
+
+KCGPU_BUILD_ONLY=1 ./scripts/run_kcgpu_pivot_profile.sh
+export KCGPU_SKIP_BUILD=1
+
+for graph in DBLP as-Skitter Orkut; do
+  for k in 5 7 9; do
+    GRAPH_NAME=$graph K=$k ./scripts/run_kcgpu_pivot_profile.sh
+  done
+done

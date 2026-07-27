@@ -35,6 +35,19 @@ struct WarpTaskQueue {
 
 __constant__ WarpTaskQueue** d_warp_task_queues;
 
+static size_t __gtap_runtime_device_allocation_bytes() {
+    const size_t queue_ptr_array_bytes = sizeof(WarpTaskQueue*) * GTAP_NUM_QUEUES;
+    const size_t queue_plane_bytes =
+        (size_t)GTAP_NUM_QUEUES * sizeof(WarpTaskQueue) * GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    const size_t header_bytes = sizeof(TaskHeader) * GTAP_MAX_TASKS_GLOBAL;
+    const size_t task_data_bytes = gtap_host_task_data_stride() * GTAP_MAX_TASKS_GLOBAL;
+    const size_t task_id_list_bytes = sizeof(TaskIdList) * GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    const size_t result_handle_bytes =
+        sizeof(GTaPResultHandle) * GTAP_RESULT_HANDLE_CAPACITY;
+    return queue_ptr_array_bytes + queue_plane_bytes + header_bytes + task_data_bytes +
+           task_id_list_bytes + result_handle_bytes;
+}
+
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int queue_idx, int task_id) {
     int gen_idx = atomicAdd(&ctx->task_id_generated_count_by_queue_idx[queue_idx], 1);
     if (gen_idx < GTAP_WARP_SIZE) {
@@ -340,8 +353,13 @@ cudaError_t __gtap_finalize_task_runtime() {
     return cudaGetLastError();
 }
 
-cudaError_t gtap_initialize() {
-    return __gtap_init_task_runtime();
+cudaError_t gtap_initialize(size_t* device_bytes_allocated = nullptr) {
+    cudaError_t err = __gtap_init_task_runtime();
+    if (err == cudaSuccess) {
+        gtap_store_optional_size(
+            device_bytes_allocated, __gtap_runtime_device_allocation_bytes());
+    }
+    return err;
 }
 
 cudaError_t gtap_finalize() {
@@ -906,39 +924,69 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
     __syncwarp();
 
     while (should_continue) {
-        if (execute_task_count == 0) {
 #if GTAP_NUM_QUEUES > 1
-            int queue_counts[GTAP_NUM_QUEUES];
-            if (lane == 0) {
-                #pragma unroll
-                for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
-                    queue_counts[k] = load_L2(&d_warp_task_queues[k][warp_id_global].count);
-                }
-            }
-            #pragma unroll
-            for (int attempt = 0; attempt < GTAP_NUM_QUEUES; ++attempt) {
-                int epaq_idx;
+        if (execute_task_count < GTAP_WARP_SIZE) {
+            if (execute_task_count == 0) {
+                int queue_counts[GTAP_NUM_QUEUES];
                 if (lane == 0) {
-                    epaq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
-                    warp_contexts[warp_id_in_block].queue_idx = epaq_idx;
+                    #pragma unroll
+                    for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
+                        queue_counts[k] = load_L2(&d_warp_task_queues[k][warp_id_global].count);
+                    }
                 }
-                epaq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
-                if (prev_get_task && execute_task_count < GTAP_WARP_SIZE) {
+                #pragma unroll
+                for (int attempt = 0; attempt < GTAP_NUM_QUEUES; ++attempt) {
+                    int epaq_idx;
+                    if (lane == 0) {
+                        epaq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
+                        warp_contexts[warp_id_in_block].queue_idx = epaq_idx;
+                    }
+                    epaq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
+                    if (prev_get_task && execute_task_count < GTAP_WARP_SIZE) {
+                        int remaining = GTAP_WARP_SIZE - execute_task_count;
+                        int pop_count = pop_batch(
+                            &execute_task_id, remaining,
+                            &tail_by_queue_idx[warp_id_in_block][epaq_idx], epaq_idx
+                        );
+                        execute_task_count += pop_count;
+                    }
+                    if (execute_task_count < GTAP_WARP_SIZE) {
+                        int remaining = GTAP_WARP_SIZE - execute_task_count;
+                        int steal_count = steal_batch<M>(
+                            &execute_task_id, remaining, epaq_idx, prev_get_task
+                        );
+                        execute_task_count += steal_count;
+                    }
+                    if (execute_task_count != 0) break;
+                }
+            } else {
+                int epaq_idx = __shfl_sync(
+                    0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0
+                );
+                if (prev_get_task) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
-                    int pop_count = pop_batch(&execute_task_id, remaining, &tail_by_queue_idx[warp_id_in_block][epaq_idx], epaq_idx);
+                    int pop_count = pop_batch(
+                        &execute_task_id, remaining,
+                        &tail_by_queue_idx[warp_id_in_block][epaq_idx], epaq_idx
+                    );
                     execute_task_count += pop_count;
                 }
                 if (execute_task_count < GTAP_WARP_SIZE) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
-                    int steal_count = steal_batch<M>(&execute_task_id, remaining, epaq_idx, prev_get_task);
+                    int steal_count = steal_batch<M>(
+                        &execute_task_id, remaining, epaq_idx, prev_get_task
+                    );
                     execute_task_count += steal_count;
                 }
-                if (execute_task_count != 0) break;
             }
+        }
 #else
-            if (prev_get_task && execute_task_count < GTAP_WARP_SIZE) {
+        if (execute_task_count < GTAP_WARP_SIZE) {
+            if (prev_get_task) {
                 int remaining = GTAP_WARP_SIZE - execute_task_count;
-                int pop_count = pop_batch(&execute_task_id, remaining, &tail_by_queue_idx[warp_id_in_block][0], 0);
+                int pop_count = pop_batch(
+                    &execute_task_id, remaining, &tail_by_queue_idx[warp_id_in_block][0], 0
+                );
                 execute_task_count += pop_count;
             }
             if (execute_task_count < GTAP_WARP_SIZE) {
@@ -946,8 +994,8 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
                 int steal_count = steal_batch<M>(&execute_task_id, remaining, 0, prev_get_task);
                 execute_task_count += steal_count;
             }
-#endif
         }
+#endif
         if (execute_task_count == 0) {
             if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
                 if (lane == 0) {

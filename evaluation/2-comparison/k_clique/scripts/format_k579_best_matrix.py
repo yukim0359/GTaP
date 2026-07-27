@@ -11,8 +11,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 K_CLIQUE_DIR = SCRIPT_DIR.parent
 K579_RESULTS = K_CLIQUE_DIR / "k579" / "results"
-DEFAULT_INPUT = K579_RESULTS / "gtap_kcgpu_k579_e2e_best_summary.csv"
-DEFAULT_OUTPUT = K579_RESULTS / "gtap_kcgpu_k579_e2e_best_matrix.csv"
+DEFAULT_INPUT = K579_RESULTS / "gtap_kcgpu_k579_best_summary.csv"
+DEFAULT_OUTPUT = K579_RESULTS / "gtap_kcgpu_k579_best_matrix.csv"
 
 GRAPH_ORDER = ["DBLP", "as-Skitter", "Orkut"]
 K_VALUES = [5, 7, 9]
@@ -38,7 +38,7 @@ def _cell(row: dict | None) -> dict[str, str]:
     if row is None:
         return {"gtap_ms": "", "kcgpu_ms": ""}
     return {
-        "gtap_ms": _fmt_num(row.get("gtap_count_e2e_ms")),
+        "gtap_ms": _fmt_num(row.get("gtap_kernel_ms")),
         "kcgpu_ms": _fmt_num(row.get("kcgpu_best_ms")),
     }
 

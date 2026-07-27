@@ -30,6 +30,12 @@ inline cudaError_t gtap_init_device_task_data_stride() {
     return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
 }
 
+inline void gtap_store_optional_size(size_t* out, size_t value) {
+    if (out != nullptr) {
+        *out = value;
+    }
+}
+
 // Safety thresholds for error detection
 #define GTAP_QUEUE_MARGIN 100
 #define GTAP_TASK_ID_POOL_MIN_FREE 100  // Minimum free task IDs before overflow warning
