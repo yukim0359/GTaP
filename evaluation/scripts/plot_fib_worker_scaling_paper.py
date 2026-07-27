@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Paper figure: Fibonacci worker scaling (GTaP vs global queue vs sequential Chase-Lev).
 
-Data: evaluation/1-worker_scalability/fib/fib_scaling_results.csv
+Data: evaluation/scheduler-comparison/fib/fib_scaling_results.csv
 Shows block_size=32 (t/b=32) only. Y-axis is logarithmic; X-axis is log2(thread count).
 """
 
@@ -16,9 +16,9 @@ import numpy as np
 import pandas as pd
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "2-comparison"
+COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
-SCALING_DIR = EVAL_DIR / "1-worker_scalability" / "fib"
+SCALING_DIR = EVAL_DIR / "scheduler-comparison" / "fib"
 WORKSPACE_ROOT = EVAL_DIR.parents[1]
 sys.path.insert(0, str(WORKSPACE_ROOT))
 

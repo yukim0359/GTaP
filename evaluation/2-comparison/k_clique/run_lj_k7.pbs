@@ -1,9 +1,0 @@
-#!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=01:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
-#PBS -o /work/gc64/c64099/gtap/evaluation/2-comparison/k_clique/lj_k7.log
-cd /work/gc64/c64099/gtap/evaluation/2-comparison/k_clique
-./bin/gtap_pivot ~/KCGPU/graphs/com-LiveJournal/com-LiveJournal.mtx 7

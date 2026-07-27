@@ -16,9 +16,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-# 2-comparison/ holds benchmark CSVs and thread_visualize_profile.py.
+# benchmarks/ holds benchmark CSVs and thread_visualize_profile.py.
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "2-comparison"
+COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
 sys.path.insert(0, str(COMPARE_DIR))
 

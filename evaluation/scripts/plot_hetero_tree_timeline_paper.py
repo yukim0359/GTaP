@@ -28,7 +28,7 @@ from matplotlib import transforms
 from matplotlib.gridspec import GridSpec
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "2-comparison"
+COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
 HETERO_DIR = COMPARE_DIR / "hetero_tree"
 sys.path.insert(0, str(COMPARE_DIR))
