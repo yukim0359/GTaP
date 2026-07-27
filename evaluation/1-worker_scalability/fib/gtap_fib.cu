@@ -2,8 +2,6 @@
 #include <cuda_runtime.h>
 // #define PROFILE
 
-#define GQ
-
 #ifdef GQ
 #include "experimental/gtap_thread_gq.cuh"
 #else

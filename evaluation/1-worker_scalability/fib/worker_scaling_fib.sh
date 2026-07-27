@@ -47,7 +47,7 @@ TOTAL_THREADS_EXPONENTS=(10 11 12 13 14 15 16 17 18)
 NUM_RUNS=20
 
 ### fib-specific settings (override: INPUT_N=40) ###
-INPUT_N="${INPUT_N:-40}"
+INPUT_N="${INPUT_N:-35}"
 
 echo "=== ${BENCHMARK_NAME} Worker Scaling Analysis ==="
 echo "INPUT_N=$INPUT_N  BLOCK_SIZES=${BLOCK_SIZES[*]}"

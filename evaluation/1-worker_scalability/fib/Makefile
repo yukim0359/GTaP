@@ -24,7 +24,7 @@ GTAP_GRID_SIZE          ?= 4000
 GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 200000
 GTAP_NUM_QUEUES         ?= 1
-GTAP_CFLAGS             ?= -DGTAP_TERMINATE_ON_FIRST_TASK_FINISH
+GTAP_CFLAGS             ?= 
 
 # ---- OpenMP build settings ----
 CC_OMP           ?= $(CLANG_BIN)
