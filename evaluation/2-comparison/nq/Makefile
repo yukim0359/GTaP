@@ -26,7 +26,7 @@ GTAP_GRID_SIZE          ?= 2000
 GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 100000
 GTAP_NUM_QUEUES         ?= 1
-GTAP_CFLAGS             ?= -DGTAP_ASSUME_NO_TASKWAIT
+GTAP_CFLAGS             ?= -fgtap-no-taskwait
 
 # ---- OpenMP build settings ----
 CC_OMP           ?= $(CLANG_BIN)

@@ -47,7 +47,8 @@ int main(int argc, char** argv) {
     timespec init_start, init_end;
     clock_gettime(CLOCK_MONOTONIC, &init_start);
 #endif
-    err = gtap_initialize();
+    size_t gtap_device_bytes = 0;
+    err = gtap_initialize(&gtap_device_bytes);
     if (err == cudaSuccess) {
         err = cudaDeviceSynchronize();
     }
@@ -60,7 +61,9 @@ int main(int argc, char** argv) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
     }
-    
+    printf("GTaP runtime device pool: %.2f GiB (%zu bytes)\n",
+           gtap_device_bytes / (1024.0 * 1024.0 * 1024.0), gtap_device_bytes);
+
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);

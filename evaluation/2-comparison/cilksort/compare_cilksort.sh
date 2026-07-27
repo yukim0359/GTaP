@@ -87,7 +87,7 @@ ensure_dynasoar_bin() {
 
 # Results CSV (median + IQR error bars)
 RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_performance_results.csv"
-echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,THRUST_med,THRUST_err_low,THRUST_err_high,OMP_med,OMP_err_low,OMP_err_high,CILK_med,CILK_err_low,CILK_err_high,DYNASOAR_med,DYNASOAR_err_low,DYNASOAR_err_high,SEQ_med,SEQ_err_low,SEQ_err_high,Speedup_med(OMP/GTAP),Speedup_med(CILK/GTAP),Speedup_med(DYNASOAR/GTAP),Speedup_med(GTAP/THRUST)" > "$RESULTS_FILE"
+echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,OMP_med,OMP_err_low,OMP_err_high,CILK_med,CILK_err_low,CILK_err_high,DYNASOAR_med,DYNASOAR_err_low,DYNASOAR_err_high,SEQ_med,SEQ_err_low,SEQ_err_high,Speedup_med(OMP/GTAP),Speedup_med(CILK/GTAP),Speedup_med(DYNASOAR/GTAP)" > "$RESULTS_FILE"
 
 DYNASOAR_ENABLED=0
 if ensure_dynasoar_bin; then
@@ -99,17 +99,17 @@ fi
 
 # Pretty header (fixed width columns)
 if [ "$INCLUDE_SEQ" -eq 1 ]; then
-    printf "%6s | %25s | %25s | %25s | %25s | %25s | %25s | %10s\n" \
-        "size" "GTAP (ms)" "Thrust (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "Seq (ms)" "GTAP/Thrust"
-    printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
-        "------" "-------------------------" "-------------------------" "-------------------------" \
-        "-------------------------" "-------------------------" "-------------------------" "----------"
-else
     printf "%6s | %25s | %25s | %25s | %25s | %25s | %10s\n" \
-        "size" "GTAP (ms)" "Thrust (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "GTAP/Thrust"
+        "size" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "Seq (ms)" "OMP/GTAP"
     printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
         "------" "-------------------------" "-------------------------" "-------------------------" \
         "-------------------------" "-------------------------" "----------"
+else
+    printf "%6s | %25s | %25s | %25s | %25s | %10s\n" \
+        "size" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "OMP/GTAP"
+    printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
+        "------" "-------------------------" "-------------------------" "-------------------------" \
+        "-------------------------" "----------"
 fi
 
 run_stats() {
@@ -242,12 +242,6 @@ for size in "${SIZES[@]}"; do
         read GTAP_MED _ _ GTAP_ELO GTAP_EHI < <(run_stats "$BIN_DIR/gtap_$BENCHMARK_NAME" "$TMP_DIR/$DATA_FILE" "Execution time")
     fi
 
-    # --- Thrust (GPU standard sort) ---
-    THRUST_MED=0 THRUST_ELO=0 THRUST_EHI=0
-    if [ -x "$BIN_DIR/thrust_$BENCHMARK_NAME" ]; then
-        read THRUST_MED _ _ THRUST_ELO THRUST_EHI < <(run_stats "$BIN_DIR/thrust_$BENCHMARK_NAME" "$TMP_DIR/$DATA_FILE" "Execution time")
-    fi
-
     # --- OpenMP ---
     OMP_MED=0 OMP_ELO=0 OMP_EHI=0
     if [ -x "$BIN_DIR/omp_$BENCHMARK_NAME" ]; then
@@ -276,7 +270,6 @@ for size in "${SIZES[@]}"; do
     SPEEDUP=0
     CILK_SPEEDUP=0
     DYNASOAR_SPEEDUP=0
-    THRUST_SPEEDUP=0
     if [ "$GTAP_MED" != "0" ] && [ "$OMP_MED" != "0" ]; then
         SPEEDUP=$(echo "scale=6; $OMP_MED / $GTAP_MED" | bc -l)
     fi
@@ -286,28 +279,24 @@ for size in "${SIZES[@]}"; do
     if [ "$GTAP_MED" != "0" ] && [ "$DYNASOAR_MED" != "0" ]; then
         DYNASOAR_SPEEDUP=$(echo "scale=6; $DYNASOAR_MED / $GTAP_MED" | bc -l)
     fi
-    if [ "$GTAP_MED" != "0" ] && [ "$THRUST_MED" != "0" ]; then
-        THRUST_SPEEDUP=$(echo "scale=6; $GTAP_MED / $THRUST_MED" | bc -l)
-    fi
 
     rm -f "$TMP_DIR/$DATA_FILE"
 
     # Print aligned row
     printf "%6d | " "$size"
     fmt_med_iqr "$GTAP_MED" "$GTAP_ELO" "$GTAP_EHI"; printf " | "
-    fmt_med_iqr "$THRUST_MED" "$THRUST_ELO" "$THRUST_EHI"; printf " | "
     fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
     fmt_med_iqr "$CILK_MED" "$CILK_ELO" "$CILK_EHI"; printf " | "
     fmt_med_iqr "$DYNASOAR_MED" "$DYNASOAR_ELO" "$DYNASOAR_EHI"; printf " | "
     if [ "$INCLUDE_SEQ" -eq 1 ]; then
         fmt_med_iqr "$SEQ_MED" "$SEQ_ELO" "$SEQ_EHI"; printf " | "
     fi
-    if [ "$THRUST_SPEEDUP" = "0" ]; then
+    if [ "$SPEEDUP" = "0" ]; then
         printf "%10s\n" "N/A"
     else
-        printf "%10.2f\n" "$THRUST_SPEEDUP"
+        printf "%10.2f\n" "$SPEEDUP"
     fi
 
     # CSV
-    echo "$size,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$THRUST_MED,$THRUST_ELO,$THRUST_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$CILK_MED,$CILK_ELO,$CILK_EHI,$DYNASOAR_MED,$DYNASOAR_ELO,$DYNASOAR_EHI,$SEQ_MED,$SEQ_ELO,$SEQ_EHI,$SPEEDUP,$CILK_SPEEDUP,$DYNASOAR_SPEEDUP,$THRUST_SPEEDUP" >> "$RESULTS_FILE"
+    echo "$size,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$CILK_MED,$CILK_ELO,$CILK_EHI,$DYNASOAR_MED,$DYNASOAR_ELO,$DYNASOAR_EHI,$SEQ_MED,$SEQ_ELO,$SEQ_EHI,$SPEEDUP,$CILK_SPEEDUP,$DYNASOAR_SPEEDUP" >> "$RESULTS_FILE"
 done

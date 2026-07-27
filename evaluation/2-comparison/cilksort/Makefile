@@ -12,14 +12,12 @@ GT_INC     ?= $(PROJ_DIR)/runtime
 
 # ---- Inputs / Outputs ----
 SRC_GTAP    := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
-SRC_THRUST  := $(SCRIPT_DIR)/thrust_$(BENCHMARK_NAME).cu
 SRC_OMP     := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).cpp
 SRC_CILK    := $(SCRIPT_DIR)/cilk_$(BENCHMARK_NAME).cpp
 SRC_SEQ     := $(SCRIPT_DIR)/seq_$(BENCHMARK_NAME).cpp
 
 OUT_DIR     := $(SCRIPT_DIR)/bin
 OUT_GTAP    := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
-OUT_THRUST  := $(OUT_DIR)/thrust_$(BENCHMARK_NAME)
 OUT_OMP     := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_CILK    := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
 OUT_SEQ     := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
@@ -50,9 +48,9 @@ LDFLAGS_CILK     ?= -fopencilk
 CXX_SEQ          ?= $(CXX_BIN)
 CXXFLAGS_SEQ     ?= -O3 -Wall -Wextra
 
-.PHONY: all gtap thrust omp cilk seq clean print-vars
+.PHONY: all gtap omp cilk seq clean print-vars
 
-all: gtap thrust omp cilk seq
+all: gtap omp cilk seq
 
 print-vars:
 	@echo "SCRIPT_DIR=$(SCRIPT_DIR)"
@@ -85,17 +83,6 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_GTAP)" -o "$(OUT_GTAP)"
 
-# ---- Build: thrust_$(BENCHMARK_NAME).cu (CUDA Thrust sort baseline) ----
-thrust: $(OUT_THRUST)
-
-$(OUT_THRUST): $(SRC_THRUST) | $(OUT_DIR)
-	"$(CXX_BIN)" -O3 -x cuda \
-	  --cuda-path="$(CUDA_PATH)" \
-	  --cuda-gpu-arch="$(CUDA_ARCH)" \
-	  -Wall -Wextra \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_THRUST)" -o "$(OUT_THRUST)"
-
 # ---- Build: omp_$(BENCHMARK_NAME).c ----
 omp: $(OUT_OMP)
 
@@ -116,4 +103,4 @@ $(OUT_SEQ): $(SRC_SEQ) | $(OUT_DIR)
 	"$(CXX_SEQ)" $(CXXFLAGS_SEQ) "$(SRC_SEQ)" -o "$(OUT_SEQ)"
 
 clean:
-	rm -f $(OUT_GTAP) $(OUT_THRUST) $(OUT_OMP) $(OUT_CILK) $(OUT_SEQ)
+	rm -f $(OUT_GTAP) $(OUT_OMP) $(OUT_CILK) $(OUT_SEQ)
