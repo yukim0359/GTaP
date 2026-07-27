@@ -4,6 +4,7 @@ venv/
 bin
 tmp*
 profile/
+analysis/*/raw/
 pdf/
 __pycache__/
 

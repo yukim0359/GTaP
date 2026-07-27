@@ -8,8 +8,12 @@
 // #define DEBUG
 #include "gtap_thread.cuh"
 
+#ifndef TASK_SPAWN_CUTOFF_SORT
 #define TASK_SPAWN_CUTOFF_SORT 64
+#endif
+#ifndef TASK_SPAWN_CUTOFF_MERGE
 #define TASK_SPAWN_CUTOFF_MERGE 256
+#endif
 
 __device__ int* g_data;
 __device__ int* g_buf;
