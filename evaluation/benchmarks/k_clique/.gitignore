@@ -1,0 +1,20 @@
+# Build / runtime artifacts
+bin/
+profile/
+__pycache__/
+*.sh.o*
+*.pbs.o*
+
+# Job / smoke logs
+logs/
+*.log
+
+# Graphs and regenerated plots
+data/
+img/
+
+# Local-only legacy sources
+legacy/
+
+# Benchmark run outputs (regenerate via scripts/)
+k579/

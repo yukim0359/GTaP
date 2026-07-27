@@ -29,6 +29,17 @@ struct BlockTaskQueue {
 // Note: d_task_data_bytes is now char* (byte array) to support type-erased task data (static allocation)
 __constant__ BlockTaskQueue* d_block_task_queues;
 
+static size_t __gtap_runtime_device_allocation_bytes() {
+    const size_t queue_bytes = sizeof(BlockTaskQueue) * GTAP_GRID_SIZE;
+    const size_t task_id_list_bytes = sizeof(TaskIdList) * GTAP_GRID_SIZE;
+    const size_t header_bytes = sizeof(TaskHeader) * GTAP_MAX_TASKS_GLOBAL;
+    const size_t task_data_bytes = gtap_host_task_data_stride() * GTAP_MAX_TASKS_GLOBAL;
+    const size_t result_handle_bytes =
+        sizeof(GTaPResultHandle) * GTAP_RESULT_HANDLE_CAPACITY;
+    return queue_bytes + task_id_list_bytes + header_bytes + task_data_bytes +
+           result_handle_bytes;
+}
+
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int task_id) {
     BlockTaskQueue* q = &d_block_task_queues[blockIdx.x];
     int old_tail = atomicAdd(&ctx->queue_tail, 1);
@@ -152,8 +163,13 @@ cudaError_t __gtap_finalize_task_runtime() {
     return cudaGetLastError();
 }
 
-cudaError_t gtap_initialize() {
-    return __gtap_init_task_runtime();
+cudaError_t gtap_initialize(size_t* device_bytes_allocated = nullptr) {
+    cudaError_t err = __gtap_init_task_runtime();
+    if (err == cudaSuccess) {
+        gtap_store_optional_size(
+            device_bytes_allocated, __gtap_runtime_device_allocation_bytes());
+    }
+    return err;
 }
 
 cudaError_t gtap_finalize() {
@@ -736,10 +752,10 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             void* func_ptr = load_L2_ptr(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &block_ctx);
-            __threadfence();
             // if(threadIdx.x == 0) printf("finish_execute_task: %d\n", tid);
         }
         __syncthreads();
+        __threadfence();
 #ifdef PROFILE
         if (threadIdx.x == 0) {
             if (working_time_idx < MAX_PROFILE_DATA) {

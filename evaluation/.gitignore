@@ -1,8 +1,11 @@
 venv/
 *.sh.o*
+*.pbs.o*
 bin
 tmp*
 profile/
+source_profile/
+**/analysis/*/raw/
 pdf/
 __pycache__/
 

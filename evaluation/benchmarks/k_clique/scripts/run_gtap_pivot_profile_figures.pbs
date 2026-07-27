@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=02:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#
+# GTAP pivot: render working-timeline PDFs from ./profile/ CSVs
+# (run gtap_pivot with GTAP_PROFILE=1 first).
+#
+# Usage:
+#   qsub run_gtap_pivot_profile_figures.pbs
+#   MODE=having_task WORKER=both qsub run_gtap_pivot_profile_figures.pbs
+
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+python3 scripts/k_clique_visualize_profile.py \
+  --variant pivot \
+  --worker "${WORKER:-thread}" \
+  --mode "${MODE:-working}" \
+  --format "${FORMAT:-pdf}"
