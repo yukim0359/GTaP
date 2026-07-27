@@ -1,15 +1,20 @@
+# Build / runtime artifacts
 bin/
 profile/
-img/
-logs/
 __pycache__/
 *.sh.o*
 *.pbs.o*
 
-# Benchmark outputs (regenerate via scripts/)
-k579/logs/
-k579/results/*.csv
+# Job / smoke logs
+logs/
+*.log
 
-legacy/
+# Graphs and regenerated plots
 data/
+img/
+
+# Local-only legacy sources
+legacy/
+
+# Benchmark run outputs (regenerate via scripts/)
 k579/

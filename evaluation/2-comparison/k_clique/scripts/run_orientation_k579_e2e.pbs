@@ -1,0 +1,24 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=24:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+export KCGPU_PROFILE=0
+export GTAP_PROFILE=0
+export KCGPU_FORCE_REBUILD=1
+export BUILD_KCGPU=1
+export BUILD_GTAP=1
+
+export RESULTS_FILE="$PWD/k579/results/gtap_kcgpu_orientation_k579_e2e_results.csv"
+export AVG_RESULTS_FILE="$PWD/k579/results/gtap_kcgpu_orientation_k579_e2e_results_avg.csv"
+export BEST_SUMMARY_FILE="$PWD/k579/results/gtap_kcgpu_orientation_k579_e2e_best_summary.csv"
+export LOG_DIR="$PWD/k579/logs/orientation_e2e"
+
+grep '^GTAP_K_MAX_CANDIDATES' Makefile
+make -s print-vars 2>/dev/null | grep GTAP_K_MAX_CANDIDATES || true
+
+./scripts/run_kcgpu_orientation_k579_graph_tuned.sh
