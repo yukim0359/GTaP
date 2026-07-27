@@ -27,10 +27,11 @@ IDLE_WARP_COLOR = _blend_on_white(NOT_WORKING_COLOR, NOT_WORKING_ALPHA)
 
 
 def make_timeline_tasks_colormap(max_tasks=MAX_TASKS_PER_BATCH):
-    """Blues for tasks 1..max_tasks; idle (0) via cmap.set_under (blended orange)."""
+    """Blues for any positive tasks_in_batch; idle (0) via cmap.set_under."""
     cmap = TASKS_IN_BATCH_CMAP.copy()
     cmap.set_under(IDLE_WARP_COLOR)
-    norm = mpl.colors.Normalize(vmin=1.0, vmax=float(max_tasks))
+    # Tiny positive vmin: only exact 0 uses under (orange idle).
+    norm = mpl.colors.Normalize(vmin=1e-6, vmax=float(max_tasks))
     return cmap, norm
 
 
@@ -39,19 +40,22 @@ HEATMAP_CMAP = TIMELINE_HEATMAP_CMAP
 
 
 def tasks_in_batch_scalar_mappable(max_tasks=MAX_TASKS_PER_BATCH):
-    """Colorbar mappable: 1..max_tasks Blues; extend='min' shows idle (under) triangle."""
+    """Colorbar mappable: Blues for tasks; extend='min' shows idle (under) triangle."""
     cmap, norm = make_timeline_tasks_colormap(max_tasks)
     sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     return sm
 
 
-COLORBAR_LABEL_TASKS = "Tasks in batch (0 = idle, orange)"
+COLORBAR_LABEL_TASKS = "Tasks in batch (0 = idle)"
 
 
 def configure_tasks_in_batch_colorbar(cbar, max_tasks=MAX_TASKS_PER_BATCH):
-    cbar.set_ticks([1, 8, 16, 24, max_tasks])
-
+    step = max(1, int(max_tasks) // 4)
+    ticks = list(range(0, int(max_tasks) + 1, step))
+    if ticks[-1] != int(max_tasks):
+        ticks.append(int(max_tasks))
+    cbar.set_ticks(ticks)
 # App name to title string mapping
 APP_TITLES = {
     'fib': 'Fibonacci (n=35)',

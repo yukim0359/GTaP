@@ -26,7 +26,7 @@ GTAP_BLOCK_SIZE                ?= 32
 GTAP_MAX_TASKS_PER_BLOCK       ?= 150000
 GTAP_MAX_TASKS_PER_WARP        ?= 100000
 GTAP_NUM_QUEUES                ?= 1
-GTAP_CFLAGS                    ?= -DGTAP_ASSUME_NO_TASKWAIT
+GTAP_CFLAGS                    ?= -fgtap-no-taskwait
 BFS_BATCH_SIZE                 ?= 32
 
 .PHONY: all gtap_thread gtap_thread_batched gtap_block clean print-vars
