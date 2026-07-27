@@ -94,12 +94,11 @@ __global__ void exec_kernel(int n) {
 GTaP requires several compile-time configuration macros to control memory allocation and performance; default values are provided but may not be appropriate for all programs.
 These macros must be defined before including `gtap_thread.cuh` / `gtap_block.cuh` (or passed as `-D` flags to the compiler). 
 
-| Macro | Applies to | Description |
+| Option | Applies to | Description |
 |-------|-----------|-------------|
 | `GTAP_GRID_SIZE` | both | Number of thread blocks used to launch the kernel (grid size, 1-D). |
 | `GTAP_BLOCK_SIZE` | both | Number of threads per block (block size, 1-D). |
 | `GTAP_MAX_TASKS_PER_WARP` | thread | Maximum number of pending tasks that can be held per warp. Determines the size of the per-warp task pool. |
 | `GTAP_MAX_TASKS_PER_BLOCK` | block | Maximum number of pending tasks that can be held per block. |
-| `GTAP_MAX_CHILD_TASKS` | both | Maximum number of child tasks a single task may spawn within one task function invocation. |
 | `GTAP_NUM_QUEUES` | thread | Number of EPAQ queues. Default is `1`. Increase when `queue(expr)` hints are used. |
-| `GTAP_ASSUME_NO_TASKWAIT` | both | When defined, omits join metadata (child task IDs). Safe only for programs that never execute `taskwait`. Reduces per-task memory overhead. |
+| `-fgtap-no-taskwait` | both | Compiler option for the compact no-taskwait runtime mode. Safe only for programs that never execute `taskwait`. Reduces per-task memory overhead. |
