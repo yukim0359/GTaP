@@ -8,12 +8,6 @@
 
 inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
 
-#ifndef GTAP_RESULT_HANDLE_CAPACITY
-#define GTAP_RESULT_HANDLE_CAPACITY 1000
-#endif
-
-GTAP_VALIDATE_RESULT_HANDLE_CONFIG();
-
 // #define DEBUG
 // #define INIT_PROFILE
 
@@ -30,15 +24,11 @@ struct TaskHeader {
     uint16_t   generation;
     uint16_t   state;
     uint16_t   queue_idx;
-    uint16_t   retain_parent_result;
     // Info of parent task
     int        parent_tid;
     uint16_t   parent_generation;
     // Info of child tasks
     int        waiting_child_count;
-    int        result_handle_begin;
-    int        result_handle_last;
-    int        result_handle_count;
 #endif
 };
 
@@ -60,21 +50,12 @@ struct TaskIdList {
     int id_list_free_pos;
 };
 
-struct GTaPResultHandle {
-    int child_tid;
-    int kind;
-    int next;
-    void* lhs_addr;
-};
-
 __constant__ TaskHeader* d_task_headers;
 __constant__ char* d_task_data_bytes;
 __constant__ TaskIdList* d_task_id_lists;
-__constant__ GTaPResultHandle* d_result_handles;
 #ifdef GTAP_THREAD_HAS_GENERATED_TASK_IDS
 __constant__ int* d_task_id_generated_by_queue_idx;
 #endif
-__device__ int d_result_handle_top;
 __device__ int d_first_task_finished;
 __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
@@ -157,10 +138,6 @@ __global__ void init_warp_id_pools_metadata() {
     __threadfence();
 }
 
-extern "C" __device__ __forceinline__ void __gtap_release_task_id(int tid) {
-    release_task_id_to_warp_pool(tid);
-}
-
 __device__ __forceinline__ void* __gtap_get_task_data(int tid) {
     return d_task_data_bytes + (size_t)tid * gtap_device_task_data_stride();
 }
@@ -168,82 +145,4 @@ __device__ __forceinline__ void* __gtap_get_task_data(int tid) {
 template <typename TaskType>
 __device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
     return reinterpret_cast<TaskType*>(__gtap_get_task_data(tid));
-}
-
-extern "C" __device__ __forceinline__ void __gtap_append_result_handle(
-    int parent_tid,
-    int kind,
-    int child_tid,
-    void* lhs_addr
-) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    (void)parent_tid;
-    (void)kind;
-    (void)child_tid;
-    (void)lhs_addr;
-#else
-    int slot = atomicAdd(&d_result_handle_top, 1);
-    if (slot >= GTAP_RESULT_HANDLE_CAPACITY) {
-        GTAP_RECORD_RESULT_HANDLE_OVERFLOW(
-            parent_tid, child_tid, slot, GTAP_RESULT_HANDLE_CAPACITY);
-    }
-    d_result_handles[slot].child_tid = child_tid;
-    d_result_handles[slot].kind = kind;
-    d_result_handles[slot].next = -1;
-    d_result_handles[slot].lhs_addr = lhs_addr;
-
-    TaskHeader* parent_hdr = &d_task_headers[parent_tid];
-    int prev_last = parent_hdr->result_handle_last;
-    if (prev_last >= 0) {
-        d_result_handles[prev_last].next = slot;
-    } else {
-        parent_hdr->result_handle_begin = slot;
-    }
-    parent_hdr->result_handle_last = slot;
-    atomicAdd(&parent_hdr->result_handle_count, 1);
-#endif
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_begin(int tid) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    (void)tid;
-    return 0;
-#else
-    return load_L2(&d_task_headers[tid].result_handle_begin);
-#endif
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_count(int tid) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    (void)tid;
-    return 0;
-#else
-    return load_L2(&d_task_headers[tid].result_handle_count);
-#endif
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_child_tid(int handle_index) {
-    return load_L2(&d_result_handles[handle_index].child_tid);
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_kind(int handle_index) {
-    return load_L2(&d_result_handles[handle_index].kind);
-}
-
-extern "C" __device__ __forceinline__ int __gtap_get_result_handle_next(int handle_index) {
-    return load_L2(&d_result_handles[handle_index].next);
-}
-
-extern "C" __device__ __forceinline__ void* __gtap_get_result_handle_lhs_addr(int handle_index) {
-    return load_L2_ptr(&d_result_handles[handle_index].lhs_addr);
-}
-
-extern "C" __device__ __forceinline__ void __gtap_clear_result_handles(int tid) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    (void)tid;
-#else
-    d_task_headers[tid].result_handle_begin = -1;
-    d_task_headers[tid].result_handle_last = -1;
-    d_task_headers[tid].result_handle_count = 0;
-#endif
 }

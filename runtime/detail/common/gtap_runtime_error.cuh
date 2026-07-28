@@ -9,11 +9,10 @@ enum GTapRuntimeError {
     GTAP_ERROR_INVALID_QUEUE_IDX = 1,
     GTAP_ERROR_INVALID_QUEUE_IDX_AFTER_JOIN = 2,
     GTAP_ERROR_QUEUE_OVERFLOW = 3,
-    GTAP_ERROR_RESULT_HANDLE_OVERFLOW = 4,
-    GTAP_ERROR_TASK_ID_POOL_SLOT_BUSY = 5,
-    GTAP_ERROR_TASK_ID_POOL_LOW_HEADROOM = 6,
-    GTAP_ERROR_GENERATED_TASK_ID_BUFFER_OVERFLOW = 7,
-    GTAP_ERROR_INVALID_TASKWAIT = 8,
+    GTAP_ERROR_TASK_ID_POOL_SLOT_BUSY = 4,
+    GTAP_ERROR_TASK_ID_POOL_LOW_HEADROOM = 5,
+    GTAP_ERROR_GENERATED_TASK_ID_BUFFER_OVERFLOW = 6,
+    GTAP_ERROR_INVALID_TASKWAIT = 7,
     GTAP_ERROR_COUNT
 };
 
@@ -105,20 +104,6 @@ static void gtap_print_detail_queue_overflow(const GTapRuntimeErrorReport* r) {
     }
 }
 
-static void gtap_print_detail_result_handle_overflow(const GTapRuntimeErrorReport* r) {
-    if (r->queue_idx >= 0) {
-        printf(
-            "Result-handle table overflow for parent tid=%d "
-            "(child_tid=%d, slot=%d, capacity=%d)",
-            r->tid, r->queue_idx, r->value, r->limit);
-    } else {
-        printf(
-            "Result-handle table overflow for parent tid=%d "
-            "(slot=%d, capacity=%d)",
-            r->tid, r->value, r->limit);
-    }
-}
-
 static void gtap_print_detail_task_id_pool_slot_busy(const GTapRuntimeErrorReport* r) {
     const int unreleased_slot =
         (r->limit > 0) ? (r->value % r->limit) : r->value;
@@ -165,7 +150,6 @@ static const char* const kGtapRuntimeErrorShortMessage[GTAP_ERROR_COUNT] = {
     "Invalid queue index",
     "Invalid queue index after join",
     "Queue overflow",
-    "Result handle table overflow",
     "Task ID pool exhausted",
     "Task ID pool exhausted",
     "Generated task ID buffer overflow",
@@ -177,7 +161,6 @@ static const GTapRuntimeErrorDetailFn kGtapRuntimeErrorDetailPrinter[GTAP_ERROR_
     gtap_print_detail_invalid_queue_idx,
     gtap_print_detail_invalid_queue_idx_after_join,
     gtap_print_detail_queue_overflow,
-    gtap_print_detail_result_handle_overflow,
     gtap_print_detail_task_id_pool_slot_busy,
     gtap_print_detail_task_id_pool_low_headroom,
     gtap_print_detail_generated_task_id_buffer_overflow,
@@ -289,11 +272,6 @@ __device__ __forceinline__ void gtap_record_runtime_error_and_trap(
 #define GTAP_RECORD_QUEUE_OVERFLOW(tid, queue_idx, usage, capacity) \
     gtap_record_runtime_error_and_trap( \
         GTAP_ERROR_QUEUE_OVERFLOW, (tid), (queue_idx), (usage), (capacity), __LINE__)
-
-#define GTAP_RECORD_RESULT_HANDLE_OVERFLOW(parent_tid, child_tid, slot, capacity) \
-    gtap_record_runtime_error_and_trap( \
-        GTAP_ERROR_RESULT_HANDLE_OVERFLOW, \
-        (parent_tid), (child_tid), (slot), (capacity), __LINE__)
 
 #define GTAP_RECORD_TASK_ID_POOL_SLOT_BUSY(tid, alloc_count, pool_size) \
     gtap_record_runtime_error_and_trap( \
