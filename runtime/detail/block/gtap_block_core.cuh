@@ -76,12 +76,7 @@ __global__ void init_block_id_pools_metadata() {
     __threadfence();
 }
 
-struct TaskIdFromPool {
-    int tid;
-    bool first_use;
-};
-
-__device__ __forceinline__ TaskIdFromPool get_task_id_from_block_pool(
+__device__ __forceinline__ int get_task_id_from_block_pool(
     TaskIdList* tid_list,
     int* id_list_alloc_pos,
     int* id_list_free_pos_stale
@@ -106,7 +101,7 @@ __device__ __forceinline__ TaskIdFromPool get_task_id_from_block_pool(
                 id, free_count, GTAP_TASK_ID_POOL_MIN_FREE);
         }
     }
-    return TaskIdFromPool{id, first_use};
+    return id;
 }
 
 __device__ __forceinline__ void release_task_id_to_block_pool(int id) {

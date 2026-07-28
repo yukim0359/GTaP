@@ -85,12 +85,7 @@ __device__ __forceinline__ void set_task_id_generated(int warp_id_global, int qu
 }
 #endif
 
-struct TaskIdFromPool {
-    int tid;
-    bool first_use;
-};
-
-__device__ __forceinline__ TaskIdFromPool get_task_id_from_warp_pool(TaskIdList* tid_list, int* id_list_alloc_pos, int* id_list_free_pos_stale) {
+__device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, int* id_list_alloc_pos, int* id_list_free_pos_stale) {
     int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     int warp_id_global = (tid_list - d_task_id_lists);
     int id = 0;
@@ -116,7 +111,7 @@ __device__ __forceinline__ TaskIdFromPool get_task_id_from_warp_pool(TaskIdList*
                 id, free_count, GTAP_TASK_ID_POOL_MIN_FREE);
         }
     }
-    return TaskIdFromPool{id, first_use};
+    return id;
 }
 
 __device__ __forceinline__ void release_task_id_to_warp_pool(int id) {

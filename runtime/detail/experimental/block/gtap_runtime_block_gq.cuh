@@ -552,8 +552,8 @@ __device__ __forceinline__ void* __gtap_spawn_task(
     void (*func)(void*, int, TaskContext*)
 ) {
     TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
-    TaskIdFromPool from_pool = get_task_id_from_block_pool(tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
-    int new_tid = from_pool.tid;
+    int new_tid = get_task_id_from_block_pool(
+        tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     TaskHeader* cached_hdr = &ctx->cached_task_header;
     new_hdr->func = func;
@@ -590,8 +590,8 @@ __device__ __forceinline__ void __gtap_spawn_task_raw(
     size_t task_data_size
 ) {
     TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
-    TaskIdFromPool from_pool = get_task_id_from_block_pool(tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
-    int new_tid = from_pool.tid;
+    int new_tid = get_task_id_from_block_pool(
+        tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
     
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     TaskHeader* cached_hdr = &ctx->cached_task_header;

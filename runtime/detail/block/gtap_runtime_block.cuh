@@ -525,8 +525,8 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
 ) {
     (void)unused_value;
     TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
-    TaskIdFromPool from_pool = get_task_id_from_block_pool(tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
-    int new_tid = from_pool.tid;
+    int new_tid = get_task_id_from_block_pool(
+        tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     new_hdr->func = func;
 #ifndef GTAP_ASSUME_NO_TASKWAIT

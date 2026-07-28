@@ -717,8 +717,10 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
         GTAP_RECORD_INVALID_QUEUE_IDX(self_tid, child_queue_idx, GTAP_NUM_QUEUES);
     }
     int warp_id_global = get_warp_id_global();
-    TaskIdFromPool from_pool = get_task_id_from_warp_pool(&d_task_id_lists[warp_id_global], &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
-    int new_tid = from_pool.tid;
+    int new_tid = get_task_id_from_warp_pool(
+        &d_task_id_lists[warp_id_global],
+        &ctx->id_list_alloc_pos,
+        &ctx->id_list_free_pos_stale);
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     new_hdr->func = func;
 #if (GTAP_NUM_QUEUES > 1)
@@ -760,8 +762,8 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
 
     int warp_id_global = get_warp_id_global();
     TaskIdList* tid_list = &d_task_id_lists[warp_id_global];
-    TaskIdFromPool from_pool = get_task_id_from_warp_pool(tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
-    int new_tid = from_pool.tid;
+    int new_tid = get_task_id_from_warp_pool(
+        tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
     
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     new_hdr->func = func;
