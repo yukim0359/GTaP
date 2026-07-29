@@ -684,16 +684,16 @@ extern "C" __device__ __forceinline__ void __gtap_finish_task(int tid, TaskConte
     release_task_id_to_warp_pool(tid);
 #else
     int lane = get_lane_id();
-    TaskHeader* cached_hdr = &ctx->task_headers[lane];
+    CachedTaskHeader* cached_hdr = &ctx->task_headers[lane];
     int parent_tid = cached_hdr->parent_tid;
     d_task_headers[tid].generation = cached_hdr->generation + 1;
-    
-    if (tid != 0 && load_L2_u16t(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
+
+    if (tid != 0 &&
+        load_L2_u16t(&d_task_headers[parent_tid].generation) ==
+            cached_hdr->parent_generation) {
         notify_parent(parent_tid, ctx);
-        release_task_id_to_warp_pool(tid);
-    } else {
-        release_task_id_to_warp_pool(tid);
     }
+    release_task_id_to_warp_pool(tid);
 #endif
     
     if (tid == 0) {
@@ -728,7 +728,7 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
 #endif
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     int lane = get_lane_id();
-    TaskHeader* cached_hdr = &ctx->task_headers[lane];
+    CachedTaskHeader* cached_hdr = &ctx->task_headers[lane];
     new_hdr->state = 0;
     new_hdr->parent_tid = self_tid;
     new_hdr->parent_generation = cached_hdr->generation;
@@ -772,7 +772,7 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
 #endif
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     int lane = get_lane_id();
-    TaskHeader* cached_hdr = &ctx->task_headers[lane];
+    CachedTaskHeader* cached_hdr = &ctx->task_headers[lane];
     new_hdr->state = 0;
     new_hdr->parent_tid = self_tid;
     new_hdr->parent_generation = cached_hdr->generation;
@@ -967,10 +967,13 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                TaskHeader* dst_hdr = &warp_contexts[warp_id_in_block].task_headers[lane];
-                dst_hdr->generation = load_L2_u16t(&src_hdr->generation);
+                CachedTaskHeader* dst_hdr =
+                    &warp_contexts[warp_id_in_block].task_headers[lane];
+                dst_hdr->generation =
+                    load_L2_u16t(&src_hdr->generation);
                 dst_hdr->parent_tid = load_L2(&src_hdr->parent_tid);
-                dst_hdr->parent_generation = load_L2_u16t(&src_hdr->parent_generation);
+                dst_hdr->parent_generation =
+                    load_L2_u16t(&src_hdr->parent_generation);
             }
 #endif
             
