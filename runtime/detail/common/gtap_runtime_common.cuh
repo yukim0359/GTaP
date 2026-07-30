@@ -253,7 +253,7 @@ __device__ __forceinline__ bool get_random_bool() {
 }
 
 #if GTAP_NUM_QUEUES > 1
-// EPAQ: pick the queue with the largest pending count; mark it tried (-1).
+// DAQ: pick the queue with the largest pending count; mark it tried (-1).
 __device__ __forceinline__ int gtap_select_next_fullest_queue_idx(int* queue_counts) {
     int max_k = 0;
     int max_count = -1;

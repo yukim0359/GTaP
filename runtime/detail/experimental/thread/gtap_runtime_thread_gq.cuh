@@ -886,14 +886,14 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             }
             #pragma unroll
             for (int attempt = 0; attempt < GTAP_NUM_QUEUES; ++attempt) {
-                int epaq_idx;
+                int daq_idx;
                 if (lane == 0) {
-                    epaq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
-                    warp_contexts[warp_id_in_block].queue_idx = epaq_idx;
+                    daq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
+                    warp_contexts[warp_id_in_block].queue_idx = daq_idx;
                 }
-                epaq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
+                daq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
                 int remaining = GTAP_WARP_SIZE - execute_task_count;
-                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, epaq_idx, prev_get_task);
+                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, daq_idx, prev_get_task);
                 execute_task_count += pop_count;
                 if (execute_task_count != 0) break;
             }

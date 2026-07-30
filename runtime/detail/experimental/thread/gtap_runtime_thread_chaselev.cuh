@@ -543,9 +543,9 @@ __device__ __forceinline__ int pop_single_chase_lev(WarpTaskQueue* q) {
 }
 
 // Sequential pop using chase-lev (repeats single pops)
-__device__ __forceinline__ int pop_chase_lev(int* execute_task_id, int max_count_to_pop, int epaq_idx) {
+__device__ __forceinline__ int pop_chase_lev(int* execute_task_id, int max_count_to_pop, int daq_idx) {
     int lane = get_lane_id();
-    WarpTaskQueue* myQueue = &d_warp_task_queues[epaq_idx][get_warp_id_global()];
+    WarpTaskQueue* myQueue = &d_warp_task_queues[daq_idx][get_warp_id_global()];
     int pop_count = 0;
     
     for (int i = 0; i < max_count_to_pop; i++) {
@@ -562,7 +562,7 @@ __device__ __forceinline__ int pop_chase_lev(int* execute_task_id, int max_count
         if (lane == target_lane) {
             *execute_task_id = task_id;
 #ifdef DEBUG
-            printf("pop_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", task_id, epaq_idx, lane, get_warp_id_in_block(), blockIdx.x);
+            printf("pop_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", task_id, daq_idx, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         }
         pop_count++;
@@ -592,7 +592,7 @@ __device__ __forceinline__ int steal_single_chase_lev(WarpTaskQueue* q) {
 
 // Sequential steal using chase-lev (repeats single steals)
 template<TerminationMode M>
-__device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_count_to_steal, int epaq_idx, bool prev_get_task) {
+__device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_count_to_steal, int daq_idx, bool prev_get_task) {
     int warp_id_global = get_warp_id_global();
     int lane = get_lane_id();
     int target_warp_id_global = 0;
@@ -603,10 +603,10 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
     // Select a random victim (lane 0 only)
     if (lane == 0) {
         target_warp_id_global = get_random_warpnum_global(warp_id_global);
-        targetWq = &d_warp_task_queues[epaq_idx][target_warp_id_global];
+        targetWq = &d_warp_task_queues[daq_idx][target_warp_id_global];
     }
     target_warp_id_global = __shfl_sync(0xFFFFFFFFu, target_warp_id_global, 0);
-    targetWq = &d_warp_task_queues[epaq_idx][target_warp_id_global];
+    targetWq = &d_warp_task_queues[daq_idx][target_warp_id_global];
     
     // Sequential steals using chase-lev
     for (int i = 0; i < max_count_to_steal; i++) {
@@ -629,7 +629,7 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
         if (lane == target_lane) {
             *execute_task_id = task_id;
 #ifdef DEBUG
-            printf("steal_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", task_id, epaq_idx, lane, get_warp_id_in_block(), blockIdx.x);
+            printf("steal_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", task_id, daq_idx, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         }
         steal_count++;
@@ -979,20 +979,20 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             }
             #pragma unroll
             for (int attempt = 0; attempt < GTAP_NUM_QUEUES; ++attempt) {
-                int epaq_idx;
+                int daq_idx;
                 if (lane == 0) {
-                    epaq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
-                    warp_contexts[warp_id_in_block].queue_idx = epaq_idx;
+                    daq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
+                    warp_contexts[warp_id_in_block].queue_idx = daq_idx;
                 }
-                epaq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
+                daq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
                 if (prev_get_task && execute_task_count < GTAP_WARP_SIZE) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
-                    int pop_count = pop_chase_lev(&execute_task_id, remaining, epaq_idx);
+                    int pop_count = pop_chase_lev(&execute_task_id, remaining, daq_idx);
                     execute_task_count += pop_count;
                 }
                 if (execute_task_count < GTAP_WARP_SIZE) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
-                    int steal_count = steal_chase_lev<M>(&execute_task_id, remaining, epaq_idx, prev_get_task);
+                    int steal_count = steal_chase_lev<M>(&execute_task_id, remaining, daq_idx, prev_get_task);
                     execute_task_count += steal_count;
                 }
                 if (execute_task_count != 0) break;

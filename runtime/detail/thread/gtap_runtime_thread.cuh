@@ -505,9 +505,9 @@ __global__ void get_final_warp_working_time_indices(int* indices) {
 #endif
 
 // define pop_batch, steal_batch, push_batch
-__device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_pop, int* tail, int epaq_idx) {
+__device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_pop, int* tail, int daq_idx) {
     int lane = get_lane_id();
-    WarpTaskQueue* myQueue = &d_warp_task_queues[epaq_idx][get_warp_id_global()];
+    WarpTaskQueue* myQueue = &d_warp_task_queues[daq_idx][get_warp_id_global()];
     int pop_count = 0;
     if (lane == 0) {
         while (true) {
@@ -525,7 +525,7 @@ __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_
     if (lane >= GTAP_WARP_SIZE - max_count_to_pop && lane < GTAP_WARP_SIZE - max_count_to_pop + pop_count) {
         int pop_task_id = load_L2(&myQueue->queue[(*tail + (lane - GTAP_WARP_SIZE + max_count_to_pop)) % GTAP_QUEUE_SIZE]);
 #ifdef DEBUG
-        printf("pop_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", pop_task_id, epaq_idx, lane, get_warp_id_in_block(), blockIdx.x);
+        printf("pop_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", pop_task_id, daq_idx, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         *execute_task_id = pop_task_id;
     }
@@ -533,7 +533,7 @@ __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_
 }
 
 template<TerminationMode M>
-__device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_to_steal, int epaq_idx, bool prev_get_task) {
+__device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_to_steal, int daq_idx, bool prev_get_task) {
     int warp_id_global = get_warp_id_global();
     int lane = get_lane_id();
     int target_warp_id_global = 0;
@@ -544,7 +544,7 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
         unsigned lock_backoff_ns = 32;
         while (true) {
             target_warp_id_global = get_random_warpnum_global(warp_id_global);
-            targetWq = &d_warp_task_queues[epaq_idx][target_warp_id_global];
+            targetWq = &d_warp_task_queues[daq_idx][target_warp_id_global];
             if (atomicCAS(&targetWq->queue_lock, 0, 1) == 0) break;
             __nanosleep(lock_backoff_ns);
             if (lock_backoff_ns < (1u << 12)) {
@@ -573,10 +573,10 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
     target_warp_id_global = __shfl_sync(0xFFFFFFFFu, target_warp_id_global, 0);
     old_head = __shfl_sync(0xFFFFFFFFu, old_head, 0);
     if (lane >= GTAP_WARP_SIZE - max_count_to_steal && lane < GTAP_WARP_SIZE - max_count_to_steal + steal_count) {
-        targetWq = &d_warp_task_queues[epaq_idx][target_warp_id_global];
+        targetWq = &d_warp_task_queues[daq_idx][target_warp_id_global];
         int steal_task_id = load_L2(&targetWq->queue[(old_head + (lane - GTAP_WARP_SIZE + max_count_to_steal)) % GTAP_QUEUE_SIZE]);
 #ifdef DEBUG
-        printf("steal_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", steal_task_id, epaq_idx, lane, get_warp_id_in_block(), blockIdx.x);
+        printf("steal_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", steal_task_id, daq_idx, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         *execute_task_id = steal_task_id;
     }
@@ -881,45 +881,45 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
                 }
                 #pragma unroll
                 for (int attempt = 0; attempt < GTAP_NUM_QUEUES; ++attempt) {
-                    int epaq_idx;
+                    int daq_idx;
                     if (lane == 0) {
-                        epaq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
-                        warp_contexts[warp_id_in_block].queue_idx = epaq_idx;
+                        daq_idx = gtap_select_next_fullest_queue_idx(queue_counts);
+                        warp_contexts[warp_id_in_block].queue_idx = daq_idx;
                     }
-                    epaq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
+                    daq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
                     if (prev_get_task && execute_task_count < GTAP_WARP_SIZE) {
                         int remaining = GTAP_WARP_SIZE - execute_task_count;
                         int pop_count = pop_batch(
                             &execute_task_id, remaining,
-                            &tail_by_queue_idx[warp_id_in_block][epaq_idx], epaq_idx
+                            &tail_by_queue_idx[warp_id_in_block][daq_idx], daq_idx
                         );
                         execute_task_count += pop_count;
                     }
                     if (execute_task_count < GTAP_WARP_SIZE) {
                         int remaining = GTAP_WARP_SIZE - execute_task_count;
                         int steal_count = steal_batch<M>(
-                            &execute_task_id, remaining, epaq_idx, prev_get_task
+                            &execute_task_id, remaining, daq_idx, prev_get_task
                         );
                         execute_task_count += steal_count;
                     }
                     if (execute_task_count != 0) break;
                 }
             } else {
-                int epaq_idx = __shfl_sync(
+                int daq_idx = __shfl_sync(
                     0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0
                 );
                 if (prev_get_task) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
                     int pop_count = pop_batch(
                         &execute_task_id, remaining,
-                        &tail_by_queue_idx[warp_id_in_block][epaq_idx], epaq_idx
+                        &tail_by_queue_idx[warp_id_in_block][daq_idx], daq_idx
                     );
                     execute_task_count += pop_count;
                 }
                 if (execute_task_count < GTAP_WARP_SIZE) {
                     int remaining = GTAP_WARP_SIZE - execute_task_count;
                     int steal_count = steal_batch<M>(
-                        &execute_task_id, remaining, epaq_idx, prev_get_task
+                        &execute_task_id, remaining, daq_idx, prev_get_task
                     );
                     execute_task_count += steal_count;
                 }
