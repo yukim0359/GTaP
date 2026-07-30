@@ -727,13 +727,16 @@ extern "C" __device__ __forceinline__ void __gtap_finish_task(int tid, TaskConte
     release_task_id_to_warp_pool(tid);
 #else
     int lane = get_lane_id();
-    CachedTaskHeader* cached_hdr = &ctx->task_headers[lane];
-    int parent_tid = cached_hdr->parent_tid;
-    d_task_headers[tid].generation = cached_hdr->generation + 1;
+    int parent_tid = ctx->task_parent_tids[lane];
+    uint32_t cached_generations = ctx->task_generations[lane];
+    uint16_t generation = static_cast<uint16_t>(cached_generations);
+    uint16_t parent_generation =
+        static_cast<uint16_t>(cached_generations >> 16);
+    d_task_headers[tid].generation = generation + 1;
 
     if (tid != 0 &&
         load_L2_u16t(&d_task_headers[parent_tid].generation) ==
-            cached_hdr->parent_generation) {
+            parent_generation) {
         notify_parent(parent_tid, ctx);
     }
     release_task_id_to_warp_pool(tid);
@@ -772,9 +775,9 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
 #endif
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     int lane = get_lane_id();
-    CachedTaskHeader* cached_hdr = &ctx->task_headers[lane];
     new_hdr->parent_tid = self_tid;
-    new_hdr->parent_generation = cached_hdr->generation;
+    new_hdr->parent_generation =
+        static_cast<uint16_t>(ctx->task_generations[lane]);
     new_hdr->state = 0;
     new_hdr->waiting_child_count = 0;
 #endif
@@ -1006,13 +1009,15 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                CachedTaskHeader* dst_hdr =
-                    &warp_contexts[warp_id_in_block].task_headers[lane];
-                dst_hdr->generation =
-                    load_L2_u16t(&src_hdr->generation);
-                dst_hdr->parent_tid = load_L2(&src_hdr->parent_tid);
-                dst_hdr->parent_generation =
+                TaskContext* dst_ctx = &warp_contexts[warp_id_in_block];
+                uint16_t generation = load_L2_u16t(&src_hdr->generation);
+                uint16_t parent_generation =
                     load_L2_u16t(&src_hdr->parent_generation);
+                dst_ctx->task_parent_tids[lane] =
+                    load_L2(&src_hdr->parent_tid);
+                dst_ctx->task_generations[lane] =
+                    static_cast<uint32_t>(generation) |
+                    (static_cast<uint32_t>(parent_generation) << 16);
             }
 #endif
 

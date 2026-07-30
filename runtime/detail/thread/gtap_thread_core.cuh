@@ -32,16 +32,6 @@ struct TaskHeader {
 #endif
 };
 
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-struct CachedTaskHeader {
-    int parent_tid;
-    uint16_t generation;
-    uint16_t parent_generation;
-};
-static_assert(sizeof(CachedTaskHeader) == 8,
-              "CachedTaskHeader must remain compact");
-#endif
-
 struct TaskContext {
     int queue_idx;
     int task_id_generated_count_by_queue_idx[GTAP_NUM_QUEUES];
@@ -50,7 +40,8 @@ struct TaskContext {
     int id_list_alloc_pos;
     int id_list_free_pos_stale;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    CachedTaskHeader task_headers[GTAP_WARP_SIZE];
+    int task_parent_tids[GTAP_WARP_SIZE];
+    uint32_t task_generations[GTAP_WARP_SIZE];
 #endif
 };
 
