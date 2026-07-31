@@ -52,9 +52,6 @@ __constant__ char* d_task_data_bytes;
 __constant__ TaskIdList* d_task_id_lists;
 __constant__ int* d_task_id_storage;
 __constant__ int* d_task_id_valid;
-#ifdef GTAP_THREAD_HAS_GENERATED_TASK_IDS
-__constant__ int* d_task_id_generated_by_queue_idx;
-#endif
 __device__ int d_first_task_finished;
 __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
@@ -63,30 +60,6 @@ __device__ int d_active_worker_count;
 __constant__ long long (*having_task_time)[MAX_PROFILE_DATA];
 __constant__ long long (*working_time)[MAX_PROFILE_DATA];
 __constant__ int (*tasks_processed_count)[MAX_PROFILE_DATA];
-#endif
-
-#ifdef GTAP_THREAD_HAS_GENERATED_TASK_IDS
-constexpr int GTAP_TASK_ID_GEN_QUEUE_STRIDE = (GTAP_MAX_CHILD_TASKS + 1) * GTAP_WARP_SIZE;
-
-__device__ __forceinline__ int get_task_id_generated(int warp_id_global, int queue_idx, int idx) {
-    int offset =
-        (warp_id_global * d_gtap_launch_config.num_queues + queue_idx) *
-            GTAP_TASK_ID_GEN_QUEUE_STRIDE +
-        idx;
-    return d_task_id_generated_by_queue_idx[offset];
-}
-
-__device__ __forceinline__ void set_task_id_generated(int warp_id_global, int queue_idx, int idx, int task_id) {
-    if (idx >= GTAP_TASK_ID_GEN_QUEUE_STRIDE) {
-        GTAP_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
-            task_id, queue_idx, idx, GTAP_TASK_ID_GEN_QUEUE_STRIDE);
-    }
-    int offset =
-        (warp_id_global * d_gtap_launch_config.num_queues + queue_idx) *
-            GTAP_TASK_ID_GEN_QUEUE_STRIDE +
-        idx;
-    d_task_id_generated_by_queue_idx[offset] = task_id;
-}
 #endif
 
 __device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, int* id_list_alloc_pos, int* id_list_free_pos_stale) {
