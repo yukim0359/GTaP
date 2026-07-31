@@ -168,7 +168,8 @@ static bool gtap_k_clique_preprocess(
 
     clock_gettime(CLOCK_MONOTONIC, &orient_stop);
 
-    buffers.num_workers = GTAP_GRID_SIZE * GTAP_BLOCK_SIZE;
+    buffers.num_workers =
+        GTAP_K_RUNTIME_GRID_SIZE * GTAP_K_RUNTIME_BLOCK_SIZE;
     const int words_per_worker = (GTAP_K_MAX_CANDIDATES + 63) >> 6;
     buffers.cand_scratch_ints =
         (size_t)buffers.num_workers * (size_t)GTAP_K_MAX_CANDIDATES;
@@ -198,6 +199,12 @@ static bool gtap_k_clique_preprocess(
         cudaMemcpyHostToDevice));
     if (hooks.set_cuda_stack_limit) {
         CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, GTAP_K_CUDA_STACK_SIZE));
+        size_t actual_stack_size = 0;
+        CUDA_CHECK(cudaDeviceGetLimit(
+            &actual_stack_size, cudaLimitStackSize));
+        printf(
+            "CUDA stack limit: requested=%d actual=%zu bytes\n",
+            GTAP_K_CUDA_STACK_SIZE, actual_stack_size);
     }
 #ifdef GTAP_K_STATS
     CUDA_CHECK(cudaMalloc(
@@ -236,7 +243,13 @@ static bool gtap_k_clique_run_count_phase(
     }
 
     clock_gettime(CLOCK_MONOTONIC, &gtap_init_start);
-    cudaError_t err = gtap_initialize();
+    gtap_thread_config config{
+        .grid_size = GTAP_K_RUNTIME_GRID_SIZE,
+        .block_size = GTAP_K_RUNTIME_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_K_RUNTIME_MAX_TASKS_PER_WARP,
+        .num_queues = GTAP_K_RUNTIME_NUM_QUEUES,
+    };
+    cudaError_t err = gtap_initialize(config);
     clock_gettime(CLOCK_MONOTONIC, &gtap_init_stop);
     result.gtap_initialize_ms = elapsed_ms(gtap_init_start, gtap_init_stop);
     if (err != cudaSuccess) {
@@ -322,7 +335,7 @@ static bool gtap_k_clique_run_count_phase(
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
     CUDA_CHECK(cudaEventRecord(start));
-    exec_kernel_k<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>();
+    CUDA_CHECK(gtap_launch(exec_kernel_k));
     CUDA_CHECK(gtap_synchronize());
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaEventRecord(stop));

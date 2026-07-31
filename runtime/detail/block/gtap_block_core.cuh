@@ -37,11 +37,11 @@ struct TaskContext {
 };
 
 struct TaskIdList {
-    int id_list[GTAP_MAX_TASKS_PER_BLOCK];
     int id_list_free_pos;
 };
 
 __constant__ TaskIdList* d_task_id_lists;
+__constant__ int* d_task_id_storage;
 __constant__ TaskHeader* d_task_headers;
 __constant__ char* d_task_data_bytes;
 __constant__ int* d_task_id_generated;
@@ -50,8 +50,8 @@ __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
 
 #ifdef PROFILE
-__device__ long long having_task_time[GTAP_GRID_SIZE][MAX_PROFILE_DATA];
-__device__ long long working_time[GTAP_GRID_SIZE][MAX_PROFILE_DATA];
+__constant__ long long (*having_task_time)[MAX_PROFILE_DATA];
+__constant__ long long (*working_time)[MAX_PROFILE_DATA];
 #endif
 
 __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
@@ -71,7 +71,7 @@ __device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int
 __global__ void init_block_id_pools_metadata() {
     if (threadIdx.x == 0) {
         TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
-        tid_list->id_list_free_pos = GTAP_MAX_TASKS_PER_BLOCK;
+        tid_list->id_list_free_pos = d_gtap_launch_config.tasks_per_worker;
     }
     __threadfence();
 }
@@ -82,14 +82,16 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
     int* id_list_free_pos_stale
 ) {
     int old_alloc = atomicAdd(id_list_alloc_pos, 1);
-    int idx = old_alloc % GTAP_MAX_TASKS_PER_BLOCK;
+    const int tasks_per_block = d_gtap_launch_config.tasks_per_worker;
+    int idx = old_alloc % tasks_per_block;
     int block_id = static_cast<int>(tid_list - d_task_id_lists);
     int id;
-    bool first_use = (old_alloc < GTAP_MAX_TASKS_PER_BLOCK);
+    bool first_use = (old_alloc < tasks_per_block);
     if (first_use) {
-        id = block_id * GTAP_MAX_TASKS_PER_BLOCK + idx;
+        id = block_id * tasks_per_block + idx;
     } else {
-        id = load_L2(&tid_list->id_list[idx]);
+        id = load_L2(
+            &d_task_id_storage[block_id * tasks_per_block + idx]);
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
     if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
@@ -105,10 +107,14 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
 }
 
 __device__ __forceinline__ void release_task_id_to_block_pool(int id) {
-    int block_id = id / GTAP_MAX_TASKS_PER_BLOCK;
+    const int tasks_per_block = d_gtap_launch_config.tasks_per_worker;
+    int block_id = id / tasks_per_block;
     TaskIdList* tid_list = &d_task_id_lists[block_id];
     int old_free = atomicAdd(&tid_list->id_list_free_pos, 1);
-    store_L2(&tid_list->id_list[old_free % GTAP_MAX_TASKS_PER_BLOCK], id);
+    store_L2(
+        &d_task_id_storage[
+            block_id * tasks_per_block + old_free % tasks_per_block],
+        id);
 }
 
 __device__ __forceinline__ void* __gtap_get_task_data(int tid) {

@@ -16,14 +16,12 @@ SRC_SEQ    := $(SCRIPT_DIR)/seq_$(BENCHMARK_NAME).c
 
 OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_GTAP   := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
+OUT_GTAP_GQ := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)_gq
+OUT_GTAP_CHASELEV := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)_chaselev
 OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings ----
-GTAP_GRID_SIZE          ?= 4000
-GTAP_BLOCK_SIZE         ?= 32
-GTAP_MAX_TASKS_PER_WARP ?= 200000
-GTAP_NUM_QUEUES         ?= 1
 GTAP_CFLAGS             ?= 
 
 # ---- OpenMP build settings ----
@@ -38,9 +36,9 @@ LDFLAGS_OMP      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -lomp
 CC_SEQ           ?= $(CLANG_BIN)
 CFLAGS_SEQ       ?= -O3 -Wall -Wextra
 
-.PHONY: all gtap clean print-vars
+.PHONY: all gtap gtap_gq gtap_chaselev clean print-vars
 
-all: gtap
+all: gtap gtap_gq gtap_chaselev
 
 print-vars:
 	@echo "SCRIPT_DIR=$(SCRIPT_DIR)"
@@ -56,6 +54,8 @@ $(OUT_DIR):
 
 # ---- Build: gtap_$(BENCHMARK_NAME).cu ----
 gtap: $(OUT_GTAP)
+gtap_gq: $(OUT_GTAP_GQ)
+gtap_chaselev: $(OUT_GTAP_CHASELEV)
 
 $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
@@ -64,12 +64,33 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -Xcuda-ptxas --warn-on-spills \
 	  -I"$(GT_INC)" \
-	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
-	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_GTAP)" -o "$(OUT_GTAP)"
+
+$(OUT_GTAP_GQ): $(SRC_GTAP) | $(OUT_DIR)
+	"$(CLANG_BIN)" -O3 -x cuda \
+	  --cuda-path="$(CUDA_PATH)" \
+	  --cuda-gpu-arch="$(CUDA_ARCH)" \
+	  -Wall -Wextra \
+	  -Xcuda-ptxas --warn-on-spills \
+	  -I"$(GT_INC)" \
+	  -DGQ \
+	  $(GTAP_CFLAGS) \
+	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
+	  "$(SRC_GTAP)" -o "$(OUT_GTAP_GQ)"
+
+$(OUT_GTAP_CHASELEV): $(SRC_GTAP) | $(OUT_DIR)
+	"$(CLANG_BIN)" -O3 -x cuda \
+	  --cuda-path="$(CUDA_PATH)" \
+	  --cuda-gpu-arch="$(CUDA_ARCH)" \
+	  -Wall -Wextra \
+	  -Xcuda-ptxas --warn-on-spills \
+	  -I"$(GT_INC)" \
+	  -DCHASELEV \
+	  $(GTAP_CFLAGS) \
+	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
+	  "$(SRC_GTAP)" -o "$(OUT_GTAP_CHASELEV)"
 
 # # ---- Build: omp_$(BENCHMARK_NAME).c ----
 # omp: $(OUT_OMP)
@@ -84,4 +105,5 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 # 	"$(CC_SEQ)" $(CFLAGS_SEQ) "$(SRC_SEQ)" -o "$(OUT_SEQ)"
 
 clean:
-	rm -f $(OUT_GTAP) $(OUT_OMP) $(OUT_SEQ)
+	rm -f $(OUT_GTAP) $(OUT_GTAP_GQ) $(OUT_GTAP_CHASELEV) \
+	  $(OUT_OMP) $(OUT_SEQ)

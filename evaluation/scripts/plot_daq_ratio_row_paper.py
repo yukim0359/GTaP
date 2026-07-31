@@ -114,7 +114,7 @@ def _daq_med_column(df: pd.DataFrame) -> str:
 
 
 def _default_csv(bench: BenchSpec) -> Path:
-    return DAQ_DIR / bench.key / f"epaq_performance_results_{bench.key}.csv"
+    return DAQ_DIR / bench.key / f"daq_performance_results_{bench.key}.csv"
 
 
 def load_daq_ratio_csv(csv_path: Path) -> pd.DataFrame:

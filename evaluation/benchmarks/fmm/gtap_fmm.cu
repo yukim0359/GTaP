@@ -2654,7 +2654,13 @@ int main(int argc, char **argv) {
     {
       const std::chrono::high_resolution_clock::time_point t_gtap_init_start =
           std::chrono::high_resolution_clock::now();
-      CUDA_CHECK(gtap_initialize());
+      gtap_thread_config config{
+          .grid_size = GTAP_BENCH_GRID_SIZE,
+          .block_size = GTAP_BENCH_BLOCK_SIZE,
+          .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+          .num_queues = GTAP_BENCH_NUM_QUEUES,
+      };
+      CUDA_CHECK(gtap_initialize(config));
       CUDA_CHECK(cudaDeviceSynchronize());
       const std::chrono::high_resolution_clock::time_point t_gtap_init_end =
           std::chrono::high_resolution_clock::now();
@@ -2707,7 +2713,7 @@ int main(int argc, char **argv) {
 
   const std::chrono::high_resolution_clock::time_point t_dtt_kernel_start =
       std::chrono::high_resolution_clock::now();
-  fmm3d_dtt_fill_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>();
+  CUDA_CHECK(gtap_launch(fmm3d_dtt_fill_kernel));
   CUDA_CHECK(cudaGetLastError());
   gtap_report_cuda_error(cudaDeviceSynchronize());
   // CUDA_CHECK(cudaDeviceSynchronize());
@@ -2754,8 +2760,10 @@ int main(int argc, char **argv) {
   worklist_max_frontier = 1;
   while (in_count > 0) {
     CUDA_CHECK(cudaMemset(d_worklist_out_count, 0, sizeof(int)));
-    int blocks = std::max(1, (in_count + GTAP_BLOCK_SIZE - 1) / GTAP_BLOCK_SIZE);
-    fmm3d_worklist_expand_kernel<<<blocks, GTAP_BLOCK_SIZE>>>(
+    int blocks = std::max(
+        1, (in_count + GTAP_BENCH_BLOCK_SIZE - 1) /
+               GTAP_BENCH_BLOCK_SIZE);
+    fmm3d_worklist_expand_kernel<<<blocks, GTAP_BENCH_BLOCK_SIZE>>>(
         d_in_pairs, in_count, d_out_pairs, d_worklist_out_count,
         worklist_pair_cap, d_worklist_overflow);
     CUDA_CHECK(cudaGetLastError());
@@ -2935,7 +2943,7 @@ int main(int argc, char **argv) {
 
   // 9. GPU eval: L2P (local expansion) + P2P (direct pairs) per particle
   CUDA_CHECK(cudaEventRecord(ev_gpu_start));
-  fmm3d_eval_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>();
+  fmm3d_eval_kernel<<<GTAP_BENCH_GRID_SIZE, GTAP_BENCH_BLOCK_SIZE>>>();
   CUDA_CHECK(cudaGetLastError());
   CUDA_CHECK(cudaDeviceSynchronize());
   CUDA_CHECK(cudaEventRecord(ev_gpu_end));

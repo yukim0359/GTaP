@@ -67,6 +67,19 @@ __global__ void exec_kernel(int n) {
   #pragma gtap entry
   d_result = fib(n);
 }
+
+int main() {
+  gtap_thread_config config{
+    .grid_size = 4000,
+    .block_size = 32,
+    .max_tasks_per_warp = 150000,
+    .num_queues = 1,
+  };
+  gtap_initialize(config);
+  gtap_launch(exec_kernel, 40);
+  gtap_synchronize();
+  gtap_finalize();
+}
 ```
 
 ### Pragmas
@@ -74,7 +87,7 @@ __global__ void exec_kernel(int n) {
 | Pragma | Description |
 |--------|-------------|
 | `#pragma gtap function` | Marks a `__device__` function as a *task function*. The compiler transforms it into a state-machine so it can suspend at `taskwait` and resume later. |
-| `#pragma gtap task [queue(expr)]` | Spawns a child task. Must be placed immediately before a call to a task function. The parent continues; the child is enqueued by the runtime. The optional `queue(expr)` hint enables EPAQ (thread workers only). |
+| `#pragma gtap task [queue(expr)]` | Spawns a child task. Must be placed immediately before a call to a task function. The parent continues; the child is enqueued by the runtime. The optional `queue(expr)` hint enables DAQ (thread workers only). |
 | `#pragma gtap taskwait [queue(expr)]` | Suspends the current task until all direct child tasks spawned since the last `taskwait` have completed. `queue(expr)` selects the queue for the re-enqueued continuation. |
 | `#pragma gtap entry` | Enqueues the initial (root) task and starts execution inside the persistent kernel. Must be immediately followed by a call to a task function. |
 
@@ -83,22 +96,28 @@ __global__ void exec_kernel(int n) {
 
 | Function | Description |
 |----------|-------------|
-| `gtap_initialize()` | Allocates and initializes runtime memory (call once before the kernel launch). Returns `cudaError_t`. |
+| `gtap_initialize(config)` | Stores the launch configuration and allocates runtime memory. Returns `cudaError_t`. |
+| `gtap_launch(kernel, args...)` | Launches a kernel using the configuration supplied at initialization. |
+| `gtap_synchronize()` | Waits for device execution and reports runtime errors. |
 | `gtap_finalize()` | Releases memory allocated by `gtap_initialize()`. |
 | `gtap_reset()` | Resets runtime state without re-allocating memory (useful for multiple runs). |
 | `gtap_visualize_profile(name)` | Dumps profiling data to CSV files in `./profile/`. Available only when compiled with `-DPROFILE`. |
 
 
-## Compile-Time Parameters
+## Runtime Configuration
 
-GTaP requires several compile-time configuration macros to control memory allocation and performance; default values are provided but may not be appropriate for all programs.
-These macros must be defined before including `gtap_thread.cuh` / `gtap_block.cuh` (or passed as `-D` flags to the compiler). 
+Thread mode uses `gtap_thread_config`:
 
-| Option | Applies to | Description |
-|-------|-----------|-------------|
-| `GTAP_GRID_SIZE` | both | Number of thread blocks used to launch the kernel (grid size, 1-D). |
-| `GTAP_BLOCK_SIZE` | both | Number of threads per block (block size, 1-D). |
-| `GTAP_MAX_TASKS_PER_WARP` | thread | Maximum number of pending tasks that can be held per warp. Determines the size of the per-warp task pool. |
-| `GTAP_MAX_TASKS_PER_BLOCK` | block | Maximum number of pending tasks that can be held per block. |
-| `GTAP_NUM_QUEUES` | thread | Number of EPAQ queues. Default is `1`. Increase when `queue(expr)` hints are used. |
-| `-fgtap-no-taskwait` | both | Compiler option for the compact no-taskwait runtime mode. Safe only for programs that never execute `taskwait`. Reduces per-task memory overhead. |
+| Field | Description |
+|-------|-------------|
+| `grid_size` | Number of thread blocks. |
+| `block_size` | Number of threads per block. |
+| `max_tasks_per_warp` | Number of task slots per warp. |
+| `num_queues` | Number of DAQ queues. |
+
+Block mode uses `gtap_block_config`, with `grid_size` and
+`max_tasks_per_block`. Its block size remains the compile-time macro
+`GTAP_BLOCK_SIZE`.
+
+The compiler option `-fgtap-no-taskwait` enables the compact runtime mode
+for programs that never execute `taskwait`.

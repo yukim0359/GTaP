@@ -147,7 +147,13 @@ int main(int argc, char** argv) {
     cudaMemcpy(d_x,       h_x.data(),     cols      * sizeof(double),  cudaMemcpyHostToDevice);
     cudaMemcpy(d_y,       h_y.data(),     rows      * sizeof(double),  cudaMemcpyHostToDevice);
 
-    cudaError_t st = gtap_initialize();
+    gtap_thread_config config{
+        .grid_size = 3000,
+        .block_size = 64,
+        .max_tasks_per_warp = 50000,
+        .num_queues = 1,
+    };
+    cudaError_t st = gtap_initialize(config);
     if (st != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));
         return 1;
@@ -163,12 +169,12 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(rows);
+    st = gtap_launch(exec_kernel, rows);
     cudaEventRecord(stop);
+    gtap_synchronize();
     cudaEventSynchronize(stop);
     float ms = 0.f;
     cudaEventElapsedTime(&ms, start, stop);
-    cudaDeviceSynchronize();
 
     cudaMemcpy(h_y.data(), d_y, rows * sizeof(double), cudaMemcpyDeviceToHost);
 

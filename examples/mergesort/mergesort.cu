@@ -90,7 +90,13 @@ int main(int argc, char** argv) {
         printf("Generated %zu random elements (use %s <file> for custom data)\n", N, argv[0]);
     }
 
-    cudaError_t err = gtap_initialize();
+    gtap_thread_config config{
+        .grid_size = 1000,
+        .block_size = 32,
+        .max_tasks_per_warp = 80000,
+        .num_queues = 1,
+    };
+    cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
@@ -110,9 +116,9 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    my_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(static_cast<int>(N));
+    err = gtap_launch(my_kernel, static_cast<int>(N));
     cudaEventRecord(stop);
-    cudaDeviceSynchronize();
+    gtap_synchronize();
     cudaEventSynchronize(stop);
 
     float ms = 0.f;

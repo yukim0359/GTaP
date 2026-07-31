@@ -16,9 +16,7 @@ struct TaskContext;
 struct TaskHeader {
     void (*func)(void* task, int tid, TaskContext* __ctx);
 #ifdef GTAP_ASSUME_NO_TASKWAIT
-#if (GTAP_NUM_QUEUES > 1)
     uint16_t   queue_idx;
-#endif
 #else
     // Info of current task
     uint16_t   generation;
@@ -34,7 +32,7 @@ struct TaskHeader {
 
 struct TaskContext {
     int queue_idx;
-    int task_id_generated_count_by_queue_idx[GTAP_NUM_QUEUES];
+    int* task_id_generated_count_by_queue_idx;
     int* tail_by_queue_idx;
     int* staged_task_ids;
     int id_list_alloc_pos;
@@ -46,14 +44,14 @@ struct TaskContext {
 };
 
 struct TaskIdList {
-    int id_list[GTAP_TOTAL_TASK_IDS_PER_WARP];
-    int valid[GTAP_TOTAL_TASK_IDS_PER_WARP];
     int id_list_free_pos;
 };
 
 __constant__ TaskHeader* d_task_headers;
 __constant__ char* d_task_data_bytes;
 __constant__ TaskIdList* d_task_id_lists;
+__constant__ int* d_task_id_storage;
+__constant__ int* d_task_id_valid;
 #ifdef GTAP_THREAD_HAS_GENERATED_TASK_IDS
 __constant__ int* d_task_id_generated_by_queue_idx;
 #endif
@@ -62,17 +60,19 @@ __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
 
 #ifdef PROFILE
-__device__ long long having_task_time[GTAP_GRID_SIZE * GTAP_NUM_WARPS][MAX_PROFILE_DATA];
-__device__ long long working_time[GTAP_GRID_SIZE * GTAP_NUM_WARPS][MAX_PROFILE_DATA];
-__device__ int tasks_processed_count[GTAP_GRID_SIZE * GTAP_NUM_WARPS][MAX_PROFILE_DATA];
+__constant__ long long (*having_task_time)[MAX_PROFILE_DATA];
+__constant__ long long (*working_time)[MAX_PROFILE_DATA];
+__constant__ int (*tasks_processed_count)[MAX_PROFILE_DATA];
 #endif
 
 #ifdef GTAP_THREAD_HAS_GENERATED_TASK_IDS
 constexpr int GTAP_TASK_ID_GEN_QUEUE_STRIDE = (GTAP_MAX_CHILD_TASKS + 1) * GTAP_WARP_SIZE;
-constexpr int GTAP_TASK_ID_GEN_WARP_STRIDE = GTAP_NUM_QUEUES * GTAP_TASK_ID_GEN_QUEUE_STRIDE;
 
 __device__ __forceinline__ int get_task_id_generated(int warp_id_global, int queue_idx, int idx) {
-    int offset = warp_id_global * GTAP_TASK_ID_GEN_WARP_STRIDE + queue_idx * GTAP_TASK_ID_GEN_QUEUE_STRIDE + idx;
+    int offset =
+        (warp_id_global * d_gtap_launch_config.num_queues + queue_idx) *
+            GTAP_TASK_ID_GEN_QUEUE_STRIDE +
+        idx;
     return d_task_id_generated_by_queue_idx[offset];
 }
 
@@ -81,7 +81,10 @@ __device__ __forceinline__ void set_task_id_generated(int warp_id_global, int qu
         GTAP_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
             task_id, queue_idx, idx, GTAP_TASK_ID_GEN_QUEUE_STRIDE);
     }
-    int offset = warp_id_global * GTAP_TASK_ID_GEN_WARP_STRIDE + queue_idx * GTAP_TASK_ID_GEN_QUEUE_STRIDE + idx;
+    int offset =
+        (warp_id_global * d_gtap_launch_config.num_queues + queue_idx) *
+            GTAP_TASK_ID_GEN_QUEUE_STRIDE +
+        idx;
     d_task_id_generated_by_queue_idx[offset] = task_id;
 }
 #endif
@@ -90,16 +93,18 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, 
     int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     int warp_id_global = (tid_list - d_task_id_lists);
     int id = 0;
-    bool first_use = (old_alloc < GTAP_TOTAL_TASK_IDS_PER_WARP);
+    const int task_ids_per_warp = d_gtap_launch_config.tasks_per_worker;
+    bool first_use = (old_alloc < task_ids_per_warp);
     if (first_use) {
-        id = warp_id_global * GTAP_TOTAL_TASK_IDS_PER_WARP + old_alloc;
+        id = warp_id_global * task_ids_per_warp + old_alloc;
     } else {
-        int idx = old_alloc % GTAP_TOTAL_TASK_IDS_PER_WARP;
-        if (load_L2_acquire(&tid_list->valid[idx]) == 1) {
-            id = load_L2(&tid_list->id_list[idx]);
-            store_L2(&tid_list->valid[idx], 0);
+        int idx = old_alloc % task_ids_per_warp;
+        const int storage_idx = warp_id_global * task_ids_per_warp + idx;
+        if (load_L2_acquire(&d_task_id_valid[storage_idx]) == 1) {
+            id = load_L2(&d_task_id_storage[storage_idx]);
+            store_L2(&d_task_id_valid[storage_idx], 0);
         } else {
-            GTAP_RECORD_TASK_ID_POOL_SLOT_BUSY(id, old_alloc, GTAP_TOTAL_TASK_IDS_PER_WARP);
+            GTAP_RECORD_TASK_ID_POOL_SLOT_BUSY(id, old_alloc, task_ids_per_warp);
         }
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
@@ -119,17 +124,21 @@ __device__ __forceinline__ void release_task_id_to_warp_pool(int id) {
     int warp_id_global = get_warp_id_global();
     TaskIdList* tid_list = &d_task_id_lists[warp_id_global];
     int old_free = atomicAdd(&tid_list->id_list_free_pos, 1);
-    store_L2(&tid_list->id_list[old_free % GTAP_TOTAL_TASK_IDS_PER_WARP], id);
-    store_L2(&tid_list->valid[old_free % GTAP_TOTAL_TASK_IDS_PER_WARP], 1);
+    const int task_ids_per_warp = d_gtap_launch_config.tasks_per_worker;
+    const int storage_idx =
+        warp_id_global * task_ids_per_warp + old_free % task_ids_per_warp;
+    store_L2(&d_task_id_storage[storage_idx], id);
+    store_L2(&d_task_id_valid[storage_idx], 1);
 }
 
 __global__ void init_warp_id_pools_metadata() {
     int warp_id_in_block = get_warp_id_in_block();
     int lane = get_lane_id();
-    if (warp_id_in_block < GTAP_NUM_WARPS && lane == 0) {
-        int qid = blockIdx.x * GTAP_NUM_WARPS + warp_id_in_block;
+    if (warp_id_in_block < d_gtap_launch_config.warps_per_block && lane == 0) {
+        int qid =
+            blockIdx.x * d_gtap_launch_config.warps_per_block + warp_id_in_block;
         TaskIdList* tid_list = &d_task_id_lists[qid];
-        tid_list->id_list_free_pos = GTAP_TOTAL_TASK_IDS_PER_WARP;
+        tid_list->id_list_free_pos = d_gtap_launch_config.tasks_per_worker;
     }
     __threadfence();
 }

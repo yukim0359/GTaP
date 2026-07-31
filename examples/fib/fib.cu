@@ -27,7 +27,13 @@ int main(int argc, char** argv) {
     int n = 40;
     if (argc >= 2) n = atoi(argv[1]);
 
-    cudaError_t err = gtap_initialize();
+    gtap_thread_config config;
+    config.grid_size = 4000;
+    config.block_size = 32;
+    config.max_tasks_per_warp = 150000;
+    config.num_queues = 1;
+
+    cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
@@ -37,10 +43,19 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(n);
+    err = gtap_launch(exec_kernel, n);
+    if (err != cudaSuccess) {
+        printf("gtap_launch failed: %s\n", cudaGetErrorString(err));
+        gtap_finalize();
+        return 1;
+    }
     cudaEventRecord(stop);
-    cudaDeviceSynchronize();
-    cudaEventSynchronize(stop);
+    err = gtap_synchronize();
+    if (err != cudaSuccess) {
+        printf("gtap_synchronize failed: %s\n", cudaGetErrorString(err));
+        gtap_finalize();
+        return 1;
+    }
 
     int h_result;
     cudaMemcpyFromSymbol(&h_result, d_result, sizeof(int));
@@ -52,6 +67,6 @@ int main(int argc, char** argv) {
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-    gtap_finalize();
-    return 0;
+    err = gtap_finalize();
+    return err == cudaSuccess ? 0 : 1;
 }

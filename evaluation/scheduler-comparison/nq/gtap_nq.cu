@@ -12,6 +12,16 @@
 #endif
 #endif
 
+#ifndef GTAP_BENCH_GRID_SIZE
+#define GTAP_BENCH_GRID_SIZE 4000
+#endif
+#ifndef GTAP_BENCH_BLOCK_SIZE
+#define GTAP_BENCH_BLOCK_SIZE 32
+#endif
+#ifndef GTAP_BENCH_MAX_TASKS_PER_WARP
+#define GTAP_BENCH_MAX_TASKS_PER_WARP 100000
+#endif
+
 __device__ int d_answer;
 __device__ __constant__ int d_grid_size;
 __device__ __constant__ int d_cutoff_depth;
@@ -78,7 +88,13 @@ int main(int argc, char **argv) {
     cudaMemcpyToSymbol(d_grid_size, &GRID_SIZE, sizeof(int));
     cudaMemcpyToSymbol(d_cutoff_depth, &CUTOFF_DEPTH, sizeof(int));
 
-    cudaError_t err = gtap_initialize();
+    gtap_thread_config config{
+        .grid_size = GTAP_BENCH_GRID_SIZE,
+        .block_size = GTAP_BENCH_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+        .num_queues = 1,
+    };
+    cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
@@ -88,7 +104,12 @@ int main(int argc, char **argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    my_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>();
+    err = gtap_launch(my_kernel);
+    if (err != cudaSuccess) {
+        printf("Launch error: %s\n", cudaGetErrorString(err));
+        gtap_finalize();
+        return 1;
+    }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     float milliseconds = 0;

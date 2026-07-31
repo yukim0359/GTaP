@@ -12,15 +12,8 @@ OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_THREAD := $(OUT_DIR)/asynchronous_bfs_thread
 OUT_BLOCK  := $(OUT_DIR)/asynchronous_bfs_block
 
-# ---- Thread variant settings ----
-GTAP_GRID_SIZE             ?= 4000
 GTAP_BLOCK_SIZE            ?= 32
-GTAP_MAX_TASKS_PER_WARP    ?= 80000
-GTAP_NUM_QUEUES            ?= 1
 GTAP_CFLAGS                ?= -fgtap-no-taskwait
-
-# ---- Block variant settings ----
-GTAP_MAX_TASKS_PER_BLOCK   ?= 150000
 
 .PHONY: all thread block clean
 all: thread block
@@ -36,9 +29,6 @@ $(OUT_THREAD): $(SRC_THREAD) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DGTAP_GRID_SIZE=$(GTAP_GRID_SIZE) -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
-	  -DGTAP_MAX_TASKS_PER_WARP=$(GTAP_MAX_TASKS_PER_WARP) \
-	  -DGTAP_NUM_QUEUES=$(GTAP_NUM_QUEUES) \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_THREAD)" -o "$(OUT_THREAD)"
@@ -51,8 +41,7 @@ $(OUT_BLOCK): $(SRC_BLOCK) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DGTAP_GRID_SIZE=$(GTAP_GRID_SIZE) -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
-	  -DGTAP_MAX_TASKS_PER_BLOCK=$(GTAP_MAX_TASKS_PER_BLOCK) \
+	  -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK)"

@@ -36,7 +36,7 @@ static inline void save_warp_having_task_time_to_csv(long long* having_task_time
         return;
     }
     fprintf(timeline_file, "warp_id,time_index,timestamp_ns,relative_time_ms,state,state_description\n");
-    int totalWarps = GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    int totalWarps = gtap_stored_launch_config().total_workers;
     for (int warp = 0; warp < totalWarps; warp++) {
         int samples = indices[warp];
         if (samples == 0) continue;
@@ -109,7 +109,7 @@ static inline void save_warp_having_task_time_to_csv(long long* having_task_time
 
 static inline void visualize_having_task_time(const char* app_name) {
     printf("\n=== Warp Having-Task Time Visualization ===\n");
-    int totalWarps = GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    int totalWarps = gtap_stored_launch_config().total_workers;
     int* d_indices;
     cudaMalloc(&d_indices, sizeof(int) * totalWarps);
     get_final_warp_having_task_time_indices<<<totalWarps, 1>>>(d_indices);
@@ -195,7 +195,7 @@ static inline void save_warp_working_time_to_csv(long long* working_time_data, i
         return;
     }
     fprintf(timeline_file, "warp_id,time_index,timestamp_ns,relative_time_ms,state,state_description,tasks_in_batch\n");
-    int totalWarps = GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    int totalWarps = gtap_stored_launch_config().total_workers;
     for (int warp = 0; warp < totalWarps; warp++) {
         int samples = indices[warp];
         if (samples == 0) continue;
@@ -269,7 +269,7 @@ static inline void save_warp_working_time_to_csv(long long* working_time_data, i
 
 static inline void visualize_working_time(const char* app_name) {
     printf("\n=== Warp Working Time Visualization ===\n");
-    int totalWarps = GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    int totalWarps = gtap_stored_launch_config().total_workers;
     int* d_indices;
     cudaMalloc(&d_indices, sizeof(int) * totalWarps);
     get_final_warp_working_time_indices<<<totalWarps, 1>>>(d_indices);

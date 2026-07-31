@@ -7,10 +7,6 @@
 
 #include "k_clique_block_config_defaults.cuh"
 
-#ifndef GTAP_MAX_TASKS_PER_BLOCK
-#define GTAP_MAX_TASKS_PER_BLOCK GTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK
-#endif
-
 // #define GTAP_K_STATS
 #include "gtap_block.cuh"
 

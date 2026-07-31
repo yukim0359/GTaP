@@ -6,33 +6,43 @@ GT_INC     ?= $(GTAP_ROOT)/runtime
 CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
-SRC     := $(SCRIPT_DIR)/fib.cu
-OUT_DIR := $(SCRIPT_DIR)/bin
-OUT     := $(OUT_DIR)/fib
+SRC_THREAD := $(SCRIPT_DIR)/fib.cu
+SRC_BLOCK  := $(SCRIPT_DIR)/fib_block.cu
+OUT_DIR    := $(SCRIPT_DIR)/bin
+OUT_THREAD := $(OUT_DIR)/fib
+OUT_BLOCK  := $(OUT_DIR)/fib_block
 
-GTAP_GRID_SIZE          ?= 4000
-GTAP_BLOCK_SIZE         ?= 32
-GTAP_MAX_TASKS_PER_WARP ?= 100000
-GTAP_NUM_QUEUES         ?= 1
 GTAP_CFLAGS             ?=
+GTAP_BLOCK_SIZE         ?= 32
 
-.PHONY: all clean
-all: $(OUT)
+.PHONY: all thread block clean
+all: thread block
+
+thread: $(OUT_THREAD)
+
+block: $(OUT_BLOCK)
 
 $(OUT_DIR):
 	mkdir -p "$(OUT_DIR)"
 
-$(OUT): $(SRC) | $(OUT_DIR)
+$(OUT_THREAD): $(SRC_THREAD) | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DGTAP_GRID_SIZE=$(GTAP_GRID_SIZE) -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
-	  -DGTAP_MAX_TASKS_PER_WARP=$(GTAP_MAX_TASKS_PER_WARP) \
-	  -DGTAP_NUM_QUEUES=$(GTAP_NUM_QUEUES) \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC)" -o "$(OUT)"
+	  "$(SRC_THREAD)" -o "$(OUT_THREAD)"
+
+$(OUT_BLOCK): $(SRC_BLOCK) | $(OUT_DIR)
+	"$(CLANG_BIN)" -O3 -x cuda \
+	  --cuda-path="$(CUDA_PATH)" \
+	  --cuda-gpu-arch="$(CUDA_ARCH)" \
+	  -I"$(GT_INC)" \
+	  -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
+	  $(GTAP_CFLAGS) \
+	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK)"
 
 clean:
-	rm -f $(OUT)
+	rm -f "$(OUT_THREAD)" "$(OUT_BLOCK)"

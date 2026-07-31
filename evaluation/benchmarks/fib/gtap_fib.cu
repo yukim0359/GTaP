@@ -48,7 +48,13 @@ int main(int argc, char** argv) {
     clock_gettime(CLOCK_MONOTONIC, &init_start);
 #endif
     size_t gtap_device_bytes = 0;
-    err = gtap_initialize(&gtap_device_bytes);
+    gtap_thread_config config{
+        .grid_size = GTAP_BENCH_GRID_SIZE,
+        .block_size = GTAP_BENCH_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+        .num_queues = GTAP_BENCH_NUM_QUEUES,
+    };
+    err = gtap_initialize(config, &gtap_device_bytes);
     if (err == cudaSuccess) {
         err = cudaDeviceSynchronize();
     }
@@ -68,11 +74,14 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(n);
-    cudaEventRecord(stop);
-    err = cudaDeviceSynchronize();
+    err = gtap_launch(exec_kernel, n);
     if (err != cudaSuccess) {
-        gtap_synchronize();
+        printf("Error: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+    cudaEventRecord(stop);
+    err = gtap_synchronize();
+    if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
     }

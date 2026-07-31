@@ -8,6 +8,19 @@
 #define PROFILE
 #include "gtap_thread.cuh"
 
+#ifndef GTAP_BENCH_GRID_SIZE
+#define GTAP_BENCH_GRID_SIZE 1000
+#endif
+#ifndef GTAP_BENCH_BLOCK_SIZE
+#define GTAP_BENCH_BLOCK_SIZE 32
+#endif
+#ifndef GTAP_BENCH_MAX_TASKS_PER_WARP
+#define GTAP_BENCH_MAX_TASKS_PER_WARP 80000
+#endif
+#ifndef GTAP_BENCH_NUM_QUEUES
+#define GTAP_BENCH_NUM_QUEUES 1
+#endif
+
 // Global device pointers to data and buffer
 __device__ int* g_data;
 __device__ int* g_buf;
@@ -113,7 +126,13 @@ int main(int argc, char** argv) {
     const char* data_file = argv[1];
     const char* reference_file = (argc > 2) ? argv[2] : nullptr;
 
-    cudaError_t err = gtap_initialize();
+    gtap_thread_config config{
+        .grid_size = GTAP_BENCH_GRID_SIZE,
+        .block_size = GTAP_BENCH_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+        .num_queues = GTAP_BENCH_NUM_QUEUES,
+    };
+    cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
@@ -149,7 +168,11 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    my_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(static_cast<int>(N));
+    err = gtap_launch(my_kernel, static_cast<int>(N));
+    if (err != cudaSuccess) {
+        fprintf(stderr, "gtap_launch failed: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
     cudaEventRecord(stop);
     cudaDeviceSynchronize();
     cudaEventSynchronize(stop);

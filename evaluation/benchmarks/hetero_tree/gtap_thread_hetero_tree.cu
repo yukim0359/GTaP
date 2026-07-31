@@ -75,7 +75,13 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    st = gtap_initialize();
+    gtap_thread_config config{
+        .grid_size = GTAP_BENCH_GRID_SIZE,
+        .block_size = GTAP_BENCH_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+        .num_queues = 1,
+    };
+    st = gtap_initialize(config);
     if (st != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));
         return 1;
@@ -88,7 +94,11 @@ int main(int argc, char** argv) {
     cudaEventCreate(&stop);
 
     cudaEventRecord(start);
-    exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(height, compute_iters);
+    st = gtap_launch(exec_kernel, height, compute_iters);
+    if (st != cudaSuccess) {
+        fprintf(stderr, "gtap_launch failed: %s\n", cudaGetErrorString(st));
+        return 1;
+    }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
 

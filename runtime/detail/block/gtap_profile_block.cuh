@@ -37,7 +37,7 @@ static inline void save_block_having_task_time_to_csv(long long* having_task_tim
         return;
     }
     fprintf(timeline_file, "block_id,time_index,timestamp_ns,relative_time_ms,state,state_description\n");
-    int totalBlocks = GTAP_GRID_SIZE;
+    int totalBlocks = gtap_stored_launch_config().grid_size;
     for (int block = 0; block < totalBlocks; block++) {
         int samples = indices[block];
         if (samples == 0) continue;
@@ -110,7 +110,7 @@ static inline void save_block_having_task_time_to_csv(long long* having_task_tim
 
 static inline void visualize_having_task_time(const char* app_name) {
     printf("\n=== Block Having-Task Time Visualization ===\n");
-    int totalBlocks = GTAP_GRID_SIZE;
+    int totalBlocks = gtap_stored_launch_config().grid_size;
     int* d_indices;
     cudaMalloc(&d_indices, sizeof(int) * totalBlocks);
     get_final_having_task_time_indices<<<totalBlocks, 1>>>(d_indices);
@@ -196,7 +196,7 @@ static inline void save_block_working_time_to_csv(long long* working_time_data, 
         return;
     }
     fprintf(timeline_file, "block_id,time_index,timestamp_ns,relative_time_ms,state,state_description,tasks_in_batch\n");
-    int totalBlocks = GTAP_GRID_SIZE;
+    int totalBlocks = gtap_stored_launch_config().grid_size;
     for (int block = 0; block < totalBlocks; block++) {
         int samples = indices[block];
         if (samples == 0) continue;
@@ -270,7 +270,7 @@ static inline void save_block_working_time_to_csv(long long* working_time_data, 
 
 static inline void visualize_working_time(const char* app_name) {
     printf("\n=== Block Working Time Visualization ===\n");
-    int totalBlocks = GTAP_GRID_SIZE;
+    int totalBlocks = gtap_stored_launch_config().grid_size;
     int* d_indices;
     cudaMalloc(&d_indices, sizeof(int) * totalBlocks);
     get_final_working_time_indices<<<totalBlocks, 1>>>(d_indices);

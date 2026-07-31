@@ -21,11 +21,6 @@ OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_CILK   := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
 OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
-# ---- GTAP build settings ----
-GTAP_GRID_SIZE          ?= 2000
-GTAP_BLOCK_SIZE         ?= 32
-GTAP_MAX_TASKS_PER_WARP ?= 100000
-GTAP_NUM_QUEUES         ?= 1
 GTAP_CFLAGS             ?= -fgtap-no-taskwait
 
 # ---- OpenMP build settings ----
@@ -74,9 +69,6 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
-	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
-	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_GTAP)" -o "$(OUT_GTAP)"

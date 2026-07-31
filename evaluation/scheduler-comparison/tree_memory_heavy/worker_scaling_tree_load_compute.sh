@@ -144,8 +144,8 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         COMMON_FLAGS="-O3 -x cuda --cuda-path=$CUDA_PATH --cuda-gpu-arch=$CUDA_ARCH"
         COMMON_FLAGS="$COMMON_FLAGS -Wall -Wextra -Xcuda-ptxas --warn-on-spills"
         COMMON_FLAGS="$COMMON_FLAGS -I$RUNTIME_DIR"
-        COMMON_FLAGS="$COMMON_FLAGS -DGTAP_GRID_SIZE=$grid_size -DGTAP_BLOCK_SIZE=$block_size"
-        COMMON_FLAGS="$COMMON_FLAGS -DGTAP_MAX_TASKS_PER_BLOCK=$max_tasks_per_block"
+        COMMON_FLAGS="$COMMON_FLAGS -DGTAP_BLOCK_SIZE=$block_size -DGTAP_BENCH_GRID_SIZE=$grid_size"
+        COMMON_FLAGS="$COMMON_FLAGS -DGTAP_BENCH_MAX_TASKS_PER_BLOCK=$max_tasks_per_block"
         LINK_FLAGS="-L$CUDA_PATH/lib64 -lcudart"
         
         # Compile WS (default work-stealing) variant

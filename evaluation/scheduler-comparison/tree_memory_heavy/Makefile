@@ -17,8 +17,8 @@ OUT_GTAP_BLOCK := $(OUT_DIR)/gtap_block_$(BENCHMARK_NAME)
 OUT_GTAP_BLOCK_GQ := $(OUT_DIR)/gtap_block_gq_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings (block-level) ----
-GTAP_GRID_SIZE            ?= 1024
 GTAP_BLOCK_SIZE           ?= 64
+GTAP_GRID_SIZE            ?= 1024
 GTAP_MAX_TASKS_PER_BLOCK  ?= 100000
 GTAP_CFLAGS               ?=
 
@@ -53,8 +53,9 @@ $(OUT_GTAP_BLOCK): $(SRC_GTAP_BLOCK) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -Xcuda-ptxas --warn-on-spills \
 	  -I"$(GT_INC)" \
-	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-	  -DGTAP_MAX_TASKS_PER_BLOCK="$(GTAP_MAX_TASKS_PER_BLOCK)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_BENCH_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BENCH_MAX_TASKS_PER_BLOCK="$(GTAP_MAX_TASKS_PER_BLOCK)" \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_GTAP_BLOCK)" -o "$(OUT_GTAP_BLOCK)"
@@ -69,8 +70,9 @@ $(OUT_GTAP_BLOCK_GQ): $(SRC_GTAP_BLOCK) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -Xcuda-ptxas --warn-on-spills \
 	  -I"$(GT_INC)" \
-	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-	  -DGTAP_MAX_TASKS_PER_BLOCK="$(GTAP_MAX_TASKS_PER_BLOCK)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_BENCH_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BENCH_MAX_TASKS_PER_BLOCK="$(GTAP_MAX_TASKS_PER_BLOCK)" \
 	  -DGQ \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \

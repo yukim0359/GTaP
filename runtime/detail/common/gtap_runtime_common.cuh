@@ -1,6 +1,10 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <cstddef>
+#include <memory>
+#include <type_traits>
+#include <utility>
 #include "gtap_runtime_error.cuh"
 #include "gtap_config.cuh"
 
@@ -8,6 +12,80 @@
 
 extern const size_t __gtap_auto_task_data_size;
 __constant__ size_t d_gtap_task_data_stride;
+
+struct gtap_launch_config {
+    int grid_size;
+    int block_size;
+    int warps_per_block;
+    int total_workers;
+    int tasks_per_worker;
+    int num_queues;
+    int queue_capacity;
+    size_t dynamic_shared_bytes;
+};
+
+__constant__ gtap_launch_config d_gtap_launch_config;
+
+inline gtap_launch_config& gtap_stored_launch_config() {
+    static gtap_launch_config config{
+        1024,
+        256,
+        8,
+        8192,
+        0,
+        1,
+        0,
+        0
+    };
+    return config;
+}
+
+inline cudaStream_t& gtap_stored_stream() {
+    static cudaStream_t stream = nullptr;
+    return stream;
+}
+
+inline bool& gtap_initialized_flag() {
+    static bool initialized = false;
+    return initialized;
+}
+
+inline cudaError_t gtap_publish_launch_config(const gtap_launch_config& config) {
+    gtap_stored_launch_config() = config;
+    return cudaMemcpyToSymbol(d_gtap_launch_config, &config, sizeof(config));
+}
+
+template<class Kernel, class... Args>
+inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
+    if (!gtap_initialized_flag()) {
+        return cudaErrorInitializationError;
+    }
+    const gtap_launch_config& config = gtap_stored_launch_config();
+    if constexpr (sizeof...(Args) == 0) {
+        return cudaLaunchKernel(
+            reinterpret_cast<const void*>(kernel),
+            dim3(static_cast<unsigned int>(config.grid_size)),
+            dim3(static_cast<unsigned int>(config.block_size)),
+            nullptr,
+            config.dynamic_shared_bytes,
+            gtap_stored_stream()
+        );
+    } else {
+        void* packed_arguments[] = {
+            const_cast<void*>(
+                static_cast<const void*>(std::addressof(args))
+            )...
+        };
+        return cudaLaunchKernel(
+            reinterpret_cast<const void*>(kernel),
+            dim3(static_cast<unsigned int>(config.grid_size)),
+            dim3(static_cast<unsigned int>(config.block_size)),
+            packed_arguments,
+            config.dynamic_shared_bytes,
+            gtap_stored_stream()
+        );
+    }
+}
 
 inline constexpr size_t gtap_align_up(size_t value, size_t alignment) {
     return (value + alignment - 1) & ~(alignment - 1);
@@ -210,7 +288,7 @@ __device__ __forceinline__ unsigned int get_warp_id_in_block() {
 }
 
 __device__ __forceinline__ unsigned int get_warp_id_global() {
-    return blockIdx.x * GTAP_NUM_WARPS + get_warp_id_in_block();
+    return blockIdx.x * d_gtap_launch_config.warps_per_block + get_warp_id_in_block();
 }
 
 __device__ __forceinline__ int get_random_blocknum(int selfBlock) {
@@ -218,8 +296,8 @@ __device__ __forceinline__ int get_random_blocknum(int selfBlock) {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    int r = seed % GTAP_GRID_SIZE;
-    if (r == selfBlock) r = (r + 1) % GTAP_GRID_SIZE;
+    int r = seed % d_gtap_launch_config.grid_size;
+    if (r == selfBlock) r = (r + 1) % d_gtap_launch_config.grid_size;
     return r;
 }
 
@@ -228,7 +306,7 @@ __device__ __forceinline__ int get_random_warpnum_global(int selfWarp) {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    int totalWarps = GTAP_GRID_SIZE * GTAP_NUM_WARPS;
+    int totalWarps = d_gtap_launch_config.total_workers;
     int r = seed % totalWarps;
     if (r == selfWarp) r = (r + 1) % totalWarps;
     return r;
@@ -239,8 +317,8 @@ __device__ __forceinline__ int get_random_warpnum_in_block(int self_warp_id) {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    int r = seed % GTAP_NUM_WARPS;
-    if (r == self_warp_id) r = (r + 1) % GTAP_NUM_WARPS;
+    int r = seed % d_gtap_launch_config.warps_per_block;
+    if (r == self_warp_id) r = (r + 1) % d_gtap_launch_config.warps_per_block;
     return r;
 }
 
@@ -252,13 +330,13 @@ __device__ __forceinline__ bool get_random_bool() {
     return (seed % 2) == 0;
 }
 
-#if GTAP_NUM_QUEUES > 1
 // DAQ: pick the queue with the largest pending count; mark it tried (-1).
-__device__ __forceinline__ int gtap_select_next_fullest_queue_idx(int* queue_counts) {
+__device__ __forceinline__ int gtap_select_next_fullest_queue_idx(
+    int* queue_counts, int num_queues
+) {
     int max_k = 0;
     int max_count = -1;
-    #pragma unroll
-    for (int k = 0; k < GTAP_NUM_QUEUES; ++k) {
+    for (int k = 0; k < num_queues; ++k) {
         if (queue_counts[k] > max_count) {
             max_count = queue_counts[k];
             max_k = k;
@@ -267,7 +345,6 @@ __device__ __forceinline__ int gtap_select_next_fullest_queue_idx(int* queue_cou
     queue_counts[max_k] = -1;
     return max_k;
 }
-#endif
 
 #ifdef PROFILE
 __device__ __forceinline__ unsigned long long get_global_time() {

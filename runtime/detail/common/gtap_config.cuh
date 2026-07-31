@@ -7,14 +7,6 @@
 #define GTAP_WARP_SIZE 32
 #endif
 
-#ifndef GTAP_GRID_SIZE
-#define GTAP_GRID_SIZE 1024
-#endif
-
-#ifndef GTAP_BLOCK_SIZE
-#define GTAP_BLOCK_SIZE 256
-#endif
-
 #ifndef GTAP_MAX_CHILD_TASKS
 #define GTAP_MAX_CHILD_TASKS 32
 #endif
@@ -25,13 +17,15 @@
 #endif
 #endif
 
-#define GTAP_NUM_WARPS ((GTAP_BLOCK_SIZE + GTAP_WARP_SIZE - 1) / GTAP_WARP_SIZE)
+#define GTAP_MAX_THREADS_PER_BLOCK 1024
+#define GTAP_MAX_WARPS_PER_BLOCK \
+    (GTAP_MAX_THREADS_PER_BLOCK / GTAP_WARP_SIZE)
+
+// Internal compatibility bound for experimental runtimes. Public runtimes use
+// blockDim.x and d_gtap_launch_config.warps_per_block instead.
+#define GTAP_NUM_WARPS GTAP_MAX_WARPS_PER_BLOCK
 
 static_assert(GTAP_WARP_SIZE == 32, "GTAP_WARP_SIZE must be 32 on CUDA");
-static_assert(GTAP_GRID_SIZE > 0, "GTAP_GRID_SIZE must be positive");
-static_assert(GTAP_BLOCK_SIZE > 0, "GTAP_BLOCK_SIZE must be positive");
-static_assert(GTAP_BLOCK_SIZE % GTAP_WARP_SIZE == 0, "GTAP_BLOCK_SIZE must be a multiple of GTAP_WARP_SIZE");
-static_assert(GTAP_NUM_WARPS > 0, "GTAP_NUM_WARPS must be positive");
 static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negative");
 
 #ifdef PROFILE

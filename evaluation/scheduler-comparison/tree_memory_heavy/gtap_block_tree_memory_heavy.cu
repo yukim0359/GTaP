@@ -8,6 +8,13 @@
 #include "experimental/gtap_block_gq.cuh"
 #else
 #include "gtap_block.cuh"
+
+#ifndef GTAP_BENCH_GRID_SIZE
+#define GTAP_BENCH_GRID_SIZE 1024
+#endif
+#ifndef GTAP_BENCH_MAX_TASKS_PER_BLOCK
+#define GTAP_BENCH_MAX_TASKS_PER_BLOCK 100000
+#endif
 #endif
 
 // ------------------------------
@@ -193,7 +200,11 @@ int main(int argc, char** argv) {
     }
 
     // Init task runtime
-    st = gtap_initialize();
+    gtap_block_config config{
+        .grid_size = GTAP_BENCH_GRID_SIZE,
+        .max_tasks_per_block = GTAP_BENCH_MAX_TASKS_PER_BLOCK,
+    };
+    st = gtap_initialize(config);
     if (st != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));
         return 1;
@@ -203,7 +214,11 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(height, mem_ops, compute_iters);
+    st = gtap_launch(exec_kernel, height, mem_ops, compute_iters);
+    if (st != cudaSuccess) {
+        fprintf(stderr, "kernel launch failed: %s\n", cudaGetErrorString(st));
+        return 1;
+    }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
 

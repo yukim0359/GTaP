@@ -9,6 +9,13 @@
 // #define PROFILE
 #include "gtap_block.cuh"
 
+#ifndef GTAP_BENCH_GRID_SIZE
+#define GTAP_BENCH_GRID_SIZE 4000
+#endif
+#ifndef GTAP_BENCH_MAX_TASKS_PER_BLOCK
+#define GTAP_BENCH_MAX_TASKS_PER_BLOCK 150000
+#endif
+
 // Device-side graph state
 __device__ int* g_row_offsets;   // size: num_vertices + 1
 __device__ int* g_col_indices;   // size: num_edges
@@ -73,7 +80,11 @@ int main(int argc, char** argv) {
     if (argc >= 2) csr_path = argv[1];
     if (argc >= 3) source = atoi(argv[2]);
 
-    cudaError_t st_init = gtap_initialize();
+    gtap_block_config config{
+        .grid_size = GTAP_BENCH_GRID_SIZE,
+        .max_tasks_per_block = GTAP_BENCH_MAX_TASKS_PER_BLOCK,
+    };
+    cudaError_t st_init = gtap_initialize(config);
     if (st_init != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(st_init));
         return 1;
@@ -112,7 +123,12 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    execute_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(source);
+    st_init = gtap_launch(execute_kernel, source);
+    if (st_init != cudaSuccess) {
+        fprintf(stderr, "gtap_launch failed: %s\n",
+                cudaGetErrorString(st_init));
+        return 1;
+    }
     cudaEventRecord(stop);
     cudaDeviceSynchronize();
     cudaEventSynchronize(stop);

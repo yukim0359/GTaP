@@ -73,7 +73,11 @@ int main(int argc, char** argv) {
     if (argc >= 2) csr_path = argv[1];
     if (argc >= 3) source = atoi(argv[2]);
 
-    cudaError_t err = gtap_initialize();
+    gtap_block_config config{
+        .grid_size = 4000,
+        .max_tasks_per_block = 150000,
+    };
+    cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
@@ -109,10 +113,10 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
-    exec_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>(source);
+    err = gtap_launch(exec_kernel, source);
     cudaEventRecord(stop);
+    gtap_synchronize();
     cudaEventSynchronize(stop);
-    cudaDeviceSynchronize();
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
 

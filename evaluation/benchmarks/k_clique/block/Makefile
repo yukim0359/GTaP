@@ -20,6 +20,7 @@ GT_INC     ?= $(PROJ_DIR)/runtime
 
 SRC := $(SCRIPT_DIR)/gtap_k_clique_pivot_block.cu
 SRC_GPU_ORIENT := $(K_CLIQUE_DIR)/k_clique_gpu_orient.cu
+KCGPU_ORIENT_LIB := $(K_CLIQUE_DIR)/bin/libkcgpu_orient.a
 OUT_DIR := $(SCRIPT_DIR)/bin
 OUT := $(OUT_DIR)/gtap_pivot_block
 
@@ -79,7 +80,10 @@ print-vars:
 $(OUT_DIR):
 	mkdir -p "$(OUT_DIR)"
 
-$(OUT): $(SRC) $(SRC_GPU_ORIENT) | $(OUT_DIR)
+$(KCGPU_ORIENT_LIB):
+	$(MAKE) -C "$(K_CLIQUE_DIR)" "$(KCGPU_ORIENT_LIB)"
+
+$(OUT): $(SRC) $(SRC_GPU_ORIENT) $(KCGPU_ORIENT_LIB) | $(OUT_DIR)
 	"$(CXX_BIN)" -O3 -x cuda \
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
@@ -87,9 +91,7 @@ $(OUT): $(SRC) $(SRC_GPU_ORIENT) | $(OUT_DIR)
 	  -I"$(GT_INC)" \
 	  -I"$(SCRIPT_DIR)" \
 	  -I"$(K_CLIQUE_DIR)" \
-	  -DGTAP_GRID_SIZE="$(GTAP_PIVOT_BLOCK_GRID_SIZE)" \
 	  -DGTAP_BLOCK_SIZE="$(GTAP_PIVOT_BLOCK_BLOCK_SIZE)" \
-	  -DGTAP_MAX_TASKS_PER_BLOCK="$(GTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK)" \
 	  -DGTAP_PIVOT_BLOCK_GRID_SIZE="$(GTAP_PIVOT_BLOCK_GRID_SIZE)" \
 	  -DGTAP_PIVOT_BLOCK_BLOCK_SIZE="$(GTAP_PIVOT_BLOCK_BLOCK_SIZE)" \
 	  -DGTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK="$(GTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK)" \
@@ -110,7 +112,8 @@ $(OUT): $(SRC) $(SRC_GPU_ORIENT) | $(OUT_DIR)
 	  -DGTAP_DEFAULT_ORIENT="$(GTAP_DEFAULT_ORIENT)" \
 	  $(GTAP_CFLAGS) $(GTAP_EXTRA_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC)" "$(SRC_GPU_ORIENT)" -o "$(OUT)"
+	  "$(SRC)" "$(SRC_GPU_ORIENT)" -o "$(OUT)" \
+	  -L"$(K_CLIQUE_DIR)/bin" -lkcgpu_orient
 
 clean:
 	rm -f "$(OUT)"

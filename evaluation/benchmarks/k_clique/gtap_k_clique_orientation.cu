@@ -54,6 +54,7 @@ static void orientation_print_tuning() {
 
 int main(int argc, char** argv) {
     GtapKCliqueHostHooks hooks = {};
+    hooks.set_cuda_stack_limit = true;
     hooks.profile_name = "k_clique_orientation";
     hooks.print_variant_tuning = orientation_print_tuning;
     return gtap_k_clique_host_main(argc, argv, hooks);
