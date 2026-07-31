@@ -5,6 +5,7 @@ tmp*
 asynchronous_bfs/datasets/
 profile/
 pdf/
+*.ncu-rep
 
 # util
 gen_vector
