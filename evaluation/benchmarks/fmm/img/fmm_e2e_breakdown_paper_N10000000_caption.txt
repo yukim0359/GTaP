@@ -1,2 +1,0 @@
-Suggested caption:
-End-to-end FMM3D runtime breakdown for $N=1\times10^{7}$. Bars use a measured phase breakdown: each bar reports independently measured end-to-end runs; common phases therefore include run-to-run variation.
