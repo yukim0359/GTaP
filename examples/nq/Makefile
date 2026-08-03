@@ -10,7 +10,7 @@ SRC     := $(SCRIPT_DIR)/nq.cu
 OUT_DIR := $(SCRIPT_DIR)/bin
 OUT     := $(OUT_DIR)/nq
 
-GTAP_CFLAGS             ?= -fgtap-no-taskwait
+GTAP_CFLAGS ?= -fgtap-no-taskwait
 
 .PHONY: all clean
 all: $(OUT)

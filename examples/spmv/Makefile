@@ -12,10 +12,10 @@ OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_THREAD := $(OUT_DIR)/spmv_thread
 OUT_BLOCK  := $(OUT_DIR)/spmv_block
 
-GTAP_CFLAGS                ?=
+GTAP_CFLAGS ?=
 
 # ---- Block variant settings ----
-GTAP_BLOCK_SIZE_B          ?= 128
+GTAP_BLOCK_SIZE_B ?= 128
 
 .PHONY: all thread block clean
 all: thread block

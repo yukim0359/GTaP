@@ -12,8 +12,8 @@ OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_THREAD := $(OUT_DIR)/fib
 OUT_BLOCK  := $(OUT_DIR)/fib_block
 
-GTAP_CFLAGS             ?=
-GTAP_BLOCK_SIZE         ?= 32
+GTAP_CFLAGS     ?=
+GTAP_BLOCK_SIZE ?= 32
 
 .PHONY: all thread block clean
 all: thread block

@@ -12,8 +12,8 @@ OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_THREAD := $(OUT_DIR)/asynchronous_bfs_thread
 OUT_BLOCK  := $(OUT_DIR)/asynchronous_bfs_block
 
-GTAP_BLOCK_SIZE            ?= 32
-GTAP_CFLAGS                ?= -fgtap-no-taskwait
+GTAP_BLOCK_SIZE ?= 32
+GTAP_CFLAGS     ?= -fgtap-no-taskwait
 
 .PHONY: all thread block clean
 all: thread block

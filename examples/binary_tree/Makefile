@@ -12,8 +12,8 @@ OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_THREAD := $(OUT_DIR)/binary_tree_thread
 OUT_BLOCK  := $(OUT_DIR)/binary_tree_block
 
-GTAP_CFLAGS                 ?= 
-GTAP_BLOCK_SIZE             ?= 64
+GTAP_CFLAGS     ?=
+GTAP_BLOCK_SIZE ?= 64
 
 .PHONY: all thread block clean
 all: thread block

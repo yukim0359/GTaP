@@ -10,7 +10,7 @@ SRC     := $(SCRIPT_DIR)/mergesort.cu
 OUT_DIR := $(SCRIPT_DIR)/bin
 OUT     := $(OUT_DIR)/mergesort
 
-GTAP_CFLAGS             ?=
+GTAP_CFLAGS ?=
 
 .PHONY: all clean
 all: $(OUT)

@@ -21,7 +21,7 @@ OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_CILK   := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
 OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
-GTAP_CFLAGS             ?= -fgtap-no-taskwait
+GTAP_CFLAGS ?= -fgtap-no-taskwait
 
 # ---- OpenMP build settings ----
 CC_OMP           ?= $(CLANG_BIN)

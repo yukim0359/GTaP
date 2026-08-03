@@ -10,7 +10,7 @@ SRC     := $(SCRIPT_DIR)/cilksort.cu
 OUT_DIR := $(SCRIPT_DIR)/bin
 OUT     := $(OUT_DIR)/cilksort
 
-GTAP_CFLAGS             ?=
+GTAP_CFLAGS ?=
 
 .PHONY: all clean
 all: $(OUT)

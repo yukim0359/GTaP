@@ -10,7 +10,7 @@ SRC     := $(SCRIPT_DIR)/fib.cu
 OUT_DIR := $(SCRIPT_DIR)/bin
 OUT     := $(OUT_DIR)/fib
 
-GTAP_CFLAGS             ?=
+GTAP_CFLAGS ?=
 
 .PHONY: all clean
 all: $(OUT)
