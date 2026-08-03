@@ -8,17 +8,24 @@
 BENCHMARK_NAME=cilksort
 
 # Sort correctness checks (reference qsort + is_sorted) are expensive at large n.
-# Disable for benchmark runs:
-#   ./compare_cilksort.sh --no-validate
-#   VALIDATE=0 ./compare_cilksort.sh
-#   qsub -v VALIDATE=0 compare_cilksort.sh
-VALIDATE="${VALIDATE:-1}"
+# Disabled by default for benchmark runs. Enable with:
+#   ./compare_cilksort.sh --validate
+#   VALIDATE=1 ./compare_cilksort.sh
+#   qsub -v VALIDATE=1 compare_cilksort.sh
+VALIDATE="${VALIDATE:-0}"
 for arg in "$@"; do
     case "$arg" in
         --no-validate|--skip-validate) VALIDATE=0 ;;
         --validate) VALIDATE=1 ;;
     esac
 done
+
+COMPARE_DIR="${PBS_O_WORKDIR:-$(pwd)}"
+cd "$COMPARE_DIR"
+mkdir -p "$COMPARE_DIR/bin"
+echo "Building cilksort binaries (force rebuild for updated runtime) ..."
+make -C "$COMPARE_DIR" -B gtap omp cilk
+
 if [ "$VALIDATE" = "0" ]; then
     export CILKSORT_VALIDATE=0
     echo "Sort validation: disabled"
@@ -31,19 +38,10 @@ if [ "$VALIDATE" = "0" ]; then
     VALIDATE_ARGS=(--no-validate)
 fi
 
-cd "$PBS_O_WORKDIR"
-
-COMPARE_DIR=$(pwd)
 PROJECT_ROOT=$(cd "$COMPARE_DIR/../../.." && pwd)
 BIN_DIR="$COMPARE_DIR/bin"
 UTIL_DIR="$PROJECT_ROOT/evaluation/util"
 TMP_DIR="$COMPARE_DIR/tmp"
-
-if [ ! -d "$BIN_DIR" ]; then
-    echo "Error: Please submit this script from gtap/evaluation/benchmarks/$BENCHMARK_NAME"
-    exit 1
-fi
-
 mkdir -p "$TMP_DIR"
 
 SIZES=(100000 200000 500000 1000000 2000000 5000000 10000000 20000000 50000000 100000000 200000000 500000000 1000000000)

@@ -1,0 +1,128 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=01:30:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#PBS -N fmm_4000_prof
+#
+# Answer: of the launched GTAP_GRID_SIZE=4000 blocks (1 warp/block), how many
+# actually execute DTT tasks for paper N=5e7 theta=0.2?
+#
+# Builds PROFILE-enabled fmm_profile with paper 1.5x caps, runs once, summarizes
+# profile/fmm3d_dtt_warp_statistics_working.csv.
+#
+#   qsub probe_fmm_4000_block_activity.pbs
+# Optional: qsub -v N=50000000,THETA=0.2,MAX_PROFILE_DATA=1000 ...
+
+set -euo pipefail
+
+if [ -n "${PBS_O_WORKDIR:-}" ]; then
+  cd "$PBS_O_WORKDIR"
+else
+  cd "$(dirname "${BASH_SOURCE[0]}")"
+fi
+
+# shellcheck source=fmm_dtt_theta_build_defs.sh
+source ./fmm_dtt_theta_build_defs.sh
+
+N="${N:-50000000}"
+THETA="${THETA:-0.2}"
+# Keep sample buffer modest: we only need active vs idle per warp.
+MAX_PROFILE_DATA="${MAX_PROFILE_DATA:-1000}"
+
+fmm_dtt_apply_build_defs "$THETA" "$N"
+# Ensure env override cannot silently shrink/grow the paper default.
+export GTAP_MAX_TASKS_PER_WARP="${GTAP_MAX_TASKS_PER_WARP}"
+
+echo "=== FMM 4000-block activity profile ==="
+date
+hostname
+nvidia-smi -L || true
+nvidia-smi --query-gpu=memory.total,memory.free --format=csv || true
+echo "N=${N} THETA=${THETA}"
+fmm_dtt_print_build_defs
+echo "  GTAP_GRID_SIZE=4000 GTAP_BLOCK_SIZE=32 MAX_PROFILE_DATA=${MAX_PROFILE_DATA}"
+
+OUT_DIR="bin/profile_N${N}_theta$(python3 -c "t=format(float('${THETA}'), 'f').rstrip('0'); t=t[:-1] if t.endswith('.') else t; print(t.replace('.', ''))")"
+mkdir -p "$OUT_DIR" profile csv
+
+echo "=== Build fmm_profile ==="
+make -B OUT_DIR="$(pwd)/${OUT_DIR}" \
+  GTAP_MAX_TASKS_PER_WARP="${GTAP_MAX_TASKS_PER_WARP}" \
+  FMM3D_DTT_M2L_CAP="${FMM3D_DTT_M2L_CAP}" \
+  FMM3D_DTT_P2P_CAP="${FMM3D_DTT_P2P_CAP}" \
+  MAX_PROFILE_DATA="${MAX_PROFILE_DATA}" \
+  fmm_profile
+
+BIN="${OUT_DIR}/fmm_profile"
+if [[ ! -x "$BIN" ]]; then
+  echo "Missing $BIN" >&2
+  exit 1
+fi
+
+echo "=== Run ${BIN} ${N} ${THETA} ==="
+# Do not leave GTAP_MAX_TASKS_PER_WARP unset; binary default matches make define.
+log="csv/fmm_4000_block_activity_N${N}_theta${THETA}.log"
+set +e
+"$BIN" "$N" "$THETA" >"$log" 2>&1
+rc=$?
+set -e
+tail -n 80 "$log"
+echo "(full log: ${log}, rc=${rc})"
+
+STATS="profile/fmm3d_dtt_warp_statistics_working.csv"
+if [[ ! -f "$STATS" ]]; then
+  echo "Missing profile stats: $STATS" >&2
+  exit 1
+fi
+
+# Archive with run stamp so we do not confuse with June stale profile.
+stamp=$(date +%Y%m%d_%H%M%S)
+ARCHIVE="profile/fmm3d_dtt_warp_statistics_working_N${N}_theta${THETA}_${stamp}.csv"
+cp -f "$STATS" "$ARCHIVE"
+echo "Archived stats -> ${ARCHIVE}"
+
+python3 - <<'PY' "$STATS" "$ARCHIVE" "$log" "$rc"
+import sys
+from pathlib import Path
+import pandas as pd
+
+stats_path, archive, log_path, rc = sys.argv[1:5]
+df = pd.read_csv(stats_path)
+n = len(df)
+active = df[df["total_tasks"] > 0]
+idle = df[df["total_tasks"] == 0]
+# Also count sample-based activity (total_tasks can undercount if buffer saturates,
+# but samples>0 still means the warp entered Working).
+sampled = df[df["total_samples"] > 0]
+
+summary = Path("csv/fmm_4000_block_activity_summary.txt")
+lines = []
+lines.append(f"rc={rc}")
+lines.append(f"stats={archive}")
+lines.append(f"n_warps={n} warp_id=[{df['warp_id'].min()}..{df['warp_id'].max()}]")
+lines.append(f"active_total_tasks>0={len(active)} ({100*len(active)/n:.2f}%)")
+lines.append(f"idle_total_tasks==0={len(idle)} ({100*len(idle)/n:.2f}%)")
+lines.append(f"sampled_total_samples>0={len(sampled)} ({100*len(sampled)/n:.2f}%)")
+lines.append(f"sum_total_tasks={int(df['total_tasks'].sum())}")
+if len(active):
+    lines.append("duration_ms_active: " + active["duration_ms"].describe().to_string().replace("\n", " | "))
+    lines.append(f"total_tasks_active mean={active['total_tasks'].mean():.1f} "
+                 f"min={int(active['total_tasks'].min())} max={int(active['total_tasks'].max())}")
+# Parse launch config from log if present
+text = Path(log_path).read_text(errors="replace")
+for key in ("GTaP config:", "GTaP runtime allocation:", "DTT core traversal:",
+            "Warp statistics saved", "Task ID pool exhausted"):
+    for line in text.splitlines():
+        if key in line:
+            lines.append(line.strip())
+            break
+
+summary.write_text("\n".join(lines) + "\n")
+print("\n=== SUMMARY ===")
+print("\n".join(lines))
+PY
+
+date
+exit "$rc"

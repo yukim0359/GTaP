@@ -1,7 +1,7 @@
 #!/bin/bash
-#PBS -q debug-g
+#PBS -q regular-g
 #PBS -l select=1
-#PBS -l walltime=00:30:00
+#PBS -l walltime=01:00:00
 #PBS -W group_list=gc64
 #PBS -j oe
 
@@ -12,6 +12,10 @@ cd "$PBS_O_WORKDIR"
 COMPARE_DIR=$(pwd)
 PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
 BIN_DIR="$PROJECT_ROOT/bin"
+mkdir -p "$BIN_DIR"
+
+echo "Building DAQ nq binaries (force rebuild for updated runtime) ..."
+make -C "$COMPARE_DIR" -B all
 
 # Test values for cutoff depth
 CUTOFF_DEPTHS=(3 4 5 6 7 8 9 10)

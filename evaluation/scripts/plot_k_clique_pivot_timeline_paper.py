@@ -60,6 +60,8 @@ STRONG_STATE = "Working"
 
 # Default: 2 px/warp so a single busy tail row survives PDF rasterization.
 DEFAULT_MIN_PX_PER_WARP = 2.0
+# Default: paper caption (as-Skitter, k=9, pivoting).
+DEFAULT_PROFILE_TAG = "_as-Skitter_k9"
 # Match plot_kcgpu_sm_timeline_paper.DEFAULT_PROFILE_TAG for shared x-axis runs.
 DEFAULT_ALIGN_KCGPU_STATS = (
     K_CLIQUE_DIR
@@ -418,8 +420,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--profile-tag",
-        default="",
-        help="Optional suffix before .csv, e.g. _DBLP_k7",
+        default=DEFAULT_PROFILE_TAG,
+        help=(
+            "Suffix before .csv "
+            f"(default: {DEFAULT_PROFILE_TAG}; paper: as-Skitter k=9 pivoting)"
+        ),
     )
     parser.add_argument(
         "--max-warps",

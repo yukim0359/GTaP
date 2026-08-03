@@ -121,7 +121,9 @@ __device__ void process_subtree_seq(int node, int height, int mem_ops, int compu
 #endif
 
 #pragma gtap function
-__device__ void tree_work(int node, int height, int mem_ops, int compute_iters, int cutoff) {
+__device__ void tree_work(const int node, const int height,
+                          const int mem_ops, const int compute_iters,
+                          const int cutoff) {
     if (height <= cutoff) {
         process_subtree_seq(node, height, mem_ops, compute_iters);
         return;

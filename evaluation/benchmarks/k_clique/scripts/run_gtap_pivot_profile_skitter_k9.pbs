@@ -1,0 +1,55 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=00:30:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#PBS -N pivot_prof_sk9
+
+set -euo pipefail
+cd /work/gc64/c64099/gtap/evaluation/benchmarks/k_clique
+GRAPH=/work/gc64/c64099/KCGPU/graphs/as-Skitter/as-Skitter.mtx
+TAG=_as-Skitter_k9
+PROF=profile
+
+# Preserve any previous untagged dump
+mkdir -p "$PROF/archive"
+ts=$(date +%Y%m%d_%H%M%S)
+for f in "$PROF"/k_clique_pivot_warp_{timeline,statistics}_{working,having_task}.csv; do
+  [ -f "$f" ] && cp -f "$f" "$PROF/archive/$(basename "$f").$ts" || true
+done
+
+MAKE_ARGS=$(python3 scripts/load_gtap_graph_k_config.py --make-args pivot as-Skitter 9 | tr '\n' ' ')
+# heavy/second/third from config CSV
+read -r HEAVY SECOND THIRD _ORIENT_MTP _PIVOT_MTP < <(python3 scripts/load_gtap_graph_k_config.py --values as-Skitter 9)
+# shellcheck disable=SC2086
+make -B gtap_pivot GTAP_PROFILE=1   GTAP_K_HEAVY_CANDIDATES="$HEAVY"   GTAP_K_SECOND_HEAVY_CANDIDATES="$SECOND"   GTAP_K_THIRD_HEAVY_CANDIDATES="$THIRD"   $MAKE_ARGS
+
+mkdir -p "$PROF"
+# binary writes ./profile/k_clique_pivot_*.csv relative to cwd
+./bin/gtap_pivot "$GRAPH" 9
+
+# Tag outputs for paper plot default
+for kind in working having_task; do
+  for stem in timeline statistics; do
+    src="$PROF/k_clique_pivot_warp_${stem}_${kind}.csv"
+    dst="$PROF/k_clique_pivot_warp_${stem}_${kind}${TAG}.csv"
+    if [ -f "$src" ]; then
+      cp -f "$src" "$dst"
+      echo "Wrote $dst ($(wc -c < "$dst") bytes)"
+    fi
+  done
+done
+
+# Regenerate paper figure
+python3 /work/gc64/c64099/gtap/evaluation/scripts/plot_k_clique_pivot_timeline_paper.py \
+  --output /work/gc64/c64099/gtap/evaluation/img/gtap_k_clique_pivot_timeline.pdf
+cp -f /work/gc64/c64099/gtap/evaluation/img/gtap_k_clique_pivot_timeline.pdf \
+      /work/gc64/c64099/ppopp-paper/img/gtap_k_clique_pivot_timeline.pdf
+
+python3 - <<'PY'
+import pandas as pd
+p="profile/k_clique_pivot_warp_statistics_working_as-Skitter_k9.csv"
+df=pd.read_csv(p)
+print(f"as-Skitter k9 duration_ms={df['last_activity_ms'].max():.3f} warps={len(df)}")
+PY

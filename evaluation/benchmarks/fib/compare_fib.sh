@@ -1,7 +1,7 @@
 #!/bin/bash
-#PBS -q debug-g
+#PBS -q regular-g
 #PBS -l select=1
-#PBS -l walltime=00:10:00
+#PBS -l walltime=01:00:00
 #PBS -W group_list=gc64
 #PBS -j oe
 
@@ -14,9 +14,11 @@ PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
 BIN_DIR="$PROJECT_ROOT/bin"
 
 if [ ! -d "$BIN_DIR" ]; then
-    echo "Error: Please submit this script from gtap/evaluation/benchmarks/$BENCHMARK_NAME"
-    exit 1
+    mkdir -p "$BIN_DIR"
 fi
+
+echo "Building fib binaries (force rebuild for updated runtime) ..."
+make -C "$COMPARE_DIR" -B gtap omp cilk seq
 
 N_VALUES=(2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40)
 

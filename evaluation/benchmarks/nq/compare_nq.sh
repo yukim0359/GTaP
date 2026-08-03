@@ -70,7 +70,7 @@ RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_performance_results.csv"
 echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,OMP_med,OMP_err_low,OMP_err_high,CILK_med,CILK_err_low,CILK_err_high,DYNASOAR_med,DYNASOAR_err_low,DYNASOAR_err_high,DYNASOAR_cutoff,Speedup_med(OMP/GTAP),Speedup_med(CILK/GTAP),Speedup_med(DYNASOAR/GTAP)" > "$RESULTS_FILE"
 
 echo "Building GTaP / OpenMP / Cilk binaries ..."
-make -C "$COMPARE_DIR" gtap omp cilk
+make -C "$COMPARE_DIR" -B gtap omp cilk
 
 DYNASOAR_ENABLED=0
 if ensure_dynasoar_bin; then

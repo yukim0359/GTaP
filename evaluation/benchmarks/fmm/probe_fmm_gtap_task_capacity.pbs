@@ -1,0 +1,93 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=01:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#PBS -N fmm_cap_probe
+#
+# Capacity probe for post-runtime-param GTaP FMM DTT (N=5e7, theta=0.2).
+# Rebuilds gtap_dtt_fmm once, then sweeps GTAP_MAX_TASKS_PER_WARP via env
+# (runtime allocation). Reports init GiB / DTT success / fail reason.
+#
+#   qsub probe_fmm_gtap_task_capacity.pbs
+# Optional:
+#   qsub -v N=50000000,THETA=0.2,CAPS="200000 250000 300000 350000 400000" ...
+
+set -euo pipefail
+
+if [ -n "${PBS_O_WORKDIR:-}" ]; then
+  cd "$PBS_O_WORKDIR"
+else
+  cd "$(dirname "${BASH_SOURCE[0]}")"
+fi
+
+N="${N:-50000000}"
+THETA="${THETA:-0.2}"
+# Compile-time fallback only; actual sizes come from env below.
+export GTAP_MAX_TASKS_PER_WARP="${GTAP_MAX_TASKS_PER_WARP:-200000}"
+CAPS="${CAPS:-200000 220000 250000 300000 350000 400000 450000 500000}"
+
+echo "=== FMM GTaP DTT capacity probe: N=${N} theta=${THETA} ==="
+date
+hostname
+nvidia-smi -L || true
+nvidia-smi --query-gpu=memory.total,memory.free --format=csv || true
+
+echo "=== Rebuild gtap_dtt_fmm (env override enabled) ==="
+./build_fmm_dtt_theta_bins.sh "$THETA" "$N"
+
+theta_lbl=$(python3 -c "t=format(float('${THETA}'), 'f').rstrip('0'); t=t[:-1] if t.endswith('.') else t; print(t.replace('.', ''))")
+BIN="bin/N${N}/theta${theta_lbl}/gtap_dtt_fmm"
+if [[ ! -x "$BIN" ]]; then
+  echo "Missing $BIN" >&2
+  exit 1
+fi
+
+OUT_CSV="csv/fmm_gtap_capacity_probe_N${N}_theta${theta_lbl}.csv"
+mkdir -p csv
+echo "max_tasks_per_warp,status,gtap_alloc_gib,dtt_core_ms,detail" > "$OUT_CSV"
+
+echo "=== Sweep CAPS=${CAPS} ==="
+for cap in $CAPS; do
+  echo
+  echo "----- GTAP_MAX_TASKS_PER_WARP=${cap} -----"
+  export GTAP_MAX_TASKS_PER_WARP="$cap"
+  # One run is enough for capacity; keep stdout for parsing.
+  set +e
+  log=$(mktemp)
+  "$BIN" "$N" "$THETA" >"$log" 2>&1
+  rc=$?
+  set -e
+  cat "$log"
+
+  alloc=$(rg -n 'GTaP runtime allocation:' "$log" | tail -1 | sed -n 's/.*allocation: \([0-9.]*\) GiB.*/\1/p' || true)
+  dtt=$(rg -n 'DTT core traversal:' "$log" | tail -1 | sed -n 's/.*: \([0-9.]*\) ms.*/\1/p' || true)
+  detail=""
+  status="ok"
+  if [[ $rc -ne 0 ]]; then
+    if rg -q 'Task ID pool exhausted' "$log"; then
+      status="pool_exhausted"
+      detail=$(rg -n 'Task ID pool exhausted' "$log" | tail -1 | tr ',' ';' | cut -c1-200)
+    elif rg -qi 'out of memory' "$log"; then
+      status="oom"
+      detail="cuda_oom"
+    else
+      status="fail_rc${rc}"
+      detail=$(tail -3 "$log" | tr '\n' ' ' | tr ',' ';' | cut -c1-200)
+    fi
+  fi
+  echo "${cap},${status},${alloc:-},${dtt:-},${detail}" >> "$OUT_CSV"
+  rm -f "$log"
+
+  # Stop climbing once we hit OOM: larger caps will also OOM.
+  if [[ "$status" == "oom" ]]; then
+    echo "Stopping sweep after OOM at cap=${cap}"
+    break
+  fi
+done
+
+echo
+echo "=== Summary: ${OUT_CSV} ==="
+column -t -s, "$OUT_CSV" || cat "$OUT_CSV"
+date

@@ -1,0 +1,124 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=01:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#PBS -N fmm_cap_smoke
+#
+# One-shot smoke: for each paper (N, theta), rebuild gtap_dtt_fmm and run once
+# with GTAP_MAX_TASKS_PER_WARP = 1.5x the pre-runtime-param default.
+#
+#   qsub smoke_fmm_gtap_task_capacity_1p5x.pbs
+
+set -euo pipefail
+
+if [ -n "${PBS_O_WORKDIR:-}" ]; then
+  cd "$PBS_O_WORKDIR"
+else
+  cd "$(dirname "${BASH_SOURCE[0]}")"
+fi
+
+# shellcheck source=fmm_dtt_theta_build_defs.sh
+source ./fmm_dtt_theta_build_defs.sh
+
+theta_label() {
+  python3 -c "t=format(float('${1}'), 'f').rstrip('0'); t=t[:-1] if t.endswith('.') else t; print(t.replace('.', ''))"
+}
+
+# Pre-runtime-param defaults (before Aug 2026 capacity bump). Smoke uses 1.5x these.
+legacy_gtap_max_tasks() {
+  local n=$1 theta=$2
+  if [ "$n" -eq 10000000 ]; then
+    case "$theta" in
+      0.2) echo 50000 ;;
+      0.3) echo 20000 ;;
+      0.4) echo 8000 ;;
+      0.5) echo 5000 ;;
+      *) return 1 ;;
+    esac
+  elif [ "$n" -eq 50000000 ]; then
+    case "$theta" in
+      0.2) echo 200000 ;;
+      0.3) echo 100000 ;;
+      0.4) echo 50000 ;;
+      0.5) echo 20000 ;;
+      *) return 1 ;;
+    esac
+  else
+    return 1
+  fi
+}
+
+N_VALUES=(10000000 50000000)
+THETAS=(0.2 0.3 0.4 0.5)
+OUT_CSV="csv/fmm_gtap_capacity_smoke_1p5x.csv"
+
+echo "=== FMM GTaP DTT capacity smoke (1.5x legacy defaults) ==="
+date
+hostname
+nvidia-smi -L || true
+mkdir -p csv
+echo "n,theta,legacy_cap,smoke_cap,status,gtap_alloc_gib,dtt_core_ms,detail" > "$OUT_CSV"
+
+build_gtap_only() {
+  local theta=$1 n=$2
+  local theta_lbl dest dest_abs
+  theta_lbl="$(theta_label "$theta")"
+  dest="bin/N${n}/theta${theta_lbl}"
+  dest_abs="$(pwd)/$dest"
+  fmm_dtt_apply_build_defs "$theta" "$n"
+  # Compile-time fallback unused when env is set; keep rebuild cheap (gtap only).
+  export GTAP_MAX_TASKS_PER_WARP=200000
+  echo "Building $dest/gtap_dtt_fmm (list caps for theta=${theta})..."
+  fmm_dtt_print_build_defs | sed 's/^/  /'
+  mkdir -p "$dest"
+  make -B OUT_DIR="$dest_abs" gtap_dtt_fmm
+}
+
+for n in "${N_VALUES[@]}"; do
+  for theta in "${THETAS[@]}"; do
+    legacy="$(legacy_gtap_max_tasks "$n" "$theta")"
+    # integer 1.5x
+    smoke=$(( (legacy * 3 + 1) / 2 ))
+    theta_lbl="$(theta_label "$theta")"
+    bin="bin/N${n}/theta${theta_lbl}/gtap_dtt_fmm"
+
+    echo
+    echo "===== N=${n} theta=${theta} legacy=${legacy} smoke_cap=${smoke} ====="
+    build_gtap_only "$theta" "$n"
+
+    export GTAP_MAX_TASKS_PER_WARP="$smoke"
+    set +e
+    log=$(mktemp)
+    "$bin" "$n" "$theta" >"$log" 2>&1
+    rc=$?
+    set -e
+    # Keep the useful tail visible in the PBS log.
+    rg -n 'GTaP config:|GTaP runtime allocation:|DTT core traversal:|Task ID pool|out of memory|CUDA ERROR|Execution time:' "$log" || true
+
+    alloc=$(rg -n 'GTaP runtime allocation:' "$log" | tail -1 | sed -n 's/.*allocation: \([0-9.]*\) GiB.*/\1/p' || true)
+    dtt=$(rg -n 'DTT core traversal:' "$log" | tail -1 | sed -n 's/.*: \([0-9.]*\) ms.*/\1/p' || true)
+    detail=""
+    status="ok"
+    if [[ $rc -ne 0 ]]; then
+      if rg -q 'Task ID pool exhausted' "$log"; then
+        status="pool_exhausted"
+        detail=$(rg -n 'Task ID pool exhausted' "$log" | tail -1 | tr ',' ';' | cut -c1-180)
+      elif rg -qi 'out of memory' "$log"; then
+        status="oom"
+        detail="cuda_oom"
+      else
+        status="fail_rc${rc}"
+        detail=$(tail -2 "$log" | tr '\n' ' ' | tr ',' ';' | cut -c1-180)
+      fi
+    fi
+    echo "${n},${theta},${legacy},${smoke},${status},${alloc:-},${dtt:-},${detail}" >> "$OUT_CSV"
+    rm -f "$log"
+  done
+done
+
+echo
+echo "=== Summary: ${OUT_CSV} ==="
+column -t -s, "$OUT_CSV" || cat "$OUT_CSV"
+date

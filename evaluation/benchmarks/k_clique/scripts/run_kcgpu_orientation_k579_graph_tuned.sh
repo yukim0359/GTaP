@@ -3,7 +3,7 @@
 # for k=5,7,9. GTAP build params come from gtap_graph_k_config.csv (per graph×k).
 #
 # KCGPU variants: edge o1b o2b o4b o8b (oriented_binary)
-# Runs REPEATS=10 by default and writes averaged results via summarize_k579_repeats.py.
+# Runs REPEATS=20 by default and writes averaged results via summarize_k579_repeats.py.
 #
 # Usage:
 #   ./run_kcgpu_orientation_k579_graph_tuned.sh
@@ -18,7 +18,7 @@ K579_DIR="$K_CLIQUE_DIR/k579"
 
 K_VALUES=${K_VALUES:-"5 7 9"}
 GRAPHS=${GRAPHS:-"DBLP as-Skitter Orkut"}
-REPEATS=${REPEATS:-10}
+REPEATS=${REPEATS:-20}
 GTAP_VARIANT=orientation
 KCGPU_ORIENT=${KCGPU_ORIENT:-degree}
 GTAP_ORIENT=${GTAP_ORIENT:-degree}

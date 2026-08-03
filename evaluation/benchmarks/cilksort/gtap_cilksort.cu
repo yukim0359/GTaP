@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <limits>
 #include <cuda_runtime.h>
-#define PROFILE
+// #define PROFILE
 #include "gtap_thread.cuh"
 #include "cilksort_options.hpp"
 
@@ -229,11 +229,14 @@ int main(int argc, char** argv) {
         .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
         .num_queues = GTAP_BENCH_NUM_QUEUES,
     };
-    cudaError_t err = gtap_initialize(config);
+    size_t device_bytes = 0;
+    cudaError_t err = gtap_initialize(config, &device_bytes);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
     }
+    printf("gtap_initialize allocated: %.3f GB (%zu bytes)\n",
+           device_bytes / (1024.0 * 1024.0 * 1024.0), device_bytes);
 
     size_t N;
     std::vector<int> h = load_array(data_file, N);

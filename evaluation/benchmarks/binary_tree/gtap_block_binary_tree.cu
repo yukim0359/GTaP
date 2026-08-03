@@ -133,7 +133,8 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
 // Each node writes one scalar result
 // ------------------------------
 #pragma gtap function
-__device__ void tree_work(int node, int height, int mem_ops, int compute_iters) {
+__device__ void tree_work(const int node, const int height,
+                          const int mem_ops, const int compute_iters) {
     if (height == 0) {
         // leaf only: block-tiled synthetic work
         double v = do_memory_and_compute(node, mem_ops, compute_iters);

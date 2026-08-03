@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Paper figure: Fibonacci worker scaling (GTaP vs global queue vs sequential Chase-Lev).
+"""Paper figure: Fibonacci worker scaling (GTaP vs global queue vs non-batched WS).
 
 Data: evaluation/scheduler-comparison/fib/fib_scaling_results.csv
 Shows block_size=32 (t/b=32) only. Y-axis is logarithmic; X-axis is log2(thread count).
@@ -24,7 +24,7 @@ sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from plot_style.gtap_colors import COL_GTAP_THREAD  # noqa: E402
 
-FIG_WIDTH_IN = 239.75 / 72.0  # ≈ 3.33 in
+FIG_WIDTH_IN = 0.8 * (239.75 / 72.0)  # ≈ 2.66 in (0.8× single-column)
 PANEL_HEIGHT_RATIO = 0.50 * 1.1
 AXES_TOP = 0.88
 LEGEND_Y = 0.9
@@ -59,7 +59,7 @@ PAPER_RC = {
 SERIES = (
     ("ws", "Batched WS (GTaP)", COL_GTAP_THREAD, "o", "-"),
     ("gq", "Global queue", "#ff7f0e", "s", "--"),
-    ("chaselev", "Non-batched WS (Chase-Lev)", "#2ca02c", "^", "-."),
+    ("chaselev", "Non-batched WS", "#2ca02c", "^", "-."),
 )
 IDEAL_SCALING_LABEL = "Ideal scaling"
 

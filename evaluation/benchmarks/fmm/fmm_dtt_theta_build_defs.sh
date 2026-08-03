@@ -27,25 +27,25 @@ fmm_dtt_apply_build_defs() {
       0.2)
         max_m2l=1752
         max_p2p=784
-        default_gtap_max_tasks_per_warp=50000
+        default_gtap_max_tasks_per_warp=75000
         default_worklist_pair_cap_factor=1024
         ;;
       0.3)
         max_m2l=626
         max_p2p=246
-        default_gtap_max_tasks_per_warp=20000
+        default_gtap_max_tasks_per_warp=30000
         default_worklist_pair_cap_factor=256
         ;;
       0.4)
         max_m2l=274
         max_p2p=131
-        default_gtap_max_tasks_per_warp=8000
+        default_gtap_max_tasks_per_warp=12000
         default_worklist_pair_cap_factor=128
         ;;
       0.5)
         max_m2l=160
         max_p2p=65
-        default_gtap_max_tasks_per_warp=5000
+        default_gtap_max_tasks_per_warp=7500
         default_worklist_pair_cap_factor=64
         ;;
       *)
@@ -58,25 +58,25 @@ fmm_dtt_apply_build_defs() {
       0.2)
         max_m2l=1519
         max_p2p=485
-        default_gtap_max_tasks_per_warp=200000
+        default_gtap_max_tasks_per_warp=250000
         default_worklist_pair_cap_factor=1024
         ;;
       0.3)
         max_m2l=483
         max_p2p=171
-        default_gtap_max_tasks_per_warp=100000
+        default_gtap_max_tasks_per_warp=150000
         default_worklist_pair_cap_factor=256
         ;;
       0.4)
         max_m2l=182
         max_p2p=81
-        default_gtap_max_tasks_per_warp=50000
+        default_gtap_max_tasks_per_warp=75000
         default_worklist_pair_cap_factor=128
         ;;
       0.5)
         max_m2l=119
         max_p2p=27
-        default_gtap_max_tasks_per_warp=20000
+        default_gtap_max_tasks_per_warp=30000
         default_worklist_pair_cap_factor=64
         ;;
       *)
@@ -96,6 +96,7 @@ fmm_dtt_apply_build_defs() {
 
   export GTAP_MAX_TASKS_PER_WARP="${GTAP_MAX_TASKS_PER_WARP:-$default_gtap_max_tasks_per_warp}"
   export FMM3D_WORKLIST_PAIR_CAP_FACTOR="${FMM3D_WORKLIST_PAIR_CAP_FACTOR:-$default_worklist_pair_cap_factor}"
+  export GTAP_GRID_SIZE="${GTAP_GRID_SIZE:-3168}"
 }
 
 
@@ -104,4 +105,5 @@ fmm_dtt_print_build_defs() {
   echo "  FMM3D_DTT_P2P_CAP=${FMM3D_DTT_P2P_CAP}"
   echo "  GTAP_MAX_TASKS_PER_WARP=${GTAP_MAX_TASKS_PER_WARP}"
   echo "  FMM3D_WORKLIST_PAIR_CAP_FACTOR=${FMM3D_WORKLIST_PAIR_CAP_FACTOR}"
+  echo "  GTAP_GRID_SIZE=${GTAP_GRID_SIZE}"
 }

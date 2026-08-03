@@ -44,7 +44,13 @@ fmm_dtt_print_build_defs | sed 's/^/  /'
 # These binaries encode the theta-specific caps as compile-time defines. Force the
 # relink so changed environment overrides are not skipped by make's timestamps.
 mkdir -p "$dest"
-make -B OUT_DIR="$dest_abs" gtap_dtt_fmm worklist_dtt_fmm omp_dtt_fmm
+make -B OUT_DIR="$dest_abs" \
+  GTAP_GRID_SIZE="${GTAP_GRID_SIZE}" \
+  GTAP_MAX_TASKS_PER_WARP="${GTAP_MAX_TASKS_PER_WARP}" \
+  FMM3D_DTT_M2L_CAP="${FMM3D_DTT_M2L_CAP}" \
+  FMM3D_DTT_P2P_CAP="${FMM3D_DTT_P2P_CAP}" \
+  FMM3D_WORKLIST_PAIR_CAP_FACTOR="${FMM3D_WORKLIST_PAIR_CAP_FACTOR}" \
+  gtap_dtt_fmm worklist_dtt_fmm omp_dtt_fmm
 
 echo "Built:"
 echo "  $dest/gtap_dtt_fmm"

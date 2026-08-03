@@ -2654,14 +2654,24 @@ int main(int argc, char **argv) {
     {
       const std::chrono::high_resolution_clock::time_point t_gtap_init_start =
           std::chrono::high_resolution_clock::now();
+      const int max_tasks_per_warp = h_get_env_int(
+          "GTAP_MAX_TASKS_PER_WARP", GTAP_BENCH_MAX_TASKS_PER_WARP);
+      std::printf("GTaP config: grid=%d block=%d max_tasks_per_warp=%d "
+                  "num_queues=%d\n",
+                  GTAP_BENCH_GRID_SIZE, GTAP_BENCH_BLOCK_SIZE,
+                  max_tasks_per_warp, GTAP_BENCH_NUM_QUEUES);
       gtap_thread_config config{
           .grid_size = GTAP_BENCH_GRID_SIZE,
           .block_size = GTAP_BENCH_BLOCK_SIZE,
-          .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+          .max_tasks_per_warp = max_tasks_per_warp,
           .num_queues = GTAP_BENCH_NUM_QUEUES,
       };
-      CUDA_CHECK(gtap_initialize(config));
+      size_t gtap_device_bytes = 0;
+      CUDA_CHECK(gtap_initialize(config, &gtap_device_bytes));
       CUDA_CHECK(cudaDeviceSynchronize());
+      std::printf("GTaP runtime allocation: %.2f GiB\n",
+                  static_cast<double>(gtap_device_bytes) /
+                      (1024.0 * 1024.0 * 1024.0));
       const std::chrono::high_resolution_clock::time_point t_gtap_init_end =
           std::chrono::high_resolution_clock::now();
       ms_gtap_init = h_elapsed_ms(t_gtap_init_start, t_gtap_init_end);

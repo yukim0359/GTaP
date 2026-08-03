@@ -1,0 +1,66 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=02:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#PBS -N fmm_dtt_compare
+#
+# Rebuild all paper FMM DTT bins with current fmm_dtt_theta_build_defs.sh
+# (1.5x GTAP_MAX_TASKS_PER_WARP, GTAP_GRID_SIZE=3168), then re-run
+# compare_fmm_dtt_theta.sh and regenerate the paper figure.
+#
+#   qsub run_compare_fmm_dtt_theta_rebuild.pbs
+
+set -euo pipefail
+
+if [ -n "${PBS_O_WORKDIR:-}" ]; then
+  cd "$PBS_O_WORKDIR"
+else
+  cd "$(dirname "${BASH_SOURCE[0]}")"
+fi
+
+N_VALUES="${N_VALUES:-10000000,50000000}"
+THETA_VALUES="${THETA_VALUES:-0.2,0.3,0.4,0.5}"
+export N_VALUES THETA_VALUES
+export NUM_RUNS="${NUM_RUNS:-20}"
+export GTAP_GRID_SIZE="${GTAP_GRID_SIZE:-3168}"
+
+echo "=== Rebuild + compare FMM DTT theta ==="
+echo "N_VALUES=${N_VALUES} THETA_VALUES=${THETA_VALUES} NUM_RUNS=${NUM_RUNS} GTAP_GRID_SIZE=${GTAP_GRID_SIZE}"
+date
+hostname
+nvidia-smi -L || true
+
+IFS=',' read -r -a ns <<< "$N_VALUES"
+IFS=',' read -r -a thetas <<< "$THETA_VALUES"
+
+for n in "${ns[@]}"; do
+  n="${n//[[:space:]]/}"
+  for theta in "${thetas[@]}"; do
+    theta="${theta//[[:space:]]/}"
+    echo "=== build_fmm_dtt_theta_bins.sh ${theta} ${n} ==="
+    # Clear any leftover env so apply_build_defs picks per-(N,theta) defaults.
+    unset GTAP_MAX_TASKS_PER_WARP || true
+    ./build_fmm_dtt_theta_bins.sh "$theta" "$n"
+  done
+done
+
+# Critical: do not leave GTAP_MAX_TASKS_PER_WARP in the environment, or the
+# runtime getenv override would force one cap onto every binary.
+unset GTAP_MAX_TASKS_PER_WARP || true
+
+echo "=== compare_fmm_dtt_theta.sh ==="
+./compare_fmm_dtt_theta.sh
+
+echo "=== paper figure ==="
+python3 /work/gc64/c64099/gtap/evaluation/scripts/plot_fmm_dtt_theta_row_paper.py \
+  --output /work/gc64/c64099/ppopp-paper/img/fmm_dtt_theta_combined_row.pdf
+
+# Also refresh evaluation/img copy.
+python3 /work/gc64/c64099/gtap/evaluation/scripts/plot_fmm_dtt_theta_row_paper.py
+
+echo "=== Done ==="
+date
+ls -la fmm_dtt_theta_results.csv \
+  /work/gc64/c64099/ppopp-paper/img/fmm_dtt_theta_combined_row.pdf

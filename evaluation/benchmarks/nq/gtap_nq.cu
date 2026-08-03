@@ -74,14 +74,17 @@ int main(int argc, char **argv) {
     gtap_thread_config config;
     config.grid_size = 2000;
     config.block_size = 32;
-    config.max_tasks_per_warp = 100000;
+    config.max_tasks_per_warp = 20000;
     config.num_queues = 1;
 
-    cudaError_t err = gtap_initialize(config);
+    size_t device_bytes = 0;
+    cudaError_t err = gtap_initialize(config, &device_bytes);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
     }
+    printf("gtap_initialize allocated: %.3f GB (%zu bytes)\n",
+           device_bytes / (1024.0 * 1024.0 * 1024.0), device_bytes);
 
     cudaEvent_t start, stop;
     cudaEventCreate(&start);

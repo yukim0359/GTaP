@@ -23,7 +23,7 @@ OUT_CILK    := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
 OUT_SEQ     := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings ----
-GTAP_GRID_SIZE          ?= 2000
+GTAP_GRID_SIZE          ?= 3000
 GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 100000
 GTAP_NUM_QUEUES         ?= 1

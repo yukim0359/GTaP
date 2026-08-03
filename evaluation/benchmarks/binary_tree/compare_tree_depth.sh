@@ -15,8 +15,8 @@ COMPARE_DIR=$(pwd)
 BIN_DIR="$COMPARE_DIR/bin"
 mkdir -p "$BIN_DIR"
 
-echo "Building GTaP binaries ..."
-make -C "$COMPARE_DIR" gtap_thread gtap_block gtap_block_cutoff
+echo "Building GTaP binaries (force rebuild for updated runtime) ..."
+make -C "$COMPARE_DIR" -B gtap_thread gtap_block gtap_block_cutoff
 
 DEPTH_VALUES=(12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28)
 COMPUTE=${COMPUTE:-2048}

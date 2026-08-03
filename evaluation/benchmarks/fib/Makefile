@@ -24,7 +24,7 @@ OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 # ---- GTAP build settings ----
 GTAP_GRID_SIZE          ?= 3000
 GTAP_BLOCK_SIZE         ?= 32
-GTAP_MAX_TASKS_PER_WARP ?= 150000
+GTAP_MAX_TASKS_PER_WARP ?= 120000
 GTAP_NUM_QUEUES         ?= 1
 GTAP_CFLAGS             ?= 
 

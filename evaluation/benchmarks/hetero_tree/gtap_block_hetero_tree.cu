@@ -15,7 +15,8 @@ static inline cudaError_t bind_globals(double* d_out) {
 }
 
 #pragma gtap function
-__device__ void tree_work(int node, int height, int compute_iters) {
+__device__ void tree_work(const int node, const int height,
+                          const int compute_iters) {
     if (height == 0) {
         double v = do_hetero_compute_block(node, compute_iters);
         if (threadIdx.x == 0) g_out[node] = v;
