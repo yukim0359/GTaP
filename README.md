@@ -1,14 +1,16 @@
 # GTaP
 
-GTaP is a directive-based fork-join task-parallel runtime system for GPUs, implemented in CUDA C++.
-It consists of:
+GTaP is a pragma-based task-parallel programming system for GPUs, implemented in CUDA C++.
+
+GTaP consists of:
+
 - A header-only runtime library
-- A Clang-based compiler extension that translates GTaP directives into CUDA device code
+- A Clang extension that lowers GTaP pragmas into CUDA device code
 
 GTaP enables structured fork-join parallelism directly on GPUs using a pragma-based programming model.
 
 > 🔬 GTaP is a research prototype under active development.
-> Interfaces and internal mechanisms may evolve over time.
+> Its interfaces and internal mechanisms may change.
 
 ## Features
 
@@ -17,26 +19,30 @@ GTaP enables structured fork-join parallelism directly on GPUs using a pragma-ba
   GTaP realizes fork-join parallelism by representing each task function as a switch-statement-based state machine.  
   The Clang extension automatically generates these state machines and manages task data across join points.  
 
-- **Two granularities**:  
-  GTaP supports two execution modes for task execution: thread-executed (thread-level workers) and block-cooperative (block-level workers).
-  In the thread-executed mode, a task function runs on a single CUDA thread and is written like ordinary sequential code.
-  In the block-cooperative mode, a task function runs cooperatively on all threads in one thread block; programmers write it in a GPU-style data-parallel manner using `threadIdx` / `blockIdx`.
+- **Two modes**:  
+  GTaP supports two execution modes: **thread mode** and **block mode**.
+  In thread mode, a task function runs on a single CUDA thread and is written like ordinary sequential code.
+  In block mode, each task is executed cooperatively by all threads in one thread block, allowing CUDA-style data-parallel code using `threadIdx`, shared memory, and block-wide synchronization.
+
+  In block mode, each thread that reaches `#pragma gtap task` independently spawns a child task. A spawn intended to create exactly one child should therefore be guarded by a designated thread.
+  `#pragma gtap taskwait` is collective and must be reached by all threads in the block.
+
   The runtime provides `gtap_thread.cuh` and `gtap_block.cuh` for these modes.
 
-- **Execution-path-aware queueing (EPAQ)**:  
-  Programmers can optionally specify a queue index as `#pragma gtap task queue(expr)` (at spawn) or `#pragma gtap taskwait queue(expr)` (at re-entry after a join).
-  This allows tasks that are expected to follow different execution paths to be separated before they run.
+- **Divergence-aware queueing (DAQ)**:  
+  In thread mode, programmers can optionally specify a queue index using `#pragma gtap task queue(expr)` at spawn or `#pragma gtap taskwait queue(expr)` for the post-join continuation.
+  Tasks expected to follow similar execution paths can be placed in the same queue, reducing inter-task warp divergence.
 
 - **Task schedulers**:  
-  GTaP uses randomized work-stealing.
-  In thread-executed mode, a warp acquires up to 32 runnable tasks via a warp-cooperative batched pop/steal.
+  GTaP uses GPU-resident randomized work-stealing.
+  In thread mode, a warp acquires up to 32 runnable tasks via a warp-cooperative batched pop/steal.
 
 
 ## Repository layout
 
 | Directory | Description |
 |-----------|-------------|
-| **clang-gtap/** | Clang fork that compiles GTaP programs. See [clang-gtap/README.md](clang-gtap/README.md) for build and usage. |
+| **clang-gtap/** | Clang fork that compiles GTaP programs. See [`clang-gtap/README.md`](clang-gtap/README.md) for build and usage. |
 | **runtime/** | Header-only GTaP runtime library. |
 | **evaluation/** | Benchmarks and scripts used for performance evaluation. |
 | **examples/** | Example GTaP programs (fib, n-queens, mergesort, cilksort, tree workloads, etc.). |
@@ -44,20 +50,28 @@ GTaP enables structured fork-join parallelism directly on GPUs using a pragma-ba
 
 ## Getting Started
 
-We have verified build and basic functionality on a single GH200 node of the [Miyabi-G](https://www.cc.u-tokyo.ac.jp/en/supercomputer/miyabi/service/) supercomputer (1× NVIDIA GH200, compute capability 9.0 / sm_90; Clang 21.1.8, CUDA Toolkit 12.9, Linux kernel 5.14.0-427.13.1.el9_4.aarch64).
+GTaP has been tested on one NVIDIA GH200 node of the [Miyabi-G supercomputer](https://www.cc.u-tokyo.ac.jp/en/supercomputer/miyabi/service/).
 
-1. Clone the repository:
+Tested environment:
+
+- NVIDIA GH200
+- Compute capability 9.0 (`sm_90`)
+- Clang 21.1.8
+- CUDA Toolkit 12.9
+- Linux kernel `5.14.0-427.13.1.el9_4.aarch64`
+
+### 1. Clone the repository:
 
 ```bash
 git clone https://github.com/yukim0359/GTaP.git --recursive
 cd GTaP
 ```
 
-2. Build the compiler:
+### 2. Build the compiler:
 
-Follow [clang-gtap/README.md](clang-gtap/README.md) to build the GTaP-enabled Clang.
+Follow [`clang-gtap/README.md`](clang-gtap/README.md) to build the GTaP-enabled Clang.
 
-3. Compile programs:
+### 3. Compile programs:
 
 Example: Fibonacci
 
@@ -67,36 +81,38 @@ make
 ./bin/fib
 ```
 
-Compilation flags and required preprocessor macros are described in [examples/README.md](examples/README.md).
-
+Compilation flags, runtime configuration parameters, and required preprocessor definitions are described in [`examples/README.md`](examples/README.md).
 
 ## Reproducing Evaluation Results
 
-Detailed instructions for reproducing experimental results are provided in [evaluation/README.md](evaluation/README.md).
+Detailed instructions for reproducing experimental results are provided in [`evaluation/README.md`](evaluation/README.md).
 
 
 ## Profiling
 
-GTaP has a built-in profiler for inspecting how tasks are scheduled on the GPU.
+GTaP includes a profiler for inspecting GPU-side task scheduling.
 
-- **Data**: `gtap_visualize_profile("app_name")` writes CSV files under `./profile/` with warp/block timelines and summary statistics.  
-- **Usage**:
-  ```cpp
-  #define PROFILE  // enable GTaP profiling
-  #include "gtap_thread.cuh"  // or "gtap_block.cuh"
+Define `PROFILE` before including the runtime header:
 
-  int main(){
-    // ... launch GTaP kernel and synchronize ...
+```cpp
+#define PROFILE
+#include "gtap_thread.cuh"  // or "gtap_block.cuh"
+```
 
-    gtap_visualize_profile("fib");
-  }
-  ```
-- **Programmer responsibilities**: define `PROFILE` in the translation unit you profile, and optionally tune `MAX_PROFILE_DATA` if you need more samples.
+After executing and synchronizing the GTaP kernel, call:
 
-For further details, see `examples/fib_profile`.
+```cpp
+gtap_visualize_profile("app_name");
+```
+
+The profiler writes CSV files under `./profile/`, including task timelines and summary statistics for warps or blocks.
+
+`MAX_PROFILE_DATA` can be adjusted when more samples are required.
+
+See [`examples/fib_profile`](examples/fib_profile) for an example.
 
 
 ## License
 
-- **clang-gtap**: Based on the LLVM Project; see [clang-gtap/LICENSE.TXT](clang-gtap/LICENSE.TXT) (Apache License v2.0 with LLVM Exceptions).
-- **Other components**: See [LICENSE](LICENSE) at the repository root.
+- **clang-gtap**: Based on the LLVM Project and distributed under the Apache License v2.0 with LLVM Exceptions. See [`clang-gtap/LICENSE.TXT`](clang-gtap/LICENSE.TXT).
+- **Other components**: See [`LICENSE`](LICENSE) at the repository root.
