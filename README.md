@@ -60,18 +60,18 @@ Tested environment:
 - CUDA Toolkit 12.9
 - Linux kernel `5.14.0-427.13.1.el9_4.aarch64`
 
-### 1. Clone the repository:
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/yukim0359/GTaP.git --recursive
 cd GTaP
 ```
 
-### 2. Build the compiler:
+### 2. Build the compiler
 
 Follow [`clang-gtap/README.md`](https://github.com/yukim0359/clang-gtap/blob/main/README.md) to build the GTaP-enabled Clang.
 
-### 3. Compile programs:
+### 3. Compile programs
 
 Example: Fibonacci
 
