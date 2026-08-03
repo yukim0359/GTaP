@@ -1,5 +1,0 @@
-Dataset,GTAP_THREAD_avg_ms,GTAP_THREAD_errors,GTAP_THREAD_correct,ATOS_best_variant,ATOS_best_avg_ms,ATOS_best_error,ATOS_best_correct,Speedup(ATOS/GTAP_THREAD)
-soc-LiveJournal1,10.322600,0,YES,cta_discrete,2.53234,0,YES,.245319
-hollywood-2009,4.617400,0,YES,cta_discrete,1.72811,0,YES,.374260
-indochina-2004,10.596150,0,YES,cta_discrete,3.56358,0,YES,.336308
-road_usa,63.940900,0,YES,cta,39.1427,0,YES,.612169
