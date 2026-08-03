@@ -42,7 +42,7 @@ GTaP enables structured fork-join parallelism directly on GPUs using a pragma-ba
 
 | Directory | Description |
 |-----------|-------------|
-| **`clang-gtap/`** | Clang fork that compiles GTaP programs. See [`clang-gtap/README.md`](clang-gtap/README.md) for build and usage. |
+| **`clang-gtap/`** | Clang fork that compiles GTaP programs. See [`clang-gtap/README.md`](https://github.com/yukim0359/clang-gtap/blob/main/README.md) for build and usage. |
 | **`runtime/`** | Header-only GTaP runtime library. |
 | **`evaluation/`** | Benchmarks and scripts used for performance evaluation. |
 | **`examples/`** | Example GTaP programs (fib, n-queens, mergesort, cilksort, tree workloads, etc.). |
@@ -69,7 +69,7 @@ cd GTaP
 
 ### 2. Build the compiler:
 
-Follow [`clang-gtap/README.md`](clang-gtap/README.md) to build the GTaP-enabled Clang.
+Follow [`clang-gtap/README.md`](https://github.com/yukim0359/clang-gtap/blob/main/README.md) to build the GTaP-enabled Clang.
 
 ### 3. Compile programs:
 
@@ -114,5 +114,5 @@ See [`examples/fib_profile`](examples/fib_profile) for an example.
 
 ## License
 
-- **clang-gtap**: Based on the LLVM Project and distributed under the Apache License v2.0 with LLVM Exceptions. See [`clang-gtap/LICENSE.TXT`](clang-gtap/LICENSE.TXT).
+- **clang-gtap**: Based on the LLVM Project and distributed under the Apache License v2.0 with LLVM Exceptions. See [`clang-gtap/LICENSE.TXT`](https://github.com/yukim0359/clang-gtap/blob/main/LICENSE.TXT).
 - **Other components**: See [`LICENSE`](LICENSE) at the repository root.
