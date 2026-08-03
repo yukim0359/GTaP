@@ -42,10 +42,10 @@ GTaP enables structured fork-join parallelism directly on GPUs using a pragma-ba
 
 | Directory | Description |
 |-----------|-------------|
-| **clang-gtap/** | Clang fork that compiles GTaP programs. See [`clang-gtap/README.md`](clang-gtap/README.md) for build and usage. |
-| **runtime/** | Header-only GTaP runtime library. |
-| **evaluation/** | Benchmarks and scripts used for performance evaluation. |
-| **examples/** | Example GTaP programs (fib, n-queens, mergesort, cilksort, tree workloads, etc.). |
+| **`clang-gtap/`** | Clang fork that compiles GTaP programs. See [`clang-gtap/README.md`](clang-gtap/README.md) for build and usage. |
+| **`runtime/`** | Header-only GTaP runtime library. |
+| **`evaluation/`** | Benchmarks and scripts used for performance evaluation. |
+| **`examples/`** | Example GTaP programs (fib, n-queens, mergesort, cilksort, tree workloads, etc.). |
 
 
 ## Getting Started
