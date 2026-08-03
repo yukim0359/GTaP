@@ -23,7 +23,7 @@ $(OUT): $(SRC) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DPROFILE \
+	  -DGTAP_PROFILE \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC)" -o "$(OUT)"

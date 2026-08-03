@@ -264,10 +264,6 @@ int main(int argc, char** argv) {
     printf("Cilksort(%zu) = %s\n", N, ok ? "Correct" : "Incorrect");
     printf("Execution time: %.3f ms\n", ms);
 
-#ifdef PROFILE
-    visualize_working_time("cilksort");
-#endif
-
     cudaFree(d_data); cudaFree(d_buf);
     return ok ? 0 : 1;
 }

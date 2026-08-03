@@ -5,7 +5,7 @@
 #include <random>
 #include <stdint.h>
 #include <cmath>
-// #define PROFILE
+// #define GTAP_PROFILE
 #include "gtap_thread.cuh"
 
 #ifndef GTAP_BENCH_GRID_SIZE
@@ -246,8 +246,8 @@ int main(int argc, char** argv) {
     printf("\n");
     printf("Execution time: %.3f ms\n", ms);
 
-#ifdef PROFILE
-    gtap_visualize_profile("tree_thread");
+#ifdef GTAP_PROFILE
+    gtap_export_profile("tree_thread");
 #endif
 
     cudaFree(d_input);

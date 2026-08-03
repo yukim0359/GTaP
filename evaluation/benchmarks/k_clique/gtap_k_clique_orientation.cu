@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-// #define PROFILE
+// #define GTAP_PROFILE
 // #define GTAP_K_STATS
 #include "gtap_thread.cuh"
 #include "k_clique_config_defaults.cuh"

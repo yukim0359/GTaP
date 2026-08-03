@@ -10,7 +10,7 @@
 #include <direct.h>
 #endif
 
-#ifdef PROFILE
+#ifdef GTAP_PROFILE
 
 static inline void ensure_directory_exists(const char* path) {
     struct stat st = {0};
@@ -44,7 +44,7 @@ static inline void save_warp_having_task_time_to_csv(long long* having_task_time
         struct TimeEntry* entries = (struct TimeEntry*)malloc(sizeof(struct TimeEntry) * samples);
         int entry_count = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = having_task_time_data[warp * MAX_PROFILE_DATA + i];
+            long long time = having_task_time_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (time > 0) {
                 entries[entry_count].timestamp = time;
                 entries[entry_count].index = i;
@@ -90,7 +90,7 @@ static inline void save_warp_having_task_time_to_csv(long long* having_task_time
         int having = 0, not_having = 0;
         long long first_time = LLONG_MAX, last_time = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = having_task_time_data[warp * MAX_PROFILE_DATA + i];
+            long long time = having_task_time_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (time > 0) {
                 if (time < first_time) first_time = time;
                 if (time > last_time) last_time = time;
@@ -118,7 +118,7 @@ static inline void visualize_having_task_time(const char* app_name) {
     int* indices = (int*)malloc(sizeof(int) * totalWarps);
     cudaMemcpy(indices, d_indices, sizeof(int) * totalWarps, cudaMemcpyDeviceToHost);
 
-    long long* data = (long long*)malloc(sizeof(long long) * totalWarps * MAX_PROFILE_DATA);
+    long long* data = (long long*)malloc(sizeof(long long) * totalWarps * GTAP_PROFILE_CAPACITY_PER_WARP);
     if (!data) {
         printf("Error: Memory allocation failed for having_task_time_data\n");
         free(indices);
@@ -138,7 +138,7 @@ static inline void visualize_having_task_time(const char* app_name) {
     int total_samples = 0;
     for (int warp = 0; warp < totalWarps; warp++) {
         for (int i = 0; i < indices[warp]; i++) {
-            long long t = data[warp * MAX_PROFILE_DATA + i];
+            long long t = data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (t > 0) {
                 if (t < min_time) min_time = t;
                 if (t > max_time) max_time = t;
@@ -170,7 +170,7 @@ static inline void visualize_having_task_time(const char* app_name) {
         for (int i = 0; i < timeline_width; i++) timeline[i] = ' ';
         timeline[timeline_width] = '\0';
         for (int i = 0; i < indices[warp]; i++) {
-            long long t = data[warp * MAX_PROFILE_DATA + i];
+            long long t = data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (t > 0) {
                 int pos = (int)((t - min_time) * timeline_width / (max_time - min_time));
                 if (pos >= 0 && pos < timeline_width) timeline[pos] = (i % 2 == 0) ? 'H' : 'N';
@@ -203,12 +203,12 @@ static inline void save_warp_working_time_to_csv(long long* working_time_data, i
         struct TimeEntry* entries = (struct TimeEntry*)malloc(sizeof(struct TimeEntry) * samples);
         int entry_count = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = working_time_data[warp * MAX_PROFILE_DATA + i];
+            long long time = working_time_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (time > 0) {
                 entries[entry_count].timestamp = time;
                 entries[entry_count].index = i;
                 entries[entry_count].state = (i % 2 == 0) ? 1 : 0; // even:pre, odd:post
-                entries[entry_count].count = counts_data[warp * MAX_PROFILE_DATA + i];
+                entries[entry_count].count = counts_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
                 entry_count++;
             }
         }
@@ -250,11 +250,11 @@ static inline void save_warp_working_time_to_csv(long long* working_time_data, i
         int pre = 0, post = 0, total_tasks = 0;
         long long first_time = LLONG_MAX, last_time = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = working_time_data[warp * MAX_PROFILE_DATA + i];
+            long long time = working_time_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (time > 0) {
                 if (time < first_time) first_time = time;
                 if (time > last_time) last_time = time;
-                if (i % 2 == 0) pre++; else { post++; total_tasks += counts_data[warp * MAX_PROFILE_DATA + i]; }
+                if (i % 2 == 0) pre++; else { post++; total_tasks += counts_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i]; }
             }
         }
         double first_activity_ms = (first_time - min_time) / 1000000.0;
@@ -278,8 +278,8 @@ static inline void visualize_working_time(const char* app_name) {
     int* indices = (int*)malloc(sizeof(int) * totalWarps);
     cudaMemcpy(indices, d_indices, sizeof(int) * totalWarps, cudaMemcpyDeviceToHost);
 
-    long long* working_time_data = (long long*)malloc(sizeof(long long) * totalWarps * MAX_PROFILE_DATA);
-    int* counts_data = (int*)malloc(sizeof(int) * totalWarps * MAX_PROFILE_DATA);
+    long long* working_time_data = (long long*)malloc(sizeof(long long) * totalWarps * GTAP_PROFILE_CAPACITY_PER_WARP);
+    int* counts_data = (int*)malloc(sizeof(int) * totalWarps * GTAP_PROFILE_CAPACITY_PER_WARP);
     if (!working_time_data || !counts_data) {
         printf("Error: Memory allocation failed for working data\n");
         free(indices);
@@ -303,7 +303,7 @@ static inline void visualize_working_time(const char* app_name) {
     int total_samples = 0;
     for (int warp = 0; warp < totalWarps; warp++) {
         for (int i = 0; i < indices[warp]; i++) {
-            long long t = working_time_data[warp * MAX_PROFILE_DATA + i];
+            long long t = working_time_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (t > 0) {
                 if (t < min_time) min_time = t;
                 if (t > max_time) max_time = t;
@@ -336,7 +336,7 @@ static inline void visualize_working_time(const char* app_name) {
         for (int i = 0; i < timeline_width; i++) timeline[i] = ' ';
         timeline[timeline_width] = '\0';
         for (int i = 0; i < indices[warp]; i++) {
-            long long t = working_time_data[warp * MAX_PROFILE_DATA + i];
+            long long t = working_time_data[warp * GTAP_PROFILE_CAPACITY_PER_WARP + i];
             if (t > 0) {
                 int pos = (int)((t - min_time) * timeline_width / (max_time - min_time));
                 if (pos >= 0 && pos < timeline_width) timeline[pos] = (i % 2 == 0) ? 'W' : 'N'; // Working / NotWorking
@@ -352,7 +352,7 @@ static inline void visualize_working_time(const char* app_name) {
     cudaFree(d_indices);
 }
 
-void gtap_visualize_profile(const char* app_name) {
+void gtap_export_profile(const char* app_name) {
     visualize_having_task_time(app_name);
     visualize_working_time(app_name);
 }

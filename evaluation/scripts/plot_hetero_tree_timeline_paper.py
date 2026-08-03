@@ -2,7 +2,7 @@
 """Paper figure: hetero_tree warp/block timeline heatmaps (4 configs).
 
 Same layout as plot_k_clique_pivot_timeline_paper.py (3.33 in wide, paper RC,
-shared colorbar style). Expects CSVs under hetero_tree/profile/ from a PROFILE
+shared colorbar style). Expects CSVs under hetero_tree/profile/ from a GTAP_PROFILE
 build, e.g.:
 
   hetero_tree/profile/hetero_tree_thread_warp_timeline_working.csv

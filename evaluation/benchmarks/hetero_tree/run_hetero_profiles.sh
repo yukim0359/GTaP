@@ -9,7 +9,7 @@
 # Usage:
 #   make -C hetero_tree run-profile
 #   DEPTH=25 COMPUTE=4096 bash run_hetero_profiles.sh
-# Requires PROFILE-enabled binaries (make GTAP_PROFILE=1 -B all).
+# Requires GTAP_PROFILE-enabled binaries (make GTAP_PROFILE=1 -B all).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${PBS_O_WORKDIR:-$SCRIPT_DIR}"
@@ -22,7 +22,7 @@ mkdir -p "$PROFILE_DIR" "$BIN_DIR"
 DEPTH=${DEPTH:-25}
 COMPUTE=${COMPUTE:-4096}
 
-echo "Building PROFILE binaries (GTAP_PROFILE=1) ..."
+echo "Building GTAP_PROFILE binaries (GTAP_PROFILE=1) ..."
 make -C "$COMPARE_DIR" -B all GTAP_PROFILE=1
 
 run_one() {
@@ -33,7 +33,7 @@ run_one() {
         return 1
     fi
     echo "=== $label: $bin $DEPTH $COMPUTE ==="
-    # gtap_visualize_profile writes ./profile/<app>_*.csv relative to CWD
+    # gtap_export_profile writes ./profile/<app>_*.csv relative to CWD
     "$bin" "$DEPTH" "$COMPUTE"
     echo
 }

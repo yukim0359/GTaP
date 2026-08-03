@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
-// #define PROFILE
+// #define GTAP_PROFILE
 
 #ifdef GQ
 #include "experimental/gtap_thread_gq.cuh"
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
     printf("N-Queens(%d) = %d\n", GRID_SIZE, result);
     printf("Execution time: %.3f ms\n", milliseconds);
 
-#ifdef PROFILE
+#ifdef GTAP_PROFILE
     visualize_working_time("nq");
 #endif
 

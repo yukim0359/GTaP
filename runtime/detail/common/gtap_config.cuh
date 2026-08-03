@@ -11,9 +11,12 @@
 #define GTAP_MAX_CHILD_TASKS 32
 #endif
 
-#ifdef PROFILE
-#ifndef MAX_PROFILE_DATA
-#define MAX_PROFILE_DATA 30000
+#ifdef GTAP_PROFILE
+#ifndef GTAP_PROFILE_CAPACITY_PER_WARP
+#define GTAP_PROFILE_CAPACITY_PER_WARP 30000
+#endif
+#ifndef GTAP_PROFILE_CAPACITY_PER_BLOCK
+#define GTAP_PROFILE_CAPACITY_PER_BLOCK 30000
 #endif
 #endif
 
@@ -28,8 +31,11 @@
 static_assert(GTAP_WARP_SIZE == 32, "GTAP_WARP_SIZE must be 32 on CUDA");
 static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negative");
 
-#ifdef PROFILE
-static_assert(MAX_PROFILE_DATA > 0, "MAX_PROFILE_DATA must be positive when PROFILE is enabled");
+#ifdef GTAP_PROFILE
+static_assert(GTAP_PROFILE_CAPACITY_PER_WARP > 0,
+              "GTAP_PROFILE_CAPACITY_PER_WARP must be positive when GTAP_PROFILE is enabled");
+static_assert(GTAP_PROFILE_CAPACITY_PER_BLOCK > 0,
+              "GTAP_PROFILE_CAPACITY_PER_BLOCK must be positive when GTAP_PROFILE is enabled");
 #endif
 
 #define GTAP_VALIDATE_THREAD_CONFIG() \

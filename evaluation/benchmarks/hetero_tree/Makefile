@@ -33,7 +33,7 @@ GTAP_CFLAGS              ?=
 # Profile builds: make GTAP_PROFILE=1 ...  or  make profile
 GTAP_PROFILE ?= 0
 ifeq ($(GTAP_PROFILE),1)
-GTAP_CFLAGS += -DPROFILE
+GTAP_CFLAGS += -DGTAP_PROFILE
 endif
 
 .PHONY: all thread thread_daq block block_cutoff clean print-vars \
@@ -41,7 +41,7 @@ endif
 
 all: thread thread_daq block block_cutoff
 
-# Force rebuild of all four with -DPROFILE
+# Force rebuild of all four with -DGTAP_PROFILE
 profile:
 	$(MAKE) -B all GTAP_PROFILE=1
 

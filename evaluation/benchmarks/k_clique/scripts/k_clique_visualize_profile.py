@@ -716,7 +716,7 @@ def main():
     parser.add_argument(
         "--app-name",
         default=None,
-        help="Profile CSV prefix written by gtap_visualize_profile",
+        help="Profile CSV prefix written by gtap_export_profile",
     )
     parser.add_argument(
         "--title",

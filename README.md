@@ -92,22 +92,22 @@ Detailed instructions for reproducing experimental results are provided in [`eva
 
 GTaP includes a profiler for inspecting GPU-side task scheduling.
 
-Define `PROFILE` before including the runtime header:
+Define `GTAP_PROFILE` before including the runtime header:
 
 ```cpp
-#define PROFILE
+#define GTAP_PROFILE
 #include "gtap_thread.cuh"  // or "gtap_block.cuh"
 ```
 
 After executing and synchronizing the GTaP kernel, call:
 
 ```cpp
-gtap_visualize_profile("app_name");
+gtap_export_profile("app_name");
 ```
 
 The profiler writes CSV files under `./profile/`, including task timelines and summary statistics for warps or blocks.
 
-`MAX_PROFILE_DATA` can be adjusted when more samples are required.
+`GTAP_PROFILE_CAPACITY_PER_WARP` (thread mode) or `GTAP_PROFILE_CAPACITY_PER_BLOCK` (block mode) can be adjusted when more samples are required.
 
 See [`examples/fib_profile`](examples/fib_profile) for an example.
 

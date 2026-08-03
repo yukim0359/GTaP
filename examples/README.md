@@ -101,7 +101,7 @@ int main() {
 | `gtap_synchronize()` | Waits for device execution and reports runtime errors. |
 | `gtap_finalize()` | Releases memory allocated by `gtap_initialize()`. |
 | `gtap_reset()` | Resets runtime state without re-allocating memory (useful for multiple runs). |
-| `gtap_visualize_profile(name)` | Dumps profiling data to CSV files in `./profile/`. Available only when compiled with `-DPROFILE`. |
+| `gtap_export_profile(name)` | Dumps profiling data to CSV files in `./profile/`. Available only when compiled with `-DGTAP_PROFILE`. |
 
 
 ## Runtime Configuration

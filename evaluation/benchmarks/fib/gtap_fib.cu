@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 #include <time.h>
-// #define PROFILE
+// #define GTAP_PROFILE
 // #define INIT_PROFILE
 #include "gtap_thread.cuh"
 
@@ -95,8 +95,8 @@ int main(int argc, char** argv) {
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
 
-#ifdef PROFILE
-    gtap_visualize_profile("fib");
+#ifdef GTAP_PROFILE
+    gtap_export_profile("fib");
 #endif
 
     cudaEventDestroy(start);

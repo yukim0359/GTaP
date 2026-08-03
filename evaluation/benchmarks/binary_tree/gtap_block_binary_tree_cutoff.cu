@@ -3,7 +3,7 @@
 #include <vector>
 #include <random>
 #include <algorithm>
-// #define PROFILE
+// #define GTAP_PROFILE
 #include "gtap_block.cuh"
 
 // Binary tree (block) with OpenMP-style subtree cutoff:
@@ -233,8 +233,8 @@ int main(int argc, char** argv) {
     printf("Root: %.6e\n", root);
     printf("Execution time: %.3f ms\n", ms);
 
-#ifdef PROFILE
-    gtap_visualize_profile("tree_block_cutoff");
+#ifdef GTAP_PROFILE
+    gtap_export_profile("tree_block_cutoff");
 #endif
 
     cudaFree(d_input);

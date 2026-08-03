@@ -205,8 +205,8 @@ int main(int argc, char** argv) {
     printf("Max error (vs CPU): %.2e (abs)  %.2e (rel)  [%s]\n",
            max_err, max_rel_err, max_rel_err < 1e-6 ? "PASSED" : "FAILED");
 
-#ifdef PROFILE
-    gtap_visualize_profile("spmv_thread");
+#ifdef GTAP_PROFILE
+    gtap_export_profile("spmv_thread");
 #endif
 
     cudaFree(d_row_ptr);

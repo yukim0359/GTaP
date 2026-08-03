@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <time.h>
 
-// #define PROFILE
+// #define GTAP_PROFILE
 #include "gtap_block.cuh"
 
 #ifndef GTAP_BENCH_GRID_SIZE
@@ -219,8 +219,8 @@ int main(int argc, char** argv) {
     
     free(h_depth_cpu);
 
-    #ifdef PROFILE
-    gtap_visualize_profile("bfs_block");
+    #ifdef GTAP_PROFILE
+    gtap_export_profile("bfs_block");
     #endif
 
     free(h_row); free(h_col); free(h_depth);

@@ -108,9 +108,9 @@ endif
 # Set to 1 to enable GTaP warp timeline profiling (benchmarks should keep this 0).
 GTAP_PROFILE            ?= 0
 ifeq ($(GTAP_PROFILE),1)
-GTAP_EXTRA_CFLAGS += -DPROFILE
+GTAP_EXTRA_CFLAGS += -DGTAP_PROFILE
 else
-GTAP_EXTRA_CFLAGS += -UPROFILE
+GTAP_EXTRA_CFLAGS += -UGTAP_PROFILE
 endif
 
 .PHONY: all gtap_orientation gtap_pivot clean print-vars
