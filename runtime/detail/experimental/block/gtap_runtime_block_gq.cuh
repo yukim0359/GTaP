@@ -563,6 +563,7 @@ __device__ __forceinline__ bool __gtap_set_state_for_join_block(
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
     TaskHeader* parent_hdr = &d_task_headers[parentId];
+    __threadfence();
     int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
     if (rem == 1) {
         ctx->have_task_id_resumable = true;
