@@ -21,6 +21,7 @@ struct gtap_launch_config {
     int tasks_per_worker;
     int num_queues;
     int queue_capacity;
+    int profile_capacity;
     size_t dynamic_shared_bytes;
 };
 
@@ -35,9 +36,18 @@ inline gtap_launch_config& gtap_stored_launch_config() {
         0,
         1,
         0,
+        30000,
         0
     };
     return config;
+}
+
+__host__ __device__ __forceinline__ int gtap_profile_capacity() {
+#ifdef __CUDA_ARCH__
+    return d_gtap_launch_config.profile_capacity;
+#else
+    return gtap_stored_launch_config().profile_capacity;
+#endif
 }
 
 inline cudaStream_t& gtap_stored_stream() {

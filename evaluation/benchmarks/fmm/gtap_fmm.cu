@@ -2665,6 +2665,8 @@ int main(int argc, char **argv) {
           .block_size = GTAP_BENCH_BLOCK_SIZE,
           .max_tasks_per_warp = max_tasks_per_warp,
           .num_queues = GTAP_BENCH_NUM_QUEUES,
+          .profile_capacity_per_warp =
+              GTAP_BENCH_PROFILE_CAPACITY_PER_WARP,
       };
       size_t gtap_device_bytes = 0;
       CUDA_CHECK(gtap_initialize(config, &gtap_device_bytes));

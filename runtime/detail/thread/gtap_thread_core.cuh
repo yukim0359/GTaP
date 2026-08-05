@@ -57,9 +57,9 @@ __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
 
 #ifdef GTAP_PROFILE
-__constant__ long long (*having_task_time)[GTAP_PROFILE_CAPACITY_PER_WARP];
-__constant__ long long (*working_time)[GTAP_PROFILE_CAPACITY_PER_WARP];
-__constant__ int (*tasks_processed_count)[GTAP_PROFILE_CAPACITY_PER_WARP];
+__constant__ long long* having_task_time;
+__constant__ long long* working_time;
+__constant__ int* tasks_processed_count;
 #endif
 
 __device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, int* id_list_alloc_pos, int* id_list_free_pos_stale) {

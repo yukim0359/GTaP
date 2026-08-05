@@ -45,7 +45,7 @@ static inline void save_block_having_task_time_to_csv(long long* having_task_tim
         struct TimeEntry* entries = (struct TimeEntry*)malloc(sizeof(struct TimeEntry) * samples);
         int entry_count = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = having_task_time_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long time = having_task_time_data[block * gtap_profile_capacity() + i];
             if (time > 0) {
                 entries[entry_count].timestamp = time;
                 entries[entry_count].index = i;
@@ -91,7 +91,7 @@ static inline void save_block_having_task_time_to_csv(long long* having_task_tim
         int having = 0, not_having = 0;
         long long first_time = LLONG_MAX, last_time = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = having_task_time_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long time = having_task_time_data[block * gtap_profile_capacity() + i];
             if (time > 0) {
                 if (time < first_time) first_time = time;
                 if (time > last_time) last_time = time;
@@ -119,7 +119,7 @@ static inline void visualize_having_task_time(const char* app_name) {
     int* indices = (int*)malloc(sizeof(int) * totalBlocks);
     cudaMemcpy(indices, d_indices, sizeof(int) * totalBlocks, cudaMemcpyDeviceToHost);
 
-    long long* data = (long long*)malloc(sizeof(long long) * totalBlocks * GTAP_PROFILE_CAPACITY_PER_BLOCK);
+    long long* data = (long long*)malloc(sizeof(long long) * totalBlocks * gtap_profile_capacity());
     if (!data) {
         printf("Error: Memory allocation failed for having_task_time_data\n");
         free(indices);
@@ -139,7 +139,7 @@ static inline void visualize_having_task_time(const char* app_name) {
     int total_samples = 0;
     for (int block = 0; block < totalBlocks; block++) {
         for (int i = 0; i < indices[block]; i++) {
-            long long t = data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long t = data[block * gtap_profile_capacity() + i];
             if (t > 0) {
                 if (t < min_time) min_time = t;
                 if (t > max_time) max_time = t;
@@ -171,7 +171,7 @@ static inline void visualize_having_task_time(const char* app_name) {
         for (int i = 0; i < timeline_width; i++) timeline[i] = ' ';
         timeline[timeline_width] = '\0';
         for (int i = 0; i < indices[block]; i++) {
-            long long t = data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long t = data[block * gtap_profile_capacity() + i];
             if (t > 0) {
                 int pos = (int)((t - min_time) * timeline_width / (max_time - min_time));
                 if (pos >= 0 && pos < timeline_width) timeline[pos] = (i % 2 == 0) ? 'H' : 'N';
@@ -204,12 +204,12 @@ static inline void save_block_working_time_to_csv(long long* working_time_data, 
         struct TimeEntry* entries = (struct TimeEntry*)malloc(sizeof(struct TimeEntry) * samples);
         int entry_count = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = working_time_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long time = working_time_data[block * gtap_profile_capacity() + i];
             if (time > 0) {
                 entries[entry_count].timestamp = time;
                 entries[entry_count].index = i;
                 entries[entry_count].state = (i % 2 == 0) ? 1 : 0; // even:pre, odd:post
-                entries[entry_count].count = counts_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+                entries[entry_count].count = counts_data[block * gtap_profile_capacity() + i];
                 entry_count++;
             }
         }
@@ -251,11 +251,11 @@ static inline void save_block_working_time_to_csv(long long* working_time_data, 
         int pre = 0, post = 0, total_tasks = 0;
         long long first_time = LLONG_MAX, last_time = 0;
         for (int i = 0; i < samples; i++) {
-            long long time = working_time_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long time = working_time_data[block * gtap_profile_capacity() + i];
             if (time > 0) {
                 if (time < first_time) first_time = time;
                 if (time > last_time) last_time = time;
-                if (i % 2 == 0) pre++; else { post++; total_tasks += counts_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i]; }
+                if (i % 2 == 0) pre++; else { post++; total_tasks += counts_data[block * gtap_profile_capacity() + i]; }
             }
         }
         double first_activity_ms = (first_time - min_time) / 1000000.0;
@@ -279,8 +279,8 @@ static inline void visualize_working_time(const char* app_name) {
     int* indices = (int*)malloc(sizeof(int) * totalBlocks);
     cudaMemcpy(indices, d_indices, sizeof(int) * totalBlocks, cudaMemcpyDeviceToHost);
 
-    long long* working_time_data = (long long*)malloc(sizeof(long long) * totalBlocks * GTAP_PROFILE_CAPACITY_PER_BLOCK);
-    int* counts_data = (int*)malloc(sizeof(int) * totalBlocks * GTAP_PROFILE_CAPACITY_PER_BLOCK);
+    long long* working_time_data = (long long*)malloc(sizeof(long long) * totalBlocks * gtap_profile_capacity());
+    int* counts_data = (int*)malloc(sizeof(int) * totalBlocks * gtap_profile_capacity());
     if (!working_time_data || !counts_data) {
         printf("Error: Memory allocation failed for working data\n");
         free(indices);
@@ -291,7 +291,7 @@ static inline void visualize_working_time(const char* app_name) {
     }
     cudaError_t st1 = get_working_time_data(working_time_data);
     // Block runtime doesn't have tasks_processed_count, so initialize to 0
-    memset(counts_data, 0, sizeof(int) * totalBlocks * GTAP_PROFILE_CAPACITY_PER_BLOCK);
+    memset(counts_data, 0, sizeof(int) * totalBlocks * gtap_profile_capacity());
     if (st1 != cudaSuccess) {
         printf("Error getting working data: %s\n", cudaGetErrorString(st1));
         free(indices);
@@ -305,7 +305,7 @@ static inline void visualize_working_time(const char* app_name) {
     int total_samples = 0;
     for (int block = 0; block < totalBlocks; block++) {
         for (int i = 0; i < indices[block]; i++) {
-            long long t = working_time_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long t = working_time_data[block * gtap_profile_capacity() + i];
             if (t > 0) {
                 if (t < min_time) min_time = t;
                 if (t > max_time) max_time = t;
@@ -338,7 +338,7 @@ static inline void visualize_working_time(const char* app_name) {
         for (int i = 0; i < timeline_width; i++) timeline[i] = ' ';
         timeline[timeline_width] = '\0';
         for (int i = 0; i < indices[block]; i++) {
-            long long t = working_time_data[block * GTAP_PROFILE_CAPACITY_PER_BLOCK + i];
+            long long t = working_time_data[block * gtap_profile_capacity() + i];
             if (t > 0) {
                 int pos = (int)((t - min_time) * timeline_width / (max_time - min_time));
                 if (pos >= 0 && pos < timeline_width) timeline[pos] = (i % 2 == 0) ? 'W' : 'N'; // Working / NotWorking

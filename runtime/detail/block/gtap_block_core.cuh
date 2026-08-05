@@ -50,8 +50,8 @@ __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
 
 #ifdef GTAP_PROFILE
-__constant__ long long (*having_task_time)[GTAP_PROFILE_CAPACITY_PER_BLOCK];
-__constant__ long long (*working_time)[GTAP_PROFILE_CAPACITY_PER_BLOCK];
+__constant__ long long* having_task_time;
+__constant__ long long* working_time;
 #endif
 
 __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {

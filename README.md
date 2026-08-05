@@ -107,7 +107,7 @@ gtap_export_profile("app_name");
 
 The profiler writes CSV files under `./profile/`, including task timelines and summary statistics for warps or blocks.
 
-`GTAP_PROFILE_CAPACITY_PER_WARP` (thread mode) or `GTAP_PROFILE_CAPACITY_PER_BLOCK` (block mode) can be adjusted when more samples are required.
+Set `config.profile_capacity_per_warp` (thread mode) or `config.profile_capacity_per_block` (block mode) when more samples are required.
 
 See [`examples/fib_profile`](examples/fib_profile) for an example.
 

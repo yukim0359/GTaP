@@ -17,6 +17,7 @@ struct gtap_thread_config {
     int block_size = 256;
     int max_tasks_per_warp = 20000;
     int num_queues = 1;
+    int profile_capacity_per_warp = 30000;
     cudaStream_t stream = nullptr;
 };
 
@@ -30,6 +31,9 @@ inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
         config.max_tasks_per_warp % config.num_queues != 0) {
         return cudaErrorInvalidValue;
     }
+#ifdef GTAP_PROFILE
+    if (config.profile_capacity_per_warp <= 0) return cudaErrorInvalidValue;
+#endif
     return cudaSuccess;
 }
 
@@ -125,8 +129,14 @@ static size_t __gtap_runtime_device_allocation_bytes() {
     const size_t task_id_pool_bytes = 2 * sizeof(int) * tasks;
     const size_t task_id_generated_bytes = sizeof(int) * workers *
         c.num_queues * GTAP_TASK_ID_GEN_QUEUE_STRIDE;
-    return global_queue_bytes + header_bytes + task_data_bytes + task_id_list_bytes +
-           task_id_pool_bytes + task_id_generated_bytes + queue_metadata_bytes;
+    size_t total = global_queue_bytes + header_bytes + task_data_bytes +
+        task_id_list_bytes + task_id_pool_bytes + task_id_generated_bytes +
+        queue_metadata_bytes;
+#ifdef GTAP_PROFILE
+    total += workers * c.profile_capacity *
+        (2 * sizeof(long long) + sizeof(int));
+#endif
+    return total;
 }
 
 cudaError_t __gtap_init_task_runtime() {
@@ -350,9 +360,30 @@ cudaError_t __gtap_init_task_runtime() {
     #ifdef INIT_PROFILE
     cudaEventRecord(start);
     #endif
-    GTAP_CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP));
-    GTAP_CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP));
-    GTAP_CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP));
+    const size_t profile_workers = total_workers;
+    const size_t profile_long_bytes = sizeof(long long) * profile_workers *
+        gtap_profile_capacity();
+    const size_t profile_int_bytes = sizeof(int) * profile_workers *
+        gtap_profile_capacity();
+    long long* having_task_time_ptr = nullptr;
+    long long* working_time_ptr = nullptr;
+    int* tasks_processed_count_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&having_task_time_ptr), profile_long_bytes));
+    GTAP_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&working_time_ptr), profile_long_bytes));
+    GTAP_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&tasks_processed_count_ptr), profile_int_bytes));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(
+        having_task_time, &having_task_time_ptr, sizeof(having_task_time_ptr)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(
+        working_time, &working_time_ptr, sizeof(working_time_ptr)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(
+        tasks_processed_count, &tasks_processed_count_ptr,
+        sizeof(tasks_processed_count_ptr)));
+    GTAP_CUDA_TRY(cudaMemset(having_task_time_ptr, 0, profile_long_bytes));
+    GTAP_CUDA_TRY(cudaMemset(working_time_ptr, 0, profile_long_bytes));
+    GTAP_CUDA_TRY(cudaMemset(tasks_processed_count_ptr, 0, profile_int_bytes));
     #ifdef INIT_PROFILE
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -412,6 +443,18 @@ cudaError_t __gtap_finalize_task_runtime() {
     
     int* d_task_id_generated_by_queue_idx_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_generated_by_queue_idx_ptr, d_task_id_generated_by_queue_idx, sizeof(int*)));
+#ifdef GTAP_PROFILE
+    long long* having_task_time_ptr = nullptr;
+    long long* working_time_ptr = nullptr;
+    int* tasks_processed_count_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &having_task_time_ptr, having_task_time, sizeof(having_task_time_ptr)));
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &working_time_ptr, working_time, sizeof(working_time_ptr)));
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &tasks_processed_count_ptr, tasks_processed_count,
+        sizeof(tasks_processed_count_ptr)));
+#endif
 
     
     // Free global queue
@@ -444,6 +487,12 @@ cudaError_t __gtap_finalize_task_runtime() {
     if (d_task_id_valid_ptr != nullptr) {
         GTAP_CUDA_TRY(cudaFree(d_task_id_valid_ptr));
     }
+#ifdef GTAP_PROFILE
+    if (having_task_time_ptr != nullptr) GTAP_CUDA_TRY(cudaFree(having_task_time_ptr));
+    if (working_time_ptr != nullptr) GTAP_CUDA_TRY(cudaFree(working_time_ptr));
+    if (tasks_processed_count_ptr != nullptr)
+        GTAP_CUDA_TRY(cudaFree(tasks_processed_count_ptr));
+#endif
     
     GTAP_CUDA_TRY(gtap_finalize_runtime_error_report());
 
@@ -463,6 +512,7 @@ cudaError_t gtap_initialize(
         config.max_tasks_per_warp,
         config.num_queues,
         config.max_tasks_per_warp / config.num_queues,
+        config.profile_capacity_per_warp,
         gtap_thread_gq_dynamic_shared_bytes(
             config.block_size, config.num_queues)
     };
@@ -567,9 +617,16 @@ cudaError_t __gtap_reset_task_runtime() {
 
     // Reset profile data if enabled
     #ifdef GTAP_PROFILE
-    GTAP_CUDA_TRY(gtap_memset_symbol(having_task_time, 0, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP));
-    GTAP_CUDA_TRY(gtap_memset_symbol(working_time, 0, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP));
-    GTAP_CUDA_TRY(gtap_memset_symbol(tasks_processed_count, 0, sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP));
+    long long* having_ptr = nullptr;
+    long long* working_ptr = nullptr;
+    int* counts_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&having_ptr, having_task_time, sizeof(having_ptr)));
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&working_ptr, working_time, sizeof(working_ptr)));
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&counts_ptr, tasks_processed_count, sizeof(counts_ptr)));
+    const size_t profile_workers = gtap_stored_launch_config().total_workers;
+    GTAP_CUDA_TRY(cudaMemset(having_ptr, 0, sizeof(long long) * profile_workers * gtap_profile_capacity()));
+    GTAP_CUDA_TRY(cudaMemset(working_ptr, 0, sizeof(long long) * profile_workers * gtap_profile_capacity()));
+    GTAP_CUDA_TRY(cudaMemset(counts_ptr, 0, sizeof(int) * profile_workers * gtap_profile_capacity()));
     #endif
     
     // Reinitialize warp ID pools metadata
@@ -589,53 +646,62 @@ cudaError_t gtap_reset() {
 
 #ifdef GTAP_PROFILE
 cudaError_t get_warp_having_task_time_data(long long* host_having_task_time) {
-    return cudaMemcpyFromSymbol(host_having_task_time, having_task_time, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
+    long long* ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, having_task_time, sizeof(ptr)));
+    return cudaMemcpy(host_having_task_time, ptr, sizeof(long long) *
+        gtap_stored_launch_config().total_workers * gtap_profile_capacity(),
+        cudaMemcpyDeviceToHost);
 }
 
 cudaError_t get_warp_working_time_data(long long* host_working_time) {
-    return cudaMemcpyFromSymbol(host_working_time, working_time, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
+    long long* ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
+    return cudaMemcpy(host_working_time, ptr, sizeof(long long) *
+        gtap_stored_launch_config().total_workers * gtap_profile_capacity(),
+        cudaMemcpyDeviceToHost);
 }
 
 cudaError_t get_warp_tasks_processed_count_data(int* host_counts) {
-    return cudaMemcpyFromSymbol(host_counts, tasks_processed_count, sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
+    int* ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, tasks_processed_count, sizeof(ptr)));
+    return cudaMemcpy(host_counts, ptr, sizeof(int) *
+        gtap_stored_launch_config().total_workers * gtap_profile_capacity(),
+        cudaMemcpyDeviceToHost);
 }
 
 cudaError_t get_single_warp_having_task_time_data(int warp_global_id, long long* host_having_task_time, int max_samples) {
-    long long* temp = (long long*)malloc(sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
-    if (!temp) return cudaErrorMemoryAllocation;
-    cudaError_t st = cudaMemcpyFromSymbol(temp, having_task_time, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
-    if (st != cudaSuccess) { free(temp); return st; }
-    for (int i = 0; i < max_samples && i < GTAP_PROFILE_CAPACITY_PER_WARP; i++) host_having_task_time[i] = temp[warp_global_id * GTAP_PROFILE_CAPACITY_PER_WARP + i];
-    free(temp);
-    return cudaSuccess;
+    long long* ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, having_task_time, sizeof(ptr)));
+    const int count = max_samples < gtap_profile_capacity() ? max_samples : gtap_profile_capacity();
+    return cudaMemcpy(host_having_task_time,
+        ptr + static_cast<size_t>(warp_global_id) * gtap_profile_capacity(),
+        sizeof(long long) * count, cudaMemcpyDeviceToHost);
 }
 
 cudaError_t get_single_warp_working_time_data(int warp_global_id, long long* host_working_time, int max_samples) {
-    long long* temp = (long long*)malloc(sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
-    if (!temp) return cudaErrorMemoryAllocation;
-    cudaError_t st = cudaMemcpyFromSymbol(temp, working_time, sizeof(long long) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
-    if (st != cudaSuccess) { free(temp); return st; }
-    for (int i = 0; i < max_samples && i < GTAP_PROFILE_CAPACITY_PER_WARP; i++) host_working_time[i] = temp[warp_global_id * GTAP_PROFILE_CAPACITY_PER_WARP + i];
-    free(temp);
-    return cudaSuccess;
+    long long* ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
+    const int count = max_samples < gtap_profile_capacity() ? max_samples : gtap_profile_capacity();
+    return cudaMemcpy(host_working_time,
+        ptr + static_cast<size_t>(warp_global_id) * gtap_profile_capacity(),
+        sizeof(long long) * count, cudaMemcpyDeviceToHost);
 }
 
 cudaError_t get_single_warp_tasks_processed_count_data(int warp_global_id, int* host_counts, int max_samples) {
-    int* temp = (int*)malloc(sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
-    if (!temp) return cudaErrorMemoryAllocation;
-    cudaError_t st = cudaMemcpyFromSymbol(temp, tasks_processed_count, sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS * GTAP_PROFILE_CAPACITY_PER_WARP);
-    if (st != cudaSuccess) { free(temp); return st; }
-    for (int i = 0; i < max_samples && i < GTAP_PROFILE_CAPACITY_PER_WARP; i++) host_counts[i] = temp[warp_global_id * GTAP_PROFILE_CAPACITY_PER_WARP + i];
-    free(temp);
-    return cudaSuccess;
+    int* ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, tasks_processed_count, sizeof(ptr)));
+    const int count = max_samples < gtap_profile_capacity() ? max_samples : gtap_profile_capacity();
+    return cudaMemcpy(host_counts,
+        ptr + static_cast<size_t>(warp_global_id) * gtap_profile_capacity(),
+        sizeof(int) * count, cudaMemcpyDeviceToHost);
 }
 
 __global__ void get_final_warp_having_task_time_indices(int* indices) {
     if (threadIdx.x == 0) {
         int wid = blockIdx.x;
         int count = 0;
-        for (int i = 0; i < GTAP_PROFILE_CAPACITY_PER_WARP; i++) {
-            if (having_task_time[wid][i] > 0) count++;
+        for (int i = 0; i < gtap_profile_capacity(); i++) {
+            if (having_task_time[wid * gtap_profile_capacity() + i] > 0) count++;
         }
         indices[wid] = count;
     }
@@ -645,8 +711,8 @@ __global__ void get_final_warp_working_time_indices(int* indices) {
     if (threadIdx.x == 0) {
         int wid = blockIdx.x;
         int count = 0;
-        for (int i = 0; i < GTAP_PROFILE_CAPACITY_PER_WARP; i++) {
-            if (working_time[wid][i] > 0) count++;
+        for (int i = 0; i < gtap_profile_capacity(); i++) {
+            if (working_time[wid * gtap_profile_capacity() + i] > 0) count++;
         }
         indices[wid] = count;
     }
@@ -1072,7 +1138,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         }
         if (warp_id_global == 0) {
 #ifdef GTAP_PROFILE
-            having_task_time[warp_id_global][0] = get_global_time();
+            having_task_time[warp_id_global * gtap_profile_capacity()] = get_global_time();
 #endif
             warp_contexts[0].id_list_alloc_pos = 1;
         } else {
@@ -1139,8 +1205,8 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             }
 #ifdef GTAP_PROFILE
             if (lane == 0) {
-                if (prev_get_task && having_time_idx[warp_id_in_block] < GTAP_PROFILE_CAPACITY_PER_WARP) {
-                    having_task_time[warp_id_global][having_time_idx[warp_id_in_block]] = get_global_time();
+                if (prev_get_task && having_time_idx[warp_id_in_block] < gtap_profile_capacity()) {
+                    having_task_time[warp_id_global * gtap_profile_capacity() + having_time_idx[warp_id_in_block]] = get_global_time();
                     having_time_idx[warp_id_in_block]++;
                 }
             }
@@ -1160,8 +1226,8 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         } else {
 #ifdef GTAP_PROFILE
             if (lane == 0) {
-                if (!prev_get_task && having_time_idx[warp_id_in_block] < GTAP_PROFILE_CAPACITY_PER_WARP) {
-                    having_task_time[warp_id_global][having_time_idx[warp_id_in_block]] = get_global_time();
+                if (!prev_get_task && having_time_idx[warp_id_in_block] < gtap_profile_capacity()) {
+                    having_task_time[warp_id_global * gtap_profile_capacity() + having_time_idx[warp_id_in_block]] = get_global_time();
                     having_time_idx[warp_id_in_block]++;
                 }
             }
@@ -1194,9 +1260,9 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             
 #ifdef GTAP_PROFILE
             if (lane == 0) {
-                if (working_time_idx[warp_id_in_block] < GTAP_PROFILE_CAPACITY_PER_WARP) {
-                    working_time[warp_id_global][working_time_idx[warp_id_in_block]] = get_global_time();
-                    tasks_processed_count[warp_id_global][working_time_idx[warp_id_in_block]] = execute_task_count;
+                if (working_time_idx[warp_id_in_block] < gtap_profile_capacity()) {
+                    working_time[warp_id_global * gtap_profile_capacity() + working_time_idx[warp_id_in_block]] = get_global_time();
+                    tasks_processed_count[warp_id_global * gtap_profile_capacity() + working_time_idx[warp_id_in_block]] = execute_task_count;
                     working_time_idx[warp_id_in_block]++;
                 }
             }
@@ -1214,9 +1280,9 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         __syncwarp();
 #ifdef GTAP_PROFILE
         if (lane == 0) {
-            if (working_time_idx[warp_id_in_block] < GTAP_PROFILE_CAPACITY_PER_WARP) {
-                working_time[warp_id_global][working_time_idx[warp_id_in_block]] = get_global_time();
-                tasks_processed_count[warp_id_global][working_time_idx[warp_id_in_block]] = execute_task_count;
+            if (working_time_idx[warp_id_in_block] < gtap_profile_capacity()) {
+                working_time[warp_id_global * gtap_profile_capacity() + working_time_idx[warp_id_in_block]] = get_global_time();
+                tasks_processed_count[warp_id_global * gtap_profile_capacity() + working_time_idx[warp_id_in_block]] = execute_task_count;
                 working_time_idx[warp_id_in_block]++;
             }
         }
