@@ -71,16 +71,16 @@ DEFAULT_PANELS: tuple[PanelSpec, ...] = (
 )
 
 PAPER_RC = {
-    "font.size": 7,
+    "font.size": 8,
     "font.weight": "normal",
-    "axes.labelsize": 7,
+    "axes.labelsize": 8,
     "axes.labelweight": "normal",
-    "axes.titlesize": 7,
+    "axes.titlesize": 8,
     "axes.titleweight": "normal",
-    "figure.labelsize": 7,
+    "figure.labelsize": 8,
     "figure.labelweight": "normal",
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
     "xtick.major.size": 2.5,
     "ytick.major.size": 2.5,
     "xtick.major.width": 0.5,
@@ -89,6 +89,8 @@ PAPER_RC = {
     "ytick.major.pad": 1.5,
     "axes.spines.top": False,
     "axes.spines.right": False,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 

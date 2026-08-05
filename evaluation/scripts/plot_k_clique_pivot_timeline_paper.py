@@ -151,17 +151,24 @@ def default_output_path(xscale: str) -> Path:
         raise ValueError(f"Unknown --xscale {xscale!r}") from exc
 
 
+# evaluation.tex: width=0.95\linewidth; tight MediaBox ~3.64 in vs 3.16 in include
+# → 8 * 3.64/3.16 ≈ 9.20 pt.
+PAPER_FONT_PT = 9.20
+
 PAPER_RC = {
-    "font.size": 7,
+    "font.family": "sans-serif",
+    "font.sans-serif": ["DejaVu Sans"],
+    "mathtext.fontset": "dejavusans",
+    "font.size": PAPER_FONT_PT,
     "font.weight": "normal",
-    "axes.labelsize": 7,
+    "axes.labelsize": PAPER_FONT_PT,
     "axes.labelweight": "normal",
-    "axes.titlesize": 7,
+    "axes.titlesize": PAPER_FONT_PT,
     "axes.titleweight": "normal",
-    "figure.labelsize": 7,
+    "figure.labelsize": PAPER_FONT_PT,
     "figure.labelweight": "normal",
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
+    "xtick.labelsize": PAPER_FONT_PT,
+    "ytick.labelsize": PAPER_FONT_PT,
     "xtick.major.size": 2.5,
     "ytick.major.size": 2.5,
     "xtick.major.width": 0.5,
@@ -170,6 +177,8 @@ PAPER_RC = {
     "ytick.major.pad": 1.5,
     "axes.spines.top": False,
     "axes.spines.right": False,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 
@@ -322,7 +331,7 @@ def plot_k_clique_pivot_timeline_paper(
         2,
         figure=fig,
         width_ratios=[1.0, 0.04],
-        left=0.155,
+        left=0.185,
         right=0.995,
         bottom=0.075,
         top=0.975,
@@ -366,7 +375,7 @@ def plot_k_clique_pivot_timeline_paper(
         )
 
     label_fp = ax.xaxis.label.get_fontproperties()
-    fig.supylabel("Warps (sorted by total busy time)", fontproperties=label_fp)
+    fig.supylabel("Warps (by busy time)", fontproperties=label_fp)
 
     cbar = fig.colorbar(tasks_in_batch_scalar_mappable(), cax=cax, extend="min")
     cbar.set_label(COLORBAR_LABEL_TASKS, fontproperties=label_fp)

@@ -50,8 +50,12 @@ DEFAULT_SM_COUNT = 132
 # Distinct from GTaP timeline (Blues + orange idle).
 SM_ACTIVE_CMAP = plt.cm.Greens
 SM_IDLE_COLOR = "#d4c4e8"  # soft lavender
-COLORBAR_LABEL = "Active worker slots (0 = idle)"
+COLORBAR_LABEL = "Active worker slots"
 DEFAULT_PROFILE_TAG = "_as-Skitter_k9_edge_degen_p1b"
+
+# evaluation.tex: width=0.95\linewidth; tight MediaBox ~3.68 in vs 3.16 in include
+# → 8 * 3.68/3.16 ≈ 9.31 pt.
+PAPER_FONT_PT = 9.31
 
 
 def make_sm_slots_colormap(slots_per_sm: int):
@@ -77,6 +81,7 @@ def configure_sm_slots_colorbar(cbar, slots_per_sm: int) -> None:
         ticks.append(int(slots_per_sm))
     cbar.set_ticks(ticks)
 
+
 GRAPH_ALIASES = {
     "dblp": "DBLP",
     "com-dblp": "DBLP",
@@ -96,16 +101,19 @@ VARIANT_DEFAULTS = {
 }
 
 PAPER_RC = {
-    "font.size": 8,
+    "font.family": "sans-serif",
+    "font.sans-serif": ["DejaVu Sans"],
+    "mathtext.fontset": "dejavusans",
+    "font.size": PAPER_FONT_PT,
     "font.weight": "normal",
-    "axes.labelsize": 8,
+    "axes.labelsize": PAPER_FONT_PT,
     "axes.labelweight": "normal",
-    "axes.titlesize": 8,
+    "axes.titlesize": PAPER_FONT_PT,
     "axes.titleweight": "normal",
-    "figure.labelsize": 8,
+    "figure.labelsize": PAPER_FONT_PT,
     "figure.labelweight": "normal",
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
+    "xtick.labelsize": PAPER_FONT_PT,
+    "ytick.labelsize": PAPER_FONT_PT,
     "xtick.major.size": 2.5,
     "ytick.major.size": 2.5,
     "xtick.major.width": 0.5,
@@ -114,6 +122,8 @@ PAPER_RC = {
     "ytick.major.pad": 1.5,
     "axes.spines.top": False,
     "axes.spines.right": False,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 
@@ -436,7 +446,7 @@ def plot_kcgpu_sm_timeline_paper(
 
     label_fp = ax.xaxis.label.get_fontproperties()
     if sort_by_busy:
-        fig.supylabel("SMs (sorted by total busy time)", fontproperties=label_fp)
+        fig.supylabel("SMs (by busy time)", fontproperties=label_fp)
     else:
         fig.supylabel("SM id", fontproperties=label_fp)
 

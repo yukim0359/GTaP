@@ -61,7 +61,7 @@ PAPER_PHASES = [
     "DTT",
     "DTT H2D",
     "M2L",
-    "L2P/P2P",
+    "P2P/L2P",
     "Other",
 ]
 
@@ -71,11 +71,11 @@ PAPER_GROUP_SOURCES = {
     "DTT": ("DTT",),
     "DTT H2D": ("DTT H2D",),
     "M2L": ("M2L",),
-    "L2P/P2P": ("Eval",),
+    "P2P/L2P": ("Eval",),
     "Other": ("L2L", "Phi D2H", "Body pack", "Tree pack", "Other"),
 }
 
-PAPER_COMMON_PHASES = frozenset({"Tree/setup", "M2L", "L2P/P2P", "Other"})
+PAPER_COMMON_PHASES = frozenset({"Tree/setup", "M2L", "P2P/L2P", "Other"})
 PAPER_DTT_PHASES = frozenset({"DTT init", "DTT", "DTT H2D"})
 
 SHORT_LABELS = {
@@ -112,7 +112,7 @@ PAPER_COLORS = {
     "DTT": "#1D4ED8",
     "DTT H2D": "#EA580C",
     "M2L": _blend_toward_white("#e15759", 0.72),
-    "L2P/P2P": _blend_toward_white("#edc948", 0.70),
+    "P2P/L2P": _blend_toward_white("#edc948", 0.70),
     "Other": _blend_toward_white("#b0b0b0", 0.62),
 }
 
@@ -122,7 +122,7 @@ PAPER_EDGE_COLORS = {
     "DTT": "#1e3a8a",
     "DTT H2D": "#9a3412",
     "M2L": "#ead0d0",
-    "L2P/P2P": "#efe5b7",
+    "P2P/L2P": "#efe5b7",
     "Other": "#dddddd",
 }
 

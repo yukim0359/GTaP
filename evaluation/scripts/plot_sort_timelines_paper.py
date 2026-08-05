@@ -59,6 +59,8 @@ PAPER_RC = {
     "ytick.major.width": 0.5,
     "axes.spines.top": False,
     "axes.spines.right": False,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 

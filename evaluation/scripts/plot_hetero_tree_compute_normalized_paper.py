@@ -5,8 +5,8 @@ Two side-by-side panels (shared y, one legend):
   left  — K=2  (hetero_tree_compute_results_K2.csv)
   right — K=4  (hetero_tree_compute_results_K4.csv)
 
-Y = T / T_Thread(wo DAQ), log2.
-Series: Thread (wo DAQ), Thread (DAQ), Block, Block (cutoff).
+Y = T / T_Thread(w/o DAQ), log2.
+Series: Thread (w/o DAQ), Thread (DAQ), Block, Block (cutoff).
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ AXES_TOP = 0.74
 LEGEND_GAP = 0.10
 LEGEND_Y = AXES_TOP + LEGEND_GAP
 OUTPUT_FORMAT = "pdf"
-YLABEL = r"$T / T_{\mathrm{Thread\ (wo\ DAQ)}}$"
+YLABEL = r"$T / T_{\mathrm{Thread\ (w/o\ DAQ)}}$"
 Y_LOG_BASE = 2
 BASELINE_PREFIX = "GTAP_thread"
 X_COL = "compute_iters"
@@ -57,7 +57,7 @@ PAPER_RC = {
     "figure.labelweight": "normal",
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
-    "legend.fontsize": 7,
+    "legend.fontsize": 8,
     "lines.linewidth": 1.2,
     "lines.markersize": 3.5,
     "xtick.major.size": 2.5,
@@ -69,10 +69,12 @@ PAPER_RC = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "grid.alpha": 0.2,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 METHOD_SERIES = (
-    ("GTAP_thread", "Thread (wo DAQ)", "o", COL_GTAP_THREAD),
+    ("GTAP_thread", "Thread (w/o DAQ)", "o", COL_GTAP_THREAD),
     ("GTAP_thread_daq", "Thread (DAQ)", "^", COL_CILK),
     ("GTAP_block", "Block", "s", COL_GTAP_BLOCK),
     ("GTAP_block_cutoff", "Block (cutoff)", "D", COL_OMP),

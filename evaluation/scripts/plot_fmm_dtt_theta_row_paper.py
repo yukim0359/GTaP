@@ -36,7 +36,7 @@ _COMBINED_HEIGHT_RATIO = 0.85
 _HEIGHT_SCALE = 1.75
 OUTPUT_FORMAT = "pdf"
 MARKER_SIZE = 3.5
-LEGEND_FONT_SIZE = 7
+LEGEND_FONT_SIZE = 8
 MERGE_KEYS = ["n", "theta"]
 
 PANELS: tuple[tuple[int, str], ...] = (
@@ -47,14 +47,14 @@ PANELS: tuple[tuple[int, str], ...] = (
 _COL_WIDTH_IN = FIG_WIDTH_IN / len(PANELS)
 FIG_HEIGHT_IN = _COL_WIDTH_IN * _COMBINED_HEIGHT_RATIO * _HEIGHT_SCALE
 
-YLABEL_ABSOLUTE = "DTT core time (ms)"
+YLABEL_ABSOLUTE = "DTT time (ms)"
 YLABEL_NORMALIZED = r"Normalized time" + "\n" + r"($T_\mathrm{method}/T_\mathrm{GTaP}$)"
 XLABEL = r"$\theta$ (MAC)"
 
 LABEL_GTAP = "GTaP"
 LABEL_WORKLIST = "GPU worklist"
 
-PAPER_FONT_SIZE = 7
+PAPER_FONT_SIZE = 8
 
 PAPER_RC = {
     "font.size": PAPER_FONT_SIZE,
@@ -79,6 +79,8 @@ PAPER_RC = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "grid.alpha": 0.2,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 
@@ -295,7 +297,7 @@ def plot_fmm_dtt_theta_row_paper(*, output_path: Path) -> None:
         fontsize=LEGEND_FONT_SIZE,
     )
 
-    fig.subplots_adjust(left=0.15, right=0.99, top=0.85, bottom=0.14)
+    fig.subplots_adjust(left=0.15, right=0.99, top=0.82, bottom=0.14)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300)

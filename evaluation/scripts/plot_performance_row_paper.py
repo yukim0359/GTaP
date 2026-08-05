@@ -40,19 +40,21 @@ OUTPUT_FORMAT = "pdf"
 MARKER_SIZE = 4.0
 MARK_EVERY_STEP = 2
 
-# 8pt paper typography (no thesis_plt).
+# evaluation.tex: width=0.9\linewidth in figure* → scale 0.9, so 8/0.9 pt here.
+PAPER_FONT_PT = 8 / 0.9  # ≈ 8.89
+
 PAPER_RC = {
-    "font.size": 8,
+    "font.size": PAPER_FONT_PT,
     "font.weight": "normal",
-    "axes.labelsize": 8,
+    "axes.labelsize": PAPER_FONT_PT,
     "axes.labelweight": "normal",
-    "axes.titlesize": 8,
+    "axes.titlesize": PAPER_FONT_PT,
     "axes.titleweight": "normal",
-    "figure.labelsize": 8,
+    "figure.labelsize": PAPER_FONT_PT,
     "figure.labelweight": "normal",
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-    "legend.fontsize": 8,
+    "xtick.labelsize": PAPER_FONT_PT,
+    "ytick.labelsize": PAPER_FONT_PT,
+    "legend.fontsize": PAPER_FONT_PT,
     "lines.linewidth": 1.2,
     "lines.markersize": 3.5,
     "xtick.major.size": 2.5,
@@ -62,6 +64,8 @@ PAPER_RC = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "grid.alpha": 0.2,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 XAxisKind = Literal["linear", "nq", "log"]
@@ -79,7 +83,7 @@ class BenchSpec:
 BENCHMARKS: tuple[BenchSpec, ...] = (
     BenchSpec("fib", "Fibonacci", "Fibonacci Number", "linear"),
     BenchSpec("nq", "N-Queens", "N-Queens Board Size", "nq"),
-    BenchSpec("cilksort", "CilkSort", "Array Size", "log"),
+    BenchSpec("cilksort", "Cilksort", "Array Size", "log"),
 )
 
 _COL_WIDTH_IN = FIG_WIDTH_IN / len(BENCHMARKS)
@@ -258,12 +262,12 @@ def plot_performance_row_paper(
         handles,
         labels,
         loc="upper center",
-        bbox_to_anchor=(0.5, 0.99),
+        bbox_to_anchor=(0.5, 1.02),
         ncol=len(labels),
         frameon=False,
     )
 
-    fig.subplots_adjust(left=0.09, right=0.99, top=0.80, bottom=0.18)
+    fig.subplots_adjust(left=0.09, right=0.99, top=0.76, bottom=0.19)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300)

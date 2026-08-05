@@ -24,13 +24,24 @@ sys.path.insert(0, str(WORKSPACE_ROOT))
 
 from plot_style.gtap_colors import COL_GTAP_THREAD  # noqa: E402
 
-FIG_WIDTH_IN = 0.8 * (239.75 / 72.0)  # ≈ 2.66 in (0.8× single-column)
-PANEL_HEIGHT_RATIO = 0.50 * 1.1
-AXES_TOP = 0.88
-LEGEND_Y = 0.9
+# Full single-column; LaTeX includes at width=\linewidth (no extra 0.8).
+# Axes are 0.8× the old full-bleed span, centered so left/right outer
+# whitespace matches (ylabel+ticks sit inside the left pad).
+FIG_WIDTH_IN = 239.75 / 72.0  # ≈ 3.33 in
+PLOT_SCALE = 0.8
+_AXES_SPAN = (0.98 - 0.14) * PLOT_SCALE  # ≈ 0.672
+_YLABEL_SPACE = 0.11
+_TOTAL = _AXES_SPAN + _YLABEL_SPACE
+_MARGIN = (1.0 - _TOTAL) / 2.0
+AXES_LEFT = _MARGIN + _YLABEL_SPACE
+AXES_RIGHT = 1.0 - _MARGIN
+# Tight vertical pack: xlabel / axes / legend, minimal unused pad.
+AXES_BOTTOM = 0.22
+AXES_TOP = 0.72
+LEGEND_Y = 0.755
+PANEL_HEIGHT_RATIO = 0.55
 OUTPUT_FORMAT = "pdf"
 DEFAULT_BLOCK_SIZE = 32
-
 PAPER_RC = {
     "font.size": 8,
     "font.weight": "normal",
@@ -42,7 +53,7 @@ PAPER_RC = {
     "figure.labelweight": "normal",
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
-    "legend.fontsize": 7,
+    "legend.fontsize": 8,
     "lines.linewidth": 1.2,
     "lines.markersize": 3.5,
     "xtick.major.size": 2.5,
@@ -54,6 +65,8 @@ PAPER_RC = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "grid.alpha": 0.2,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 SERIES = (
@@ -166,7 +179,12 @@ def plot_fib_worker_scaling_paper(
     ax.grid(False, which="minor")
 
     handles, labels = ax.get_legend_handles_labels()
-    fig.subplots_adjust(left=0.14, right=0.98, bottom=0.16, top=AXES_TOP)
+    fig.subplots_adjust(
+        left=AXES_LEFT,
+        right=AXES_RIGHT,
+        bottom=AXES_BOTTOM,
+        top=AXES_TOP,
+    )
     fig.legend(
         handles,
         labels,
@@ -177,7 +195,8 @@ def plot_fib_worker_scaling_paper(
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=save_dpi, bbox_inches="tight", pad_inches=0.02)
+    # Keep full figsize so the 0.8× axes width (right margin) survives includegraphics.
+    fig.savefig(output_path, dpi=save_dpi, bbox_inches=None, pad_inches=0)
     plt.close(fig)
     print(f"Saved: {output_path} ({FIG_WIDTH_IN:.3f} x {fig_height:.3f} in)")
 

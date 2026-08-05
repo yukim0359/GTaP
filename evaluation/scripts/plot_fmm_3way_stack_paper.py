@@ -4,7 +4,7 @@
 Reads summary CSV from fmm/csv/ and renders a horizontal stacked-bar breakdown by
 default at ACM single-column width (3.33 in) with 8pt typography. Phases are
 collapsed to seven paper segments (Tree/setup, DTT init, DTT, DTT H2D, M2L,
-L2P/P2P, Other). Use --vertical for the legacy column-oriented layout.
+P2P/L2P, Other). Use --vertical for the legacy column-oriented layout.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ BAR_WIDTH = 0.40 * 1.1
 BAR_HEIGHT = BAR_WIDTH
 BAR_HEIGHT_H = 0.30 * 0.8 * 0.8
 BAR_ROW_STEP = 0.40 * 1.2
-LEGEND_FONT_SIZE = 6
+LEGEND_FONT_SIZE = 8
 OUTPUT_FORMAT = "pdf"
 
 Layout = Literal["horizontal", "vertical"]
@@ -93,6 +93,8 @@ PAPER_RC = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "grid.alpha": 0.3,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 

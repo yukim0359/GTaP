@@ -47,7 +47,7 @@ def tasks_in_batch_scalar_mappable(max_tasks=MAX_TASKS_PER_BATCH):
     return sm
 
 
-COLORBAR_LABEL_TASKS = "Tasks in batch (0 = idle)"
+COLORBAR_LABEL_TASKS = "Tasks in batch"
 
 
 def configure_tasks_in_batch_colorbar(cbar, max_tasks=MAX_TASKS_PER_BATCH):

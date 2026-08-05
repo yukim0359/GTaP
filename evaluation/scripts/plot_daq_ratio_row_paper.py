@@ -2,7 +2,7 @@
 """Paper figure: DAQ normalized time T_DAQ/T_1queue for fib / nq / cilksort.
 
 Reads DAQ experiment CSVs from evaluation/daq/{fib,nq,cilksort}/ and plots one row of
-three panels at ACM single-column width (3.33 in) with 7pt typography.
+three panels at ACM single-column width (3.33 in) with 8pt typography.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ FIG_WIDTH_IN = 239.75 / 72.0  # ≈ 3.33 in (ACM single column)
 _COMBINED_HEIGHT_RATIO = 1.0
 _HEIGHT_SCALE = 1.22
 PANEL_SCALE_X = 0.90
-PANEL_SCALE_Y = 0.8
-PANEL_ANCHOR_FRAC = 0.42
+PANEL_SCALE_Y = 0.75
+PANEL_ANCHOR_FRAC = 0.32
 OUTPUT_FORMAT = "pdf"
 YLABEL = r"$T_\mathrm{DAQ}/T_\mathrm{1queue}$"
 PARITY_Y = 1.0
@@ -40,17 +40,17 @@ Y_TOP_MIN = 1.1
 Y_TOP_PAD = 1.05
 
 PAPER_RC = {
-    "font.size": 7,
+    "font.size": 8,
     "font.weight": "normal",
-    "axes.labelsize": 7,
+    "axes.labelsize": 8,
     "axes.labelweight": "normal",
-    "axes.titlesize": 7,
+    "axes.titlesize": 8,
     "axes.titleweight": "normal",
-    "figure.labelsize": 7,
+    "figure.labelsize": 8,
     "figure.labelweight": "normal",
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
-    "legend.fontsize": 7,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8,
+    "legend.fontsize": 8,
     "lines.linewidth": 1.2,
     "lines.markersize": 3.5,
     "xtick.major.size": 2.5,
@@ -60,6 +60,8 @@ PAPER_RC = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "grid.alpha": 0.2,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 XAxisKind = Literal["linear", "log"]
@@ -83,7 +85,7 @@ BENCHMARKS: tuple[BenchSpec, ...] = (
     BenchSpec("nq", "N-Queens", r"$(n=16)$", "Cutoff", "linear"),
     BenchSpec(
         "cilksort",
-        "CilkSort",
+        "Cilksort",
         r"$(n=5\times10^{7})$",
         "Cutoff",
         "log",
@@ -265,7 +267,7 @@ def plot_daq_ratio_row_paper(
 
     axes[0].set_ylabel(YLABEL)
 
-    fig.subplots_adjust(left=0.14, right=0.99, top=0.92, bottom=0.22)
+    fig.subplots_adjust(left=0.14, right=0.99, top=0.88, bottom=0.22)
     _scale_axes_positions(
         axes,
         scale_x=PANEL_SCALE_X,

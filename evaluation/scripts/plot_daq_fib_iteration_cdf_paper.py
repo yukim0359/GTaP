@@ -42,7 +42,7 @@ PAPER_RC = {
     "figure.labelweight": "normal",
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
-    "legend.fontsize": 7,
+    "legend.fontsize": 8,
     "lines.linewidth": 1.4,
     "xtick.major.size": 2.5,
     "ytick.major.size": 2.5,
@@ -51,6 +51,8 @@ PAPER_RC = {
     "axes.spines.top": False,
     "axes.spines.right": False,
     "grid.alpha": 0.25,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 }
 
 COL_WITHOUT_DAQ = COL_GTAP_THREAD
