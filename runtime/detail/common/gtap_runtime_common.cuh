@@ -8,7 +8,7 @@
 #include "gtap_runtime_error.cuh"
 #include "gtap_config.cuh"
 
-// #define DEBUG
+// #define GTAP_INTERNAL_DEBUG
 
 extern const size_t __gtap_auto_task_data_size;
 __constant__ size_t d_gtap_task_data_stride;

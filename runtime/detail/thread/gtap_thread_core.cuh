@@ -8,8 +8,8 @@
 
 inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
 
-// #define DEBUG
-// #define INIT_PROFILE
+// #define GTAP_INTERNAL_DEBUG
+// #define GTAP_INTERNAL_PROFILE_INIT
 
 struct TaskContext;
 

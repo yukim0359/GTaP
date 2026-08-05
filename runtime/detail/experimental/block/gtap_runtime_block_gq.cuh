@@ -461,7 +461,7 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
     if (pop_success) {
         int idx = head % (d_gtap_launch_config.total_workers * d_gtap_launch_config.tasks_per_worker);
         *execute_task_id = load_L2(&d_global_task_queue[idx]);
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
         printf("pop_global: tid=%d in block %d\n", *execute_task_id, blockIdx.x);
 #endif
     } else {
@@ -498,7 +498,7 @@ __device__ __forceinline__ void push_global_queue(
             *execute_task_id = get_task_id_generated(blockIdx.x, 0);
             *have_execute_task = true;
             first_idx_to_push = 1;
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
             printf("execute_immediately: tid=%d in block %d\n", *execute_task_id, blockIdx.x);
 #endif
         } else {
@@ -530,7 +530,7 @@ __device__ __forceinline__ void push_global_queue(
         int tid = get_task_id_generated(blockIdx.x, first_idx_to_push + j);
         unsigned int pos = (base_pos + (unsigned int)j) % (d_gtap_launch_config.total_workers * d_gtap_launch_config.tasks_per_worker);
         store_L2(&d_global_task_queue[pos], tid);
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
         printf("push_global: tid=%d to pos %d in block %d\n", tid, pos, blockIdx.x);
 #endif
         }
@@ -598,7 +598,7 @@ __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
         ctx->have_task_id_resumable = true;
         ctx->task_id_resumable = parentId;
     }
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
     printf("notify_parent: %d, rem: %d\n", parentId, rem);
 #endif
     return rem;
@@ -613,7 +613,7 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
         
         if (tid != 0 && load_L2_u16t(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
             printf("finish_task: %d, parent_tid: %d\n", tid, parent_tid);
 #endif
             notify_parent(parent_tid, ctx);
@@ -873,7 +873,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 
         push_global_queue<M>(&block_ctx, &execute_task_id, &have_execute_task);
     }
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
     if (threadIdx.x == 0) printf("execute_task_loop: end (block_id = %d)\n", blockIdx.x);
 #endif
 }

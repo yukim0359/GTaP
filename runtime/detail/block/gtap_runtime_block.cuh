@@ -489,7 +489,7 @@ __device__ __forceinline__ int pop(int* taskId) {
     
     if (size > 0) {
         *taskId = task_id;
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
         printf("pop: %d (block: %d)\n", task_id, blockIdx.x);
 #endif
         return true;
@@ -503,7 +503,7 @@ __device__ __forceinline__ int pop(int* taskId) {
     
     *taskId = task_id;
     store_L2(&myQueue->bottom, t + 1);
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
     printf("pop: %d (block: %d)\n", task_id, blockIdx.x);
 #endif
     return true;
@@ -537,7 +537,7 @@ __device__ __forceinline__ int steal(int* taskId, bool prev_get_task) {
     }
     
     *taskId = task_id;
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
     printf("steal: %d (block: %d -> %d)\n", task_id, targetBlock, blockIdx.x);
 #endif
     return true;
@@ -567,7 +567,7 @@ __device__ __forceinline__ void push(
     if (ctx->have_task_id_resumable) {
         if (threadIdx.x == 0) {
             *execute_task_id = ctx->task_id_resumable;
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
             printf("resume: %d (block: %d)\n", *execute_task_id, blockIdx.x);
 #endif
         }
@@ -620,7 +620,7 @@ extern "C" __device__ __forceinline__ bool __gtap_set_state_for_join_block(
         hdr->state = next_state;
         hdr->waiting_child_count = child_count;
 #endif
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
     printf("set_state_for_join_block: tid=%d child_count=%d\n", tid, child_count);
 #endif
     }
@@ -645,7 +645,7 @@ __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
         ctx->have_task_id_resumable = true;
         ctx->task_id_resumable = parentId;
     }
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
     printf("notify_parent: %d, rem: %d\n", parentId, rem);
 #endif
     return rem;
@@ -664,7 +664,7 @@ extern "C" __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
         d_task_headers[tid].generation = cached_hdr->generation + 1;
         
         if (tid != 0 && load_L2_u16t(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
             printf("finish_task: %d, parent_tid: %d\n", tid, parent_tid);
 #endif
             notify_parent(parent_tid, ctx);
@@ -894,7 +894,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             have_execute_task = (total_count > 0);
         }
     }
-#ifdef DEBUG
+#ifdef GTAP_INTERNAL_DEBUG
     if (threadIdx.x == 0) printf("execute_task_loop: end (block_id = %d)\n", blockIdx.x);
 #endif
 }
