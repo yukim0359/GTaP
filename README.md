@@ -116,3 +116,10 @@ See [`examples/fib_profile`](examples/fib_profile) for an example.
 
 - **clang-gtap**: Based on the LLVM Project and distributed under the Apache License v2.0 with LLVM Exceptions. See [`clang-gtap/LICENSE.TXT`](https://github.com/yukim0359/clang-gtap/blob/main/LICENSE.TXT).
 - **Other components**: See [`LICENSE`](LICENSE) at the repository root.
+
+
+## Paper
+
+Yuki Maeda and Kenjiro Taura.  
+[GTaP: A GPU-Resident Fork-Join Task-Parallel Runtime with a Pragma-Based Interface](https://arxiv.org/abs/2604.05982).  
+arXiv:2604.05982, 2026.
