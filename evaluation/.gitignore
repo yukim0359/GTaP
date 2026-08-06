@@ -1,21 +1,2 @@
-venv/
-*.sh.o*
-*.pbs.o*
-# PBS stdout/stderr when #PBS -N is set (e.g. pivot_prof_sk9.o2481651)
-*.o[0-9]*
-*.e[0-9]*
-bin
-tmp*
-profile/
 source_profile/
 **/analysis/*/raw/
-pdf/
-__pycache__/
-
-# util
-gen_vector
-data.bin
-gen_spm
-spm_data.bin
-gen_spm_skew
-spm_data_skew.bin

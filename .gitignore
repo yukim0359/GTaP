@@ -1,0 +1,32 @@
+# Build and profiling outputs
+**/bin/
+profile/
+pdf/
+*.ncu-rep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Batch jobs, logs, and temporary outputs
+*.sh.o*
+*.pbs.o*
+*.o[0-9]*
+*.e[0-9]*
+*.out
+*.err
+*.log
+tmp*
+
+# Generated utility programs and data
+gen_vector
+data.bin
+gen_spm
+spm_data.bin
+gen_spm_skew
+spm_data_skew.bin
