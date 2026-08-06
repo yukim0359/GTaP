@@ -1,16 +1,5 @@
-# Build / runtime artifacts
-bin/
-profile/
-__pycache__/
-*.sh.o*
-*.pbs.o*
-# PBS stdout/stderr when #PBS -N is set (e.g. pivot_prof_sk9.o2481651)
-*.o[0-9]*
-*.e[0-9]*
-
 # Job / smoke logs
 logs/
-*.log
 
 # Graphs and regenerated plots
 data/
