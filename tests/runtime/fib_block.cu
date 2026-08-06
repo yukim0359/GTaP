@@ -5,6 +5,8 @@
 
 __device__ int d_result;
 __device__ int d_non_spawner_received_result;
+__device__ int d_entry_lane_results[GTAP_BLOCK_SIZE];
+__device__ int d_non_master_entry_assignment;
 
 #pragma gtap function
 __device__ int fib(int n) {
@@ -27,8 +29,20 @@ __device__ int fib(int n) {
 }
 
 __global__ void test_kernel(int n) {
+  constexpr int untouched = -12345;
+  int result = untouched;
 #pragma gtap entry
-  d_result = fib(n);
+  result = fib(n);
+
+  // The entry assignment is performed by every thread in the master block.
+  // Other blocks must retain their original local value.
+  if (blockIdx.x == 0) {
+    d_entry_lane_results[threadIdx.x] = result;
+    if (threadIdx.x == 0)
+      d_result = result;
+  } else if (result != untouched) {
+    atomicExch(&d_non_master_entry_assignment, 1);
+  }
 }
 
 static int serial_fib(int n) {
@@ -53,18 +67,30 @@ int main(int argc, char **argv) {
   status = cudaMemcpyToSymbol(d_non_spawner_received_result, &zero,
                               sizeof(zero));
   if (status == cudaSuccess)
+    status = cudaMemcpyToSymbol(d_non_master_entry_assignment, &zero,
+                                sizeof(zero));
+  if (status == cudaSuccess)
     status = gtap_launch(test_kernel, n);
   if (status == cudaSuccess)
     status = gtap_synchronize();
 
   int result = 0;
   int non_spawner_received_result = 0;
+  int non_master_entry_assignment = 0;
+  int entry_lane_results[GTAP_BLOCK_SIZE] = {};
   if (status == cudaSuccess)
     status = cudaMemcpyFromSymbol(&result, d_result, sizeof(result));
   if (status == cudaSuccess)
     status = cudaMemcpyFromSymbol(&non_spawner_received_result,
                                   d_non_spawner_received_result,
                                   sizeof(non_spawner_received_result));
+  if (status == cudaSuccess)
+    status = cudaMemcpyFromSymbol(&non_master_entry_assignment,
+                                  d_non_master_entry_assignment,
+                                  sizeof(non_master_entry_assignment));
+  if (status == cudaSuccess)
+    status = cudaMemcpyFromSymbol(entry_lane_results, d_entry_lane_results,
+                                  sizeof(entry_lane_results));
 
   cudaError_t finalize_status = gtap_finalize();
   if (status != cudaSuccess || finalize_status != cudaSuccess) {
@@ -76,7 +102,17 @@ int main(int argc, char **argv) {
   }
 
   int expected = serial_fib(n);
-  std::printf("fib_block(%d): result=%d expected=%d non_spawner=%d\n",
-              n, result, expected, non_spawner_received_result);
-  return result == expected && non_spawner_received_result == 0 ? 0 : 1;
+  bool lane_results_ok = entry_lane_results[0] == expected;
+  for (int lane = 1; lane < GTAP_BLOCK_SIZE; ++lane)
+    lane_results_ok = lane_results_ok && entry_lane_results[lane] == 0;
+
+  std::printf(
+      "fib_block(%d): result=%d expected=%d non_spawner=%d "
+      "non_master_entry=%d lane_results=%s\n",
+      n, result, expected, non_spawner_received_result,
+      non_master_entry_assignment, lane_results_ok ? "ok" : "bad");
+  return result == expected && non_spawner_received_result == 0 &&
+                 non_master_entry_assignment == 0 && lane_results_ok
+             ? 0
+             : 1;
 }
