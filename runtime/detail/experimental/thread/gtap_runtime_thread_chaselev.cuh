@@ -1,11 +1,14 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <climits>
 #include "../../common/gtap_runtime_common.cuh"
 
 #ifndef __GTAP_WORKER_IS_THREAD
 #define __GTAP_WORKER_IS_THREAD
 #endif
+
+#define GTAP_EXPERIMENTAL_PROFILE_LEGACY 1
 
 #include "../../thread/gtap_thread_core.cuh"
 
@@ -14,7 +17,7 @@ struct gtap_thread_config {
     int block_size = 256;
     int max_tasks_per_warp = 150000;
     int num_queues = 1;
-    int profile_capacity_per_warp = 30000;
+    int profile_capacity_per_warp = 15000;
     cudaStream_t stream = nullptr;
 };
 
@@ -29,7 +32,10 @@ inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
         return cudaErrorInvalidValue;
     }
 #ifdef GTAP_PROFILE
-    if (config.profile_capacity_per_warp <= 0) return cudaErrorInvalidValue;
+    if (config.profile_capacity_per_warp <= 0 ||
+        config.profile_capacity_per_warp > INT_MAX / 2) {
+        return cudaErrorInvalidValue;
+    }
 #endif
     return cudaSuccess;
 }

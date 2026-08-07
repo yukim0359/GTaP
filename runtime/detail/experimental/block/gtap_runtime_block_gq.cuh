@@ -1,11 +1,14 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <climits>
 #include "../../common/gtap_runtime_common.cuh"
 
 #ifndef __GTAP_WORKER_IS_BLOCK
 #define __GTAP_WORKER_IS_BLOCK
 #endif
+
+#define GTAP_EXPERIMENTAL_PROFILE_LEGACY 1
 
 #include "../../block/gtap_block_core.cuh"
 
@@ -16,7 +19,7 @@
 struct gtap_block_config {
     int grid_size = 1024;
     int max_tasks_per_block = 10000;
-    int profile_capacity_per_block = 30000;
+    int profile_capacity_per_block = 15000;
     size_t dynamic_shared_bytes = 0;
     cudaStream_t stream = nullptr;
 };
@@ -25,7 +28,10 @@ inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
     if (config.grid_size <= 0) return cudaErrorInvalidConfiguration;
     if (config.max_tasks_per_block <= 0) return cudaErrorInvalidValue;
 #ifdef GTAP_PROFILE
-    if (config.profile_capacity_per_block <= 0) return cudaErrorInvalidValue;
+    if (config.profile_capacity_per_block <= 0 ||
+        config.profile_capacity_per_block > INT_MAX / 2) {
+        return cudaErrorInvalidValue;
+    }
 #endif
     return cudaSuccess;
 }
@@ -50,7 +56,8 @@ static size_t __gtap_runtime_device_allocation_bytes() {
     size_t total = global_queue_bytes + task_id_list_bytes + header_bytes +
         task_data_bytes + task_id_generated_bytes + task_id_pool_bytes;
 #ifdef GTAP_PROFILE
-    total += 2 * sizeof(long long) * c.total_workers * c.profile_capacity;
+    total += 2 * sizeof(long long) * c.total_workers *
+             (2 * c.profile_interval_capacity);
 #endif
     return total;
 }

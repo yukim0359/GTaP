@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <stdio.h>
 #include <string.h>
 
 // Runtime error codes (keep declaration order aligned with tables below).

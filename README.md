@@ -102,12 +102,12 @@ Define `GTAP_PROFILE` before including the runtime header:
 After executing and synchronizing the GTaP kernel, call:
 
 ```cpp
-gtap_export_profile("app_name");
+gtap_profile_export_result result = gtap_export_profile();
 ```
 
-The profiler writes CSV files under `./profile/`, including task timelines and summary statistics for warps or blocks.
+The profiler writes each run to a result directory under `./profile/`.
 
-Set `config.profile_capacity_per_warp` (thread mode) or `config.profile_capacity_per_block` (block mode) when more samples are required.
+Set `config.profile_capacity_per_warp` (thread mode) or `config.profile_capacity_per_block` (block mode) when more intervals are required.
 
 See [`examples/fib_profile`](examples/fib_profile) for an example.
 

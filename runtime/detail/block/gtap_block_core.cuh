@@ -50,8 +50,11 @@ __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
 
 #ifdef GTAP_PROFILE
+#ifdef GTAP_EXPERIMENTAL_PROFILE_LEGACY
 __constant__ long long* having_task_time;
+#endif
 __constant__ long long* working_time;
+__constant__ unsigned long long* profile_dropped_events;
 #endif
 
 __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
