@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
     hetero_print_mix_stats("block-cutoff");
 
 #ifdef GTAP_PROFILE
-    gtap_export_profile("hetero_tree_block_cutoff");
+    gtap_export_profile();
 #endif
 
     cudaFree(d_out);

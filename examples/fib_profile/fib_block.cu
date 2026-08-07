@@ -1,46 +1,44 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <cuda_runtime.h>
-// #define GTAP_PROFILE
-#include "gtap_thread.cuh"
+#include "gtap_block.cuh"
 
 __device__ int d_result;
-__device__ int d_cutoff;
-
-__device__ int fib_sequential(int n) {
-    if (n < 2) return n;
-    int result1 = fib_sequential(n - 1);
-    int result2 = fib_sequential(n - 2);
-    return result1 + result2;
-}
 
 #pragma gtap function
 __device__ int fib(int n) {
-    if (n < d_cutoff) return fib_sequential(n);
-    int a, b;
-    #pragma gtap task queue((n - 1) < d_cutoff ? 1 : 0)
-    a = fib(n - 1);
-    #pragma gtap task queue((n - 2) < d_cutoff ? 1 : 0)
-    b = fib(n - 2);
-    #pragma gtap taskwait queue(2)
+    if (n < 2) {
+        return n;
+    }
+
+    int a = 0;
+    int b = 0;
+    if (threadIdx.x == 0) {
+        #pragma gtap task
+        a = fib(n - 1);
+        #pragma gtap task
+        b = fib(n - 2);
+    }
+    #pragma gtap taskwait
     return a + b;
 }
 
 __global__ void exec_kernel(int n) {
+    int result;
     #pragma gtap entry
-    d_result = fib(n);
+    result = fib(n);
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+        d_result = result;
+    }
 }
 
 int main(int argc, char** argv) {
-    int n = 40;
-    int cutoff = 2;
+    int n = 25;
     if (argc >= 2) n = atoi(argv[1]);
-    if (argc >= 3) cutoff = atoi(argv[2]);
 
-    gtap_thread_config config{
-        .grid_size = GTAP_DAQ_GRID_SIZE,
-        .block_size = GTAP_DAQ_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_DAQ_MAX_TASKS_PER_WARP,
-        .num_queues = 3,
+    gtap_block_config config{
+        .grid_size = 3000,
+        .max_tasks_per_block = 10000,
     };
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
@@ -48,8 +46,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    cudaMemcpyToSymbol(d_cutoff, &cutoff, sizeof(int));
-    
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -58,7 +54,7 @@ int main(int argc, char** argv) {
     cudaEventRecord(stop);
     gtap_synchronize();
     cudaEventSynchronize(stop);
-    
+
     int h_result;
     cudaMemcpyFromSymbol(&h_result, d_result, sizeof(int));
     printf("Fibonacci of %d is %d\n", n, h_result);
@@ -67,9 +63,10 @@ int main(int argc, char** argv) {
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
 
-#ifdef GTAP_PROFILE
-    gtap_export_profile();
-#endif
+    gtap_export_profile({
+        .output_directory = "./profile/fib_block",
+        .overwrite = true,
+    });
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);

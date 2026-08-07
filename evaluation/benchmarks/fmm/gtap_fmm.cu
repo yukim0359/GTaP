@@ -2891,7 +2891,7 @@ int main(int argc, char **argv) {
 #endif
 
 #ifdef GTAP_PROFILE
-  gtap_export_profile("fmm3d_dtt");
+  gtap_export_profile();
 #endif
 
   // 7. GPU M2L: accumulate remote contributions into Ci.L

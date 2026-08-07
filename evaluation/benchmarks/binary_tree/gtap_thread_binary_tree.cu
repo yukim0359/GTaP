@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", ms);
 
 #ifdef GTAP_PROFILE
-    gtap_export_profile("tree_thread");
+    gtap_export_profile();
 #endif
 
     cudaFree(d_input);

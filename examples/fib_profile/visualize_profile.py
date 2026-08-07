@@ -1,357 +1,288 @@
 #!/usr/bin/env python3
-"""
-Visualize GTaP warp-level profile data for the Fibonacci example.
+"""Visualize thread- or block-mode profiles from the Fibonacci example."""
 
-After running `./bin/fib`, the runtime writes CSV files under `./profile/`:
-  - fib_warp_timeline_working.csv   -- state-change events per warp
-  - fib_warp_statistics_working.csv -- per-warp summary statistics
-
-This script reads those CSVs and produces two figures under `./img/`:
-  - fib_timeline.png     -- warp activity over time (Working / Not executing)
-  - fib_utilization.png  -- histogram of per-warp task execution time ratio
-
-Usage::
-
-    python3 visualize_profile.py [--profile-dir ./profile] [--app fib]
-                                 [--max-warps 15] [--output-dir ./img]
-                                 [--format png|pdf]
-
-Requirements: pandas, matplotlib
-"""
-import os
 import argparse
+import json
+import math
+import os
 from typing import Optional
 
-import pandas as pd
 import matplotlib as mpl
 mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import numpy as np
+import pandas as pd
 
-# -------------------------------------------------------------------------
-# Style
-# -------------------------------------------------------------------------
+
+OUTPUT_FORMAT = "png"
+IDLE_COLOR = "#ff7f0e"
+DEFAULT_TIME_BINS = 1500
+MIN_PIXELS_PER_WORKER = 2.0
+
+
+def make_timeline_colormap(max_tasks: float):
+    color_map = plt.cm.Blues.copy()
+    idle_rgb = mpl.colors.to_rgb(IDLE_COLOR)
+    idle_on_white = tuple(0.5 * channel + 0.5 for channel in idle_rgb)
+    color_map.set_under(idle_on_white)
+    normalization = mpl.colors.Normalize(
+        vmin=1e-6, vmax=max(1.0, max_tasks))
+    return color_map, normalization
 
 plt.rcParams.update({
-    "figure.figsize": (10, 6),
-    "font.size": 20,
+    "figure.figsize": (12, 8),
+    "font.size": 16,
     "font.family": "sans-serif",
-    "axes.labelsize": 25,
-    "axes.titlesize": 25,
-    "axes.labelweight": "semibold",
-    "axes.titleweight": "semibold",
     "axes.spines.top": False,
     "axes.spines.right": False,
-    "xtick.major.size": 7,
-    "ytick.major.size": 7,
-    "lines.linewidth": 3.0,
     "savefig.dpi": 300,
     "savefig.bbox": "tight",
 })
 
-# -------------------------------------------------------------------------
-# Configuration
-# -------------------------------------------------------------------------
 
-APP_TITLE = "Fibonacci"          # title suffix shown in figure headings
-OUTPUT_FORMAT = "png"            # default output format: "png" or "pdf"
-DATA_MAX_LIMIT = 30000           # max profile samples per warp (matches runtime default)
+def load_profile(profile_dir: str):
+    profile_path = os.path.join(profile_dir, "profile.json")
+    intervals_path = os.path.join(
+        profile_dir, "task_execution_intervals.csv")
+    summary_path = os.path.join(
+        profile_dir, "task_execution_aggregates.csv")
 
-# Timeline colors
-COL_WORKING = "#1f77b4"          # blue  -- warp is executing a task function
-COL_IDLE = "#ff7f0e"             # orange -- warp is not executing a task function
+    for path in (profile_path, intervals_path, summary_path):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Profile file not found: {path}")
 
+    with open(profile_path, encoding="utf-8") as file:
+        profile = json.load(file)
+    intervals = pd.read_csv(intervals_path)
+    summary = pd.read_csv(summary_path)
 
-# -------------------------------------------------------------------------
-# Data loading
-# -------------------------------------------------------------------------
+    mode = profile.get("mode")
+    if mode not in ("thread", "block"):
+        raise ValueError(f"Unsupported profile mode: {mode!r}")
+    id_column = "warp_id" if mode == "thread" else "block_id"
+    required_intervals = {id_column, "start_ns", "end_ns"}
+    required_summary = {
+        id_column, "intervals_recorded", "intervals_dropped"
+    }
+    if not required_intervals.issubset(intervals.columns):
+        missing = sorted(required_intervals - set(intervals.columns))
+        raise ValueError(f"Missing interval columns: {', '.join(missing)}")
+    if not required_summary.issubset(summary.columns):
+        missing = sorted(required_summary - set(summary.columns))
+        raise ValueError(f"Missing summary columns: {', '.join(missing)}")
 
-def _compute_utilization(timeline_df: pd.DataFrame, strong_state: str = "Working") -> pd.DataFrame:
-    """
-    Compute per-warp utilization as fraction of total program time in *strong_state*.
-    
-    Returns a DataFrame with columns ``['warp_id', 'utilization_percent']``.
-    """
-    required = {"warp_id", "relative_time_ms", "state_description"}
-    if not required.issubset(timeline_df.columns):
-        return pd.DataFrame(columns=["warp_id", "utilization_percent"])
-
-    t_min = float(timeline_df["relative_time_ms"].min())
-    t_max = float(timeline_df["relative_time_ms"].max())
-    program_total = max(0.0, t_max - t_min)
-    if program_total <= 0.0:
-        return pd.DataFrame([
-            {"warp_id": wid, "utilization_percent": 0.0}
-            for wid in timeline_df["warp_id"].unique()
-        ])
-
-    rows = []
-    for warp_id, grp in timeline_df.groupby("warp_id"):
-        g = grp.sort_values("relative_time_ms").reset_index(drop=True)
-        working_time = 0.0
-        start = None
-        for _, row in g.iterrows():
-            t = float(row["relative_time_ms"])
-            if row["state_description"] == strong_state:
-                if start is None:
-                    start = t
-            else:
-                if start is not None:
-                    working_time += max(0.0, t - start)
-                    start = None
-        if start is not None:
-            working_time += max(0.0, float(g["relative_time_ms"].iloc[-1]) - start)
-        util = min(100.0, max(0.0, working_time / program_total * 100.0))
-        rows.append({"warp_id": warp_id, "utilization_percent": util})
-    return pd.DataFrame(rows)
+    intervals = intervals.dropna(subset=["start_ns", "end_ns"]).copy()
+    intervals["start_ns"] = pd.to_numeric(intervals["start_ns"])
+    intervals["end_ns"] = pd.to_numeric(intervals["end_ns"])
+    if "batch_task_count" in intervals.columns:
+        intervals["batch_task_count"] = pd.to_numeric(
+            intervals["batch_task_count"], errors="coerce").fillna(0)
+    intervals = intervals[intervals["end_ns"] >= intervals["start_ns"]]
+    return profile, intervals, summary, mode, id_column
 
 
-def load_data(profile_dir: str, app_name: str):
-    """
-    Load timeline and statistics CSVs from *profile_dir*.
+def compute_utilization(intervals: pd.DataFrame, summary: pd.DataFrame,
+                        id_column: str) -> pd.DataFrame:
+    result = summary[[id_column, "intervals_recorded",
+                      "intervals_dropped"]].copy()
+    if intervals.empty:
+        result["utilization_percent"] = 0.0
+        return result
 
-    Expected files:
-      - ``{app_name}_warp_timeline_working.csv``
-      - ``{app_name}_warp_statistics_working.csv``
-
-    Returns ``(timeline_df, stats_df, strong_state)``.
-    """
-    tl_path = os.path.join(profile_dir, f"{app_name}_warp_timeline_working.csv")
-    st_path = os.path.join(profile_dir, f"{app_name}_warp_statistics_working.csv")
-    if not os.path.exists(tl_path):
-        raise FileNotFoundError(f"Timeline CSV not found: {tl_path}")
-    if not os.path.exists(st_path):
-        raise FileNotFoundError(f"Statistics CSV not found: {st_path}")
-
-    timeline_df = pd.read_csv(tl_path)
-    stats_df = pd.read_csv(st_path)
-    strong_state = "Working"
-
-    if "utilization_percent" not in stats_df.columns:
-        util_df = _compute_utilization(timeline_df, strong_state)
-        if not util_df.empty:
-            stats_df = stats_df.merge(util_df, on="warp_id", how="left")
-            stats_df["utilization_percent"] = stats_df["utilization_percent"].fillna(0.0)
-
-    return timeline_df, stats_df, strong_state
+    first_ns = intervals["start_ns"].min()
+    last_ns = intervals["end_ns"].max()
+    elapsed_ns = max(0, last_ns - first_ns)
+    executing = intervals
+    if "batch_task_count" in executing.columns:
+        executing = executing[executing["batch_task_count"] > 0]
+    durations = (executing["end_ns"] - executing["start_ns"]).groupby(
+        executing[id_column]).sum()
+    result["executing_ns"] = result[id_column].map(durations).fillna(0)
+    result["utilization_percent"] = (
+        result["executing_ns"] / elapsed_ns * 100.0
+        if elapsed_ns else 0.0
+    )
+    return result
 
 
-# -------------------------------------------------------------------------
-# Plotting
-# -------------------------------------------------------------------------
-
-def create_timeline_plot(timeline_df: pd.DataFrame, stats_df: pd.DataFrame,
-                         strong_state: str, app_name: str,
-                         max_warps: Optional[int] = None) -> Optional[plt.Figure]:
-    """
-    Plot per-warp activity over time.
-
-    Each warp row is painted blue (working) or orange (idle). When
-    ``tasks_in_batch`` is present in the CSV, the blue shade encodes the
-    number of tasks processed per batch (darker = more tasks). A colorbar
-    is added in that case.
-
-    Returns the Figure, or None if there is no data.
-    """
-    active = stats_df[stats_df["total_samples"] > 0]["warp_id"].tolist()
-    if max_warps is not None:
-        active = active[:max_warps]
-    filtered = timeline_df[timeline_df["warp_id"].isin(active)].copy()
-    if filtered.empty:
+def create_timeline(intervals: pd.DataFrame, summary: pd.DataFrame,
+                    mode: str, id_column: str,
+                    max_workers: Optional[int], time_bins: int,
+                    save_dpi: Optional[int]) -> Optional[plt.Figure]:
+    if intervals.empty:
         return None
 
-    t_min = timeline_df["relative_time_ms"].min()
-    t_max = timeline_df["relative_time_ms"].max()
-    filtered["norm_time"] = filtered["relative_time_ms"] - t_min
-    total_dur = t_max - t_min
+    origin_ns = intervals["start_ns"].min()
+    end_ns = intervals["end_ns"].max()
+    duration_ms = (end_ns - origin_ns) / 1_000_000.0
 
-    # Optionally encode tasks_in_batch as blue intensity
-    max_tasks = cmap = norm = None
-    if "tasks_in_batch" in timeline_df.columns:
-        try:
-            mv = pd.to_numeric(timeline_df["tasks_in_batch"], errors="coerce").max()
-            if pd.notna(mv) and float(mv) > 0.0:
-                max_tasks = float(mv)
-                cmap = plt.cm.Blues
-                norm = mpl.colors.Normalize(vmin=0.0, vmax=max_tasks)
-        except Exception:
-            pass
+    executing = intervals
+    if mode == "thread" and "batch_task_count" in intervals.columns:
+        executing = intervals[intervals["batch_task_count"] > 0]
+    busy_ns = (executing["end_ns"] - executing["start_ns"]).groupby(
+        executing[id_column]).sum().to_dict()
+    workers = [int(value) for value in summary[id_column].tolist()]
+    workers.sort(key=lambda value: (-busy_ns.get(value, 0), value))
+    if max_workers is not None and max_workers > 0:
+        workers = workers[:max_workers]
 
-    colors = {"Working": COL_WORKING, "NotWorking": COL_IDLE}
-    _w, _ = plt.rcParams.get("figure.figsize", [6.4, 4.8])
-    fig, ax = plt.subplots(figsize=(_w * 1.6, max(8, len(active) * 0.3)))
+    worker_to_row = {worker_id: row
+                     for row, worker_id in enumerate(workers)}
+    matrix = np.zeros((len(workers), time_bins), dtype=np.float32)
+    span_ns = max(1, end_ns - origin_ns)
+    has_batch_counts = mode == "thread" and "batch_task_count" in intervals.columns
+    rows = intervals[id_column].map(worker_to_row).to_numpy(
+        dtype=np.float64)
+    starts_ns = intervals["start_ns"].to_numpy(dtype=np.int64)
+    ends_ns = intervals["end_ns"].to_numpy(dtype=np.int64)
+    values = (intervals["batch_task_count"].to_numpy(dtype=np.float32)
+              if has_batch_counts
+              else np.ones(len(intervals), dtype=np.float32))
 
-    def _seg_color(state, warp_data, t_start, t_end):
-        if state == "Working" and max_tasks is not None:
-            mask = (warp_data["norm_time"] >= t_start) & (warp_data["norm_time"] <= t_end)
-            vals = pd.to_numeric(warp_data.loc[mask, "tasks_in_batch"], errors="coerce")
-            mv = float(vals.max()) if not vals.empty and pd.notna(vals.max()) else 0.0
-            return cmap(norm(mv)), 0.9
-        return colors.get(state, "#888888"), (0.8 if state == strong_state else 0.5)
+    valid = np.isfinite(rows) & (values > 0)
+    rows = rows[valid].astype(np.intp)
+    starts_ns = starts_ns[valid]
+    ends_ns = ends_ns[valid]
+    values = values[valid]
+    first_bins = ((starts_ns - origin_ns) * time_bins // span_ns).clip(
+        0, time_bins - 1).astype(np.intp)
+    last_bins = (((ends_ns - origin_ns) * time_bins + span_ns - 1)
+                 // span_ns).clip(0, time_bins).astype(np.intp)
+    last_bins = np.maximum(last_bins, first_bins + 1)
 
-    for i, warp_id in enumerate(active):
-        wd = filtered[filtered["warp_id"] == warp_id].sort_values("norm_time")
+    lengths = last_bins - first_bins
+    expanded_rows = np.repeat(rows, lengths)
+    expanded_values = np.repeat(values, lengths)
+    interval_offsets = np.repeat(
+        np.cumsum(lengths, dtype=np.int64) - lengths, lengths)
+    expanded_bins = (
+        np.repeat(first_bins, lengths)
+        + np.arange(lengths.sum(), dtype=np.int64)
+        - interval_offsets)
+    np.maximum.at(
+        matrix, (expanded_rows, expanded_bins), expanded_values)
 
-        if wd.empty:
-            ax.add_patch(patches.Rectangle((0, i - 0.4), total_dur, 0.8,
-                                           linewidth=0, facecolor=COL_IDLE, alpha=0.5))
-            continue
+    max_tasks = (max(1.0, float(intervals["batch_task_count"].max()))
+                 if has_batch_counts else 1.0)
+    color_map, normalization = make_timeline_colormap(max_tasks)
+    figure, axis = plt.subplots(figsize=(14, 8))
+    image = axis.imshow(
+        matrix, aspect="auto", origin="upper", interpolation="nearest",
+        cmap=color_map, norm=normalization,
+        extent=[0, duration_ms, len(workers), 0], rasterized=True)
 
-        first_t = wd["norm_time"].iloc[0]
-        if first_t > 0:
-            ax.add_patch(patches.Rectangle((0, i - 0.4), first_t, 0.8,
-                                           linewidth=0, facecolor=COL_IDLE, alpha=0.5))
-
-        prev_state = start_t = None
-        for _, row in wd.iterrows():
-            cur_state = row["state_description"]
-            cur_t = row["norm_time"]
-            if prev_state is not None and prev_state != cur_state:
-                col, alp = _seg_color(prev_state, wd, start_t, cur_t)
-                ax.add_patch(patches.Rectangle((start_t, i - 0.4), cur_t - start_t, 0.8,
-                                               linewidth=0, facecolor=col, alpha=alp))
-            if prev_state != cur_state:
-                start_t, prev_state = cur_t, cur_state
-
-        if prev_state is not None:
-            last_t = wd["norm_time"].iloc[-1]
-            col, alp = _seg_color(prev_state, wd, start_t, last_t)
-            ax.add_patch(patches.Rectangle((start_t, i - 0.4), last_t - start_t, 0.8,
-                                           linewidth=0, facecolor=col, alpha=alp))
-
-        last_t = wd["norm_time"].iloc[-1]
-        if last_t < total_dur and len(wd) < DATA_MAX_LIMIT:
-            ax.add_patch(patches.Rectangle((last_t, i - 0.4), total_dur - last_t, 0.8,
-                                           linewidth=0, facecolor=COL_IDLE, alpha=0.5))
-
-    ax.set_xlim(0, total_dur)
-    ax.set_ylim(-0.5, len(active) - 0.5)
-    ax.set_yticks(range(len(active)))
-    ax.set_yticklabels([f"Warp {w}" for w in active])
-    ax.set_xlabel("Time (ms)")
-    ax.set_ylabel("Warps")
-    ax.set_title(f"Worker Timeline Visualization: {APP_TITLE}")
-    ax.grid(True, alpha=0)
-
-    legend = [
-        patches.Patch(color=COL_WORKING, alpha=0.8, label="Executing taskfn"),
-        patches.Patch(color=COL_IDLE, alpha=0.5, label="Not executing taskfn"),
+    unit = "Warp" if mode == "thread" else "Block"
+    axis.set_xlim(0, duration_ms)
+    axis.set_ylim(len(workers), 0)
+    axis.set_xlabel("Time (ms)")
+    axis.set_ylabel(f"{unit}s (by busy time)")
+    axis.set_title(f"Fibonacci Task Execution Timeline ({mode} mode)")
+    axis.grid(False)
+    legend_handles = [
+        patches.Patch(color=plt.cm.Blues(0.8),
+                      label="Executing taskfn"),
+        patches.Patch(color=IDLE_COLOR, alpha=0.5,
+                      label="Not executing taskfn"),
     ]
-    if "tasks_in_batch" in filtered.columns:
-        w_df = filtered[filtered["state_description"] == strong_state]
-        vals = pd.to_numeric(w_df["tasks_in_batch"], errors="coerce").dropna()
-        if len(vals) > 0:
-            legend.append(patches.Patch(color="none", label=f"Avg tasks per batch: {vals.mean():.2f}"))
-    ax.legend(handles=legend, loc="upper right")
+    if has_batch_counts:
+        color_bar = figure.colorbar(
+            image, ax=axis, fraction=0.03, pad=0.02, extend="min")
+        color_bar.set_label("Tasks in batch")
+        average = float(intervals["batch_task_count"].mean())
+        legend_handles.append(patches.Patch(
+            color="none", label=f"Avg tasks per batch: {average:.2f}"))
+    axis.legend(handles=legend_handles, loc="upper right")
+    if save_dpi is None:
+        axes_height_inches = figure.get_size_inches()[1] * 0.75
+        save_dpi = max(300, math.ceil(
+            len(workers) * MIN_PIXELS_PER_WORKER / axes_height_inches))
+    figure._gtap_save_dpi = save_dpi
+    print(f"Timeline workers: {len(workers)}, bins: {time_bins}, "
+          f"save dpi: {save_dpi}")
+    figure.tight_layout()
+    return figure
 
-    if max_tasks is not None:
-        sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-        sm.set_array([])
-        cbar = plt.colorbar(sm, ax=ax, fraction=0.03, pad=0.02)
-        cbar.set_label("tasks in batch")
 
-    plt.tight_layout()
-    return fig
-
-
-def create_utilization_histogram(stats_df: pd.DataFrame,
-                                 app_name: Optional[str] = None) -> Optional[plt.Figure]:
-    """
-    Plot a histogram of per-warp task execution time ratio.
-
-    Returns the Figure, or None if there is no data.
-    """
-    df = stats_df.copy()
-    df["utilization_percent"] = df.get("utilization_percent", 0.0).fillna(0.0)
-    if df.empty:
+def create_utilization_histogram(utilization: pd.DataFrame,
+                                 mode: str) -> Optional[plt.Figure]:
+    if utilization.empty:
         return None
-
-    fig, ax = plt.subplots(figsize=(12, 8))
-    ax.hist(df["utilization_percent"], bins=20, alpha=0.7, color="lightblue", edgecolor="black")
-    ax.set_xlabel("Task Execution Time Ratio (%)")
-    ax.set_ylabel("Number of Warps")
-    ax.set_title(f"Distribution of Task Execution Time Ratio per Warp:\n{APP_TITLE}")
-    ax.grid(True, alpha=0.3)
-
-    mean_v = df["utilization_percent"].mean()
-    med_v = df["utilization_percent"].median()
-    ax.axvline(mean_v, color="red", linestyle="--", linewidth=2, label=f"Mean: {mean_v:.1f}%")
-    ax.axvline(med_v, color="green", linestyle="--", linewidth=2, label=f"Median: {med_v:.1f}%")
-    ax.legend()
-    plt.tight_layout()
-    return fig
+    unit = "Warp" if mode == "thread" else "Block"
+    figure, axis = plt.subplots()
+    axis.hist(utilization["utilization_percent"], bins=20,
+              color="lightblue", edgecolor="black")
+    axis.set_xlabel("Task Execution Time Ratio (%)")
+    axis.set_ylabel(f"Number of {unit}s")
+    axis.set_title(f"Task Execution Utilization ({mode} mode)")
+    axis.grid(axis="y", alpha=0.25)
+    figure.tight_layout()
+    return figure
 
 
-# -------------------------------------------------------------------------
-# Summary
-# -------------------------------------------------------------------------
+def print_summary(utilization: pd.DataFrame, mode: str) -> None:
+    unit = "warps" if mode == "thread" else "blocks"
+    active = utilization[utilization["intervals_recorded"] > 0]
+    print(f"Mode: {mode}")
+    print(f"Total {unit}: {len(utilization)}")
+    print(f"Active {unit}: {len(active)}")
+    print(f"Intervals recorded: {utilization['intervals_recorded'].sum()}")
+    print(f"Intervals dropped: {utilization['intervals_dropped'].sum()}")
+    if not active.empty:
+        print(f"Average active utilization: "
+              f"{active['utilization_percent'].mean():.2f}%")
 
-def print_summary(stats_df: pd.DataFrame) -> None:
-    """Print a per-warp utilization summary to stdout."""
-    df = stats_df.copy()
-    df["utilization_percent"] = df.get("utilization_percent", 0.0).fillna(0.0)
-    active = df[df["total_samples"] > 0]
-    print("\n" + "=" * 60)
-    print("WARP TIMELINE ANALYSIS SUMMARY (Working)")
-    print("=" * 60)
-    print(f"Total Warps:    {len(df)}")
-    print(f"Active Warps:   {len(active)}")
-    print(f"Inactive Warps: {len(df) - len(active)}")
-    if len(df) > 0:
-        print(f"Avg Utilization (all):    {df['utilization_percent'].mean():.2f}%")
-        print(f"Std Dev (all):            {df['utilization_percent'].std():.2f}%")
-    if len(active) > 0:
-        print(f"Avg Utilization (active): {active['utilization_percent'].mean():.2f}%")
-
-
-# -------------------------------------------------------------------------
-# Entry point
-# -------------------------------------------------------------------------
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Visualize GTaP warp profile CSVs for the Fibonacci example."
-    )
-    parser.add_argument("--profile-dir", default="./profile",
-                        help="Directory containing profile CSV files (default: ./profile)")
-    parser.add_argument("--app", default="fib",
-                        help="App name used as CSV filename prefix (default: fib)")
-    parser.add_argument("--max-warps", type=int, default=15,
-                        help="Max number of warps shown in the timeline (default: 15)")
+        description="Visualize a GTaP Fibonacci profile.")
+    parser.add_argument("--mode", choices=["thread", "block"],
+                        default="thread",
+                        help="Profile to visualize (default: thread)")
+    parser.add_argument("--profile-dir",
+                        help="Result directory (default: ./profile/fib_<mode>)")
+    parser.add_argument("--max-workers", type=int, default=0,
+                        help="Show only the busiest N workers (0 = all)")
+    parser.add_argument("--time-bins", type=int, default=DEFAULT_TIME_BINS,
+                        help=f"Horizontal heatmap bins (default: {DEFAULT_TIME_BINS})")
+    parser.add_argument("--dpi", type=int,
+                        help="Output DPI (default: auto, at least 2 pixels per worker)")
     parser.add_argument("--output-dir", default="./img",
-                        help="Directory to save output figures (default: ./img)")
-    parser.add_argument("--format", default=OUTPUT_FORMAT, choices=["png", "pdf"],
-                        help=f"Output figure format (default: {OUTPUT_FORMAT})")
+                        help="Figure output directory (default: ./img)")
+    parser.add_argument("--format", choices=["png", "pdf"],
+                        default=OUTPUT_FORMAT)
     args = parser.parse_args()
 
-    print("Warp Timeline Visualization Tool (GTaP Thread Runtime)")
-    print("=" * 40)
-    print(f"Profile dir : {args.profile_dir}")
-    print(f"App name    : {args.app}")
+    profile_dir = args.profile_dir or os.path.join(
+        ".", "profile", f"fib_{args.mode}")
+    _, intervals, summary, mode, id_column = load_profile(profile_dir)
+    if mode != args.mode:
+        raise ValueError(
+            f"Requested {args.mode} mode, but profile.json says {mode}")
 
-    timeline_df, stats_df, strong_state = load_data(args.profile_dir, args.app)
-    print_summary(stats_df)
-    print("\nGenerating visualizations...")
-
+    utilization = compute_utilization(intervals, summary, id_column)
+    print(f"Profile directory: {profile_dir}")
+    print_summary(utilization, mode)
     os.makedirs(args.output_dir, exist_ok=True)
-    fmt = args.format
+    prefix = f"fib_{mode}"
 
-    fig = create_timeline_plot(timeline_df, stats_df, strong_state,
-                               app_name=args.app, max_warps=args.max_warps)
-    if fig:
-        path = os.path.join(args.output_dir, f"{args.app}_timeline.{fmt}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        plt.close(fig)
+    timeline = create_timeline(
+        intervals, summary, mode, id_column, args.max_workers,
+        args.time_bins, args.dpi)
+    if timeline is not None:
+        path = os.path.join(
+            args.output_dir, f"{prefix}_timeline.{args.format}")
+        timeline.savefig(path, dpi=timeline._gtap_save_dpi)
+        plt.close(timeline)
         print(f"Saved: {path}")
 
-    fig = create_utilization_histogram(stats_df, app_name=args.app)
-    if fig:
-        path = os.path.join(args.output_dir, f"{args.app}_utilization.{fmt}")
-        fig.savefig(path, dpi=300, bbox_inches="tight")
-        plt.close(fig)
+    histogram = create_utilization_histogram(utilization, mode)
+    if histogram is not None:
+        path = os.path.join(
+            args.output_dir, f"{prefix}_utilization.{args.format}")
+        histogram.savefig(path)
+        plt.close(histogram)
         print(f"Saved: {path}")
-
-    print("\nVisualization complete!")
 
 
 if __name__ == "__main__":

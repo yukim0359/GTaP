@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", elapsed_time);
 
 #ifdef GTAP_PROFILE
-    gtap_export_profile("fib_queue_1");
+    gtap_export_profile();
 #endif
 
     cudaEventDestroy(start);

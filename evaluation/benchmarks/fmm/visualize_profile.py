@@ -22,7 +22,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILE_DIR = os.path.join(SCRIPT_DIR, "profile")
 IMG_DIR = os.path.join(SCRIPT_DIR, "img")
 
-# Must match gtap_export_profile(...) in gtap_fmm.cu (fmm_profile build).
+# Must match the result directory passed to gtap_export_profile(...).
 PROFILE_PREFIX = "fmm3d_dtt"
 
 PHASES = {

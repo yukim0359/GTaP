@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", ms);
 
 #ifdef GTAP_PROFILE
-    gtap_export_profile("mergesort");
+    gtap_export_profile();
 #endif
 
     cudaFree(d_data); cudaFree(d_buf);

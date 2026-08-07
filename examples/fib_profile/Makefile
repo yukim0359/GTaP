@@ -6,19 +6,24 @@ GT_INC     ?= $(GTAP_ROOT)/runtime
 CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
-SRC     := $(SCRIPT_DIR)/fib.cu
 OUT_DIR := $(SCRIPT_DIR)/bin
-OUT     := $(OUT_DIR)/fib
+THREAD_SRC := $(SCRIPT_DIR)/fib_thread.cu
+BLOCK_SRC  := $(SCRIPT_DIR)/fib_block.cu
+THREAD_OUT := $(OUT_DIR)/fib_thread
+BLOCK_OUT  := $(OUT_DIR)/fib_block
+GTAP_BLOCK_SIZE ?= 32
 
 GTAP_CFLAGS ?=
 
-.PHONY: all clean
-all: $(OUT)
+.PHONY: all thread block clean
+all: thread block
+thread: $(THREAD_OUT)
+block: $(BLOCK_OUT)
 
 $(OUT_DIR):
 	mkdir -p "$(OUT_DIR)"
 
-$(OUT): $(SRC) | $(OUT_DIR)
+$(THREAD_OUT): $(THREAD_SRC) | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
@@ -26,7 +31,18 @@ $(OUT): $(SRC) | $(OUT_DIR)
 	  -DGTAP_PROFILE \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC)" -o "$(OUT)"
+	  "$(THREAD_SRC)" -o "$(THREAD_OUT)"
+
+$(BLOCK_OUT): $(BLOCK_SRC) | $(OUT_DIR)
+	"$(CLANG_BIN)" -O3 -x cuda \
+	  --cuda-path="$(CUDA_PATH)" \
+	  --cuda-gpu-arch="$(CUDA_ARCH)" \
+	  -I"$(GT_INC)" \
+	  -DGTAP_PROFILE \
+	  -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
+	  $(GTAP_CFLAGS) \
+	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  "$(BLOCK_SRC)" -o "$(BLOCK_OUT)"
 
 clean:
-	rm -f $(OUT)
+	rm -f $(THREAD_OUT) $(BLOCK_OUT)

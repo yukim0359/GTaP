@@ -35,7 +35,7 @@ make GTAP_ROOT=/path/to/gtap CUDA_PATH=/path/to/cuda
 | Example | Description | Worker |
 |---------|-------------|--------|
 | [fib](fib/) | Fibonacci: basic `task` / `taskwait` usage | thread |
-| [fib_profile](fib_profile/) | Fibonacci with profiling enabled; includes a Python visualization script | thread |
+| [fib_profile](fib_profile/) | Fibonacci with profiling enabled; includes a Python visualization script | thread / block |
 | [nq](nq/) | N-Queens solver with task spawning and cutoff | thread |
 | [mergesort](mergesort/) | Recursive parallel mergesort | thread |
 | [cilksort](cilksort/) | Parallel mergesort (Cilk-style) | thread |
@@ -101,7 +101,7 @@ int main() {
 | `gtap_synchronize()` | Waits for device execution and reports runtime errors. |
 | `gtap_finalize()` | Releases memory allocated by `gtap_initialize()`. |
 | `gtap_reset()` | Resets runtime state without re-allocating memory (useful for multiple runs). |
-| `gtap_export_profile(name)` | Dumps profiling data to CSV files in `./profile/`. Available only when compiled with `-DGTAP_PROFILE`. |
+| `gtap_export_profile([options])` | Exports profiling results. Available only with `-DGTAP_PROFILE`. |
 
 
 ## Runtime Configuration

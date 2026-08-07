@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
     printf("Execution time: %.3f ms\n", milliseconds);
 
 #ifdef GTAP_PROFILE
-    gtap_export_profile("nq");
+    gtap_export_profile();
 #endif
 
     cudaEventDestroy(start);

@@ -455,7 +455,7 @@ static void gtap_k_clique_print_results(
 
 #ifdef GTAP_PROFILE
     if (hooks.profile_name != nullptr) {
-        gtap_export_profile(hooks.profile_name);
+        gtap_export_profile();
     }
 #endif
 }

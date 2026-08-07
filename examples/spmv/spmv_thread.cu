@@ -206,7 +206,7 @@ int main(int argc, char** argv) {
            max_err, max_rel_err, max_rel_err < 1e-6 ? "PASSED" : "FAILED");
 
 #ifdef GTAP_PROFILE
-    gtap_export_profile("spmv_thread");
+    gtap_export_profile();
 #endif
 
     cudaFree(d_row_ptr);

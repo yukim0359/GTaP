@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
-#define GTAP_PROFILE
 #include "gtap_thread.cuh"
 
 __device__ int d_result;
@@ -25,11 +24,11 @@ __global__ void exec_kernel(int n) {
 }
 
 int main(int argc, char** argv) {
-    int n = 40;
+    int n = 25;
     if (argc >= 2) n = atoi(argv[1]);
 
     gtap_thread_config config{
-        .grid_size = 4000,
+        .grid_size = 3000,
         .block_size = 32,
         .max_tasks_per_warp = 100000,
         .num_queues = 1,
@@ -57,7 +56,10 @@ int main(int argc, char** argv) {
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
 
-    gtap_export_profile("fib");
+    gtap_export_profile({
+        .output_directory = "./profile/fib_thread",
+        .overwrite = true,
+    });
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
