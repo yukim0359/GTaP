@@ -6,7 +6,7 @@
 #PBS -j oe
 #
 # GTAP orientation: render warp-profile PDFs from ./profile/ CSVs
-# (run gtap_orientation with GTAP_PROFILE=1 first).
+# (run gtap_orientation with GTAP_ENABLE_PROFILING=1 first).
 #
 # Usage:
 #   qsub run_gtap_orientation_profile_figures.pbs

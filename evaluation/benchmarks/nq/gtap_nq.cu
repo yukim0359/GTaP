@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <cuda_runtime.h>
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
 
 __device__ unsigned long long d_answer;
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
     printf("N-Queens(%d) = %llu\n", n, result);
     printf("Execution time: %.3f ms\n", milliseconds);
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     gtap_export_profile();
 #endif
 

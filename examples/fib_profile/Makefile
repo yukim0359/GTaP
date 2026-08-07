@@ -28,7 +28,7 @@ $(THREAD_OUT): $(THREAD_SRC) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DGTAP_PROFILE \
+	  -DGTAP_ENABLE_PROFILING \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(THREAD_SRC)" -o "$(THREAD_OUT)"
@@ -38,7 +38,7 @@ $(BLOCK_OUT): $(BLOCK_SRC) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DGTAP_PROFILE \
+	  -DGTAP_ENABLE_PROFILING \
 	  -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \

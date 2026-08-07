@@ -4,7 +4,7 @@
 #include <random>
 #include <algorithm>
 #include <stdint.h>
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
 
 // ------------------------------
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
     printf("Root: %.6e\n", root);
     printf("Execution time: %.3f ms\n", ms);
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     gtap_export_profile();
 #endif
 

@@ -9,7 +9,7 @@
 #include "../common/gtap_runtime_common.cuh"
 #include "gtap_profile_host_api.cuh"
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
 
 static inline gtap_profile_export_result gtap_export_profile(
     const gtap_profile_export_options& options = {}
@@ -311,6 +311,16 @@ static inline gtap_profile_export_result gtap_export_profile(
         printf("GTaP profile not written: failed to write %s\n",
                result.result_directory);
     }
+    return result;
+}
+
+#else
+
+static inline gtap_profile_export_result gtap_export_profile(
+    const gtap_profile_export_options& = {}
+) {
+    gtap_profile_export_result result;
+    result.status = gtap_profile_export_status::profiling_disabled;
     return result;
 }
 

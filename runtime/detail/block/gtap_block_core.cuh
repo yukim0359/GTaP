@@ -49,7 +49,7 @@ __device__ int d_first_task_finished;
 __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
 #ifdef GTAP_EXPERIMENTAL_PROFILE_LEGACY
 __constant__ long long* having_task_time;
 #endif

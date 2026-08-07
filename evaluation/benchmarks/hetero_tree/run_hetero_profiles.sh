@@ -9,7 +9,7 @@
 # Usage:
 #   make -C hetero_tree run-profile
 #   DEPTH=25 COMPUTE=4096 bash run_hetero_profiles.sh
-# Requires GTAP_PROFILE-enabled binaries (make GTAP_PROFILE=1 -B all).
+# Requires GTAP_ENABLE_PROFILING-enabled binaries (make GTAP_ENABLE_PROFILING=1 -B all).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${PBS_O_WORKDIR:-$SCRIPT_DIR}"
@@ -22,8 +22,8 @@ mkdir -p "$PROFILE_DIR" "$BIN_DIR"
 DEPTH=${DEPTH:-25}
 COMPUTE=${COMPUTE:-4096}
 
-echo "Building GTAP_PROFILE binaries (GTAP_PROFILE=1) ..."
-make -C "$COMPARE_DIR" -B all GTAP_PROFILE=1
+echo "Building GTAP_ENABLE_PROFILING binaries (GTAP_ENABLE_PROFILING=1) ..."
+make -C "$COMPARE_DIR" -B all GTAP_ENABLE_PROFILING=1
 
 run_one() {
     local bin=$1

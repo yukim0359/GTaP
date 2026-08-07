@@ -19,7 +19,8 @@ enum class gtap_profile_export_status {
     cuda_error,
     out_of_memory,
     io_error,
-    no_data
+    no_data,
+    profiling_disabled
 };
 
 struct gtap_profile_export_options {

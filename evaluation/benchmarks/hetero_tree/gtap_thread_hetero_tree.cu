@@ -2,7 +2,7 @@
 #include <cuda_runtime.h>
 #include <stdint.h>
 #include <stdlib.h>
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
 #include "hetero_tree_common.cuh"
 
@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", ms);
     hetero_print_mix_stats("thread-wo-DAQ");
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     gtap_export_profile();
 #endif
 

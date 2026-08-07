@@ -356,7 +356,7 @@ __device__ __forceinline__ int gtap_select_next_fullest_queue_idx(
     return max_k;
 }
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
 __device__ __forceinline__ unsigned long long get_global_time() {
     unsigned long long time;
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(time));

@@ -453,7 +453,7 @@ static void gtap_k_clique_print_results(
     printf("GTaP preprocess+transfer time: %.3f ms\n", result.preprocess_ms);
     if (args.validate) printf("CPU execution time:  %.3f ms\n", result.cpu_ms);
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     if (hooks.profile_name != nullptr) {
         gtap_export_profile();
     }

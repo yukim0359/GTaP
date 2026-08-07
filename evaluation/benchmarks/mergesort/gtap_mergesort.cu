@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <limits>
 #include <cuda_runtime.h>
-#define GTAP_PROFILE
+#define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
 
 #ifndef GTAP_BENCH_GRID_SIZE
@@ -188,7 +188,7 @@ int main(int argc, char** argv) {
     printf("Mergesort(%zu) = %s\n", N, ok ? "Correct" : "Incorrect");
     printf("Execution time: %.3f ms\n", ms);
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     gtap_export_profile();
 #endif
 

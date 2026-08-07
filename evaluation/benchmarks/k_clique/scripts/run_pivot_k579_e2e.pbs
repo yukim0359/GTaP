@@ -8,7 +8,7 @@
 cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 export KCGPU_PROFILE=0
-export GTAP_PROFILE=0
+export GTAP_ENABLE_PROFILING=0
 export KCGPU_FORCE_REBUILD=0
 export BUILD_KCGPU=0
 export BUILD_GTAP=1

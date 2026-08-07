@@ -40,7 +40,7 @@ inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
     if (config.max_tasks_per_block <= 0) {
         return cudaErrorInvalidValue;
     }
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     if (config.profile_capacity_per_block <= 0 ||
         config.profile_capacity_per_block > INT_MAX / 2) {
         return cudaErrorInvalidValue;
@@ -75,7 +75,7 @@ static size_t __gtap_runtime_device_allocation_bytes() {
     size_t total =
         queue_metadata_bytes + queue_storage_bytes + task_id_list_bytes +
         task_id_storage_bytes + header_bytes + task_data_bytes;
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     total += sizeof(long long) * workers * gtap_profile_capacity();
     total += sizeof(unsigned long long) * workers;
 #endif
@@ -154,7 +154,7 @@ cudaError_t __gtap_init_task_runtime() {
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_task_data_bytes, &d_task_data_bytes_ptr, sizeof(char*)));
     GTAP_CUDA_TRY(gtap_init_device_task_data_stride());
     
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     long long* working_time_ptr = nullptr;
     unsigned long long* profile_dropped_events_ptr = nullptr;
     const size_t profile_bytes =
@@ -212,7 +212,7 @@ cudaError_t __gtap_finalize_task_runtime() {
     
     char* d_task_data_bytes_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_data_bytes_ptr, d_task_data_bytes, sizeof(char*)));
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     long long* working_time_ptr = nullptr;
     unsigned long long* profile_dropped_events_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
@@ -243,7 +243,7 @@ cudaError_t __gtap_finalize_task_runtime() {
     if (d_task_data_bytes_ptr != nullptr) {
         GTAP_CUDA_TRY(cudaFree(d_task_data_bytes_ptr));
     }
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     if (working_time_ptr != nullptr) GTAP_CUDA_TRY(cudaFree(working_time_ptr));
     if (profile_dropped_events_ptr != nullptr) {
         GTAP_CUDA_TRY(cudaFree(profile_dropped_events_ptr));
@@ -366,7 +366,7 @@ cudaError_t __gtap_reset_task_runtime() {
     }
     
     // Reset profile data if enabled
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     long long* working_time_ptr = nullptr;
     unsigned long long* profile_dropped_events_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
@@ -412,7 +412,7 @@ cudaError_t gtap_reset() {
     return __gtap_reset_task_runtime();
 }
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
 cudaError_t get_working_time_data(long long* host_working_time) {
     long long* ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
@@ -725,7 +725,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
     __shared__ bool prev_get_task;
     __shared__ bool should_continue;
     __shared__ TaskContext block_ctx;
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     __shared__ int working_time_idx;
 #endif
 
@@ -737,7 +737,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 #endif
         block_ctx.task_id_generated_count = 0;
         block_ctx.id_list_free_pos_stale = d_gtap_launch_config.tasks_per_worker;
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
         working_time_idx = 0;
 #endif
         if (blockIdx.x == 0) {
@@ -817,7 +817,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             __syncthreads();
 #endif
             
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
             if (threadIdx.x == 0) {
                 if (working_time_idx + 1 < gtap_profile_capacity()) {
                     working_time[
@@ -838,7 +838,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
         }
         __syncthreads();
         __threadfence();
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
         if (threadIdx.x == 0) {
             if (working_time_idx < gtap_profile_capacity()) {
                 working_time[

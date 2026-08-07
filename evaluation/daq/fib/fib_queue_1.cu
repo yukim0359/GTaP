@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
 
 __device__ int d_result;
@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     gtap_export_profile();
 #endif
 

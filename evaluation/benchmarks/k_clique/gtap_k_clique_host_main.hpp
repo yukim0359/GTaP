@@ -471,7 +471,7 @@ static void gtap_k_clique_print_results(
     }
 #endif
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     if (hooks.profile_name != nullptr) {
         gtap_export_profile();
     }

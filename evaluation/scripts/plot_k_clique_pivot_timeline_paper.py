@@ -2,7 +2,7 @@
 """Paper figure: k-clique pivoting warp timeline heatmap (GTaP thread workers).
 
 Same layout as plot_sort_timelines_paper.py (3.33 in wide, 8pt, shared colorbar).
-Expects profile CSVs under k_clique/profile/ from gtap_pivot with GTAP_PROFILE=1, e.g.:
+Expects profile CSVs under k_clique/profile/ from gtap_pivot with GTAP_ENABLE_PROFILING=1, e.g.:
 
   k_clique/profile/k_clique_pivot_warp_timeline_working.csv
   k_clique/profile/k_clique_pivot_warp_statistics_working.csv

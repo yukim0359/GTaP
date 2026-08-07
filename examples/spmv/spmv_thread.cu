@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
     printf("Max error (vs CPU): %.2e (abs)  %.2e (rel)  [%s]\n",
            max_err, max_rel_err, max_rel_err < 1e-6 ? "PASSED" : "FAILED");
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     gtap_export_profile();
 #endif
 

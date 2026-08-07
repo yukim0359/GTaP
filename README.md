@@ -92,12 +92,7 @@ Detailed instructions for reproducing experimental results are provided in [`eva
 
 GTaP includes a profiler for inspecting GPU-side task scheduling.
 
-Define `GTAP_PROFILE` before including the runtime header:
-
-```cpp
-#define GTAP_PROFILE
-#include "gtap_thread.cuh"  // or "gtap_block.cuh"
-```
+Compile with `-DGTAP_ENABLE_PROFILING` to enable profiling.
 
 After executing and synchronizing the GTaP kernel, call:
 

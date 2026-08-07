@@ -6,7 +6,7 @@
 #PBS -j oe
 #
 # GTAP pivot: render working-timeline PDFs from ./profile/ CSVs
-# (run gtap_pivot with GTAP_PROFILE=1 first).
+# (run gtap_pivot with GTAP_ENABLE_PROFILING=1 first).
 #
 # Usage:
 #   qsub run_gtap_pivot_profile_figures.pbs
