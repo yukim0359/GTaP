@@ -92,6 +92,8 @@ Detailed instructions for reproducing experimental results are provided in [`eva
 
 GTaP includes a profiler for inspecting GPU-side task scheduling.
 
+![GTaP task execution timeline](examples/fib_profile/img/fib_thread_timeline.png)
+
 Compile with `-DGTAP_ENABLE_PROFILING` to enable profiling.
 
 After executing and synchronizing the GTaP kernel, call:

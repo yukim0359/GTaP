@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cuda_runtime.h>
 #include <stddef.h>
 #include <errno.h>
 #include <limits.h>
@@ -22,6 +21,34 @@ enum class gtap_profile_export_status {
     no_data,
     profiling_disabled
 };
+
+static inline const char* gtap_profile_export_status_string(
+    gtap_profile_export_status status
+) {
+    switch (status) {
+        case gtap_profile_export_status::success:
+            return "success";
+        case gtap_profile_export_status::invalid_label:
+            return "invalid_label";
+        case gtap_profile_export_status::invalid_output_directory:
+            return "invalid_output_directory";
+        case gtap_profile_export_status::path_too_long:
+            return "path_too_long";
+        case gtap_profile_export_status::already_exists:
+            return "already_exists";
+        case gtap_profile_export_status::cuda_error:
+            return "cuda_error";
+        case gtap_profile_export_status::out_of_memory:
+            return "out_of_memory";
+        case gtap_profile_export_status::io_error:
+            return "io_error";
+        case gtap_profile_export_status::no_data:
+            return "no_data";
+        case gtap_profile_export_status::profiling_disabled:
+            return "profiling_disabled";
+    }
+    return "unknown";
+}
 
 struct gtap_profile_export_options {
     const char* output_directory = "./profile";
@@ -48,17 +75,12 @@ static inline bool gtap_profile_valid_label(const char* label) {
 struct gtap_profile_export_result {
     gtap_profile_export_status status =
         gtap_profile_export_status::io_error;
-    cudaError_t cuda_error = cudaSuccess;
-    int system_error = 0;
-    char error_path[512] = {};
     size_t recorded_intervals = 0;
     size_t dropped_intervals = 0;
-    bool complete = false;
-    int generated_files = 0;
     char result_directory[512] = {};
     char profile_path[512] = {};
-    char timeline_path[512] = {};
-    char statistics_path[512] = {};
+    char intervals_path[512] = {};
+    char aggregates_path[512] = {};
 };
 
 struct gtap_profile_distribution {
@@ -129,13 +151,6 @@ static inline gtap_profile_distribution gtap_profile_compute_distribution(
     stats.p99 = gtap_profile_nearest_rank(values, count, 0.99);
     stats.max = values[count - 1];
     return stats;
-}
-
-static inline void gtap_profile_set_error_path(
-    gtap_profile_export_result* result, const char* path
-) {
-    if (!path) return;
-    snprintf(result->error_path, sizeof(result->error_path), "%s", path);
 }
 
 static inline bool gtap_profile_is_directory(const char* path) {
