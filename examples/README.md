@@ -4,7 +4,7 @@ Minimal, runnable GTaP programs. Each subdirectory contains one example and a `M
 
 ## Prerequisites
 
-- **GTaP compiler**: Build the Clang-based GTaP compiler first; see [../clang-gtap/README.md](../clang-gtap/README.md).
+- **GTaP compiler**: Build the Clang-based GTaP compiler first; see [`../clang-gtap/README.md`](../clang-gtap/README.md).
 - **CUDA Toolkit**: Set `CUDA_PATH` (or `CUDA_HOME`) to the CUDA installation root.
 - **Runtime headers**: Located at `../runtime` relative to each example.
 
