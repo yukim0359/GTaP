@@ -2,7 +2,7 @@
 #include <cuda_runtime.h>
 #include <stdint.h>
 #include <stdlib.h>
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_block.cuh"
 #include "hetero_tree_common.cuh"
 
@@ -140,8 +140,11 @@ int main(int argc, char** argv) {
     printf("Execution time: %.3f ms\n", ms);
     hetero_print_mix_stats("block-cutoff");
 
-#ifdef GTAP_PROFILE
-    gtap_export_profile("hetero_tree_block_cutoff");
+#ifdef GTAP_ENABLE_PROFILING
+    gtap_export_profile({
+        .output_directory = "./profile/hetero_tree_block_cutoff",
+        .overwrite = true,
+    });
 #endif
 
     cudaFree(d_out);

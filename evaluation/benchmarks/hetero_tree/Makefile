@@ -30,10 +30,10 @@ GTAP_MAX_TASKS_PER_WARP  ?= 300000
 GTAP_MAX_TASKS_PER_BLOCK ?= 300000
 GTAP_CFLAGS              ?=
 
-# Profile builds: make GTAP_PROFILE=1 ...  or  make profile
-GTAP_PROFILE ?= 0
-ifeq ($(GTAP_PROFILE),1)
-GTAP_CFLAGS += -DGTAP_PROFILE
+# Profile builds: make GTAP_ENABLE_PROFILING=1 ...  or  make profile
+GTAP_ENABLE_PROFILING ?= 0
+ifeq ($(GTAP_ENABLE_PROFILING),1)
+GTAP_CFLAGS += -DGTAP_ENABLE_PROFILING
 endif
 
 .PHONY: all thread thread_daq block block_cutoff clean print-vars \
@@ -41,9 +41,9 @@ endif
 
 all: thread thread_daq block block_cutoff
 
-# Force rebuild of all four with -DGTAP_PROFILE
+# Force rebuild of all four with -DGTAP_ENABLE_PROFILING
 profile:
-	$(MAKE) -B all GTAP_PROFILE=1
+	$(MAKE) -B all GTAP_ENABLE_PROFILING=1
 
 # PBS / interactive sweeps (override NUM_RUNS / DEPTH / COMPUTE via env)
 sweep-depth: all
@@ -69,7 +69,7 @@ print-vars:
 	@echo "HETERO_TREE_K=$(HETERO_TREE_K)"
 	@echo "HETERO_DAQ_NUM_QUEUES=$(HETERO_DAQ_NUM_QUEUES)"
 	@echo "HETERO_BLOCK_CUTOFF=$(HETERO_BLOCK_CUTOFF)"
-	@echo "GTAP_PROFILE=$(GTAP_PROFILE)"
+	@echo "GTAP_ENABLE_PROFILING=$(GTAP_ENABLE_PROFILING)"
 	@echo "OUT_DIR=$(OUT_DIR)"
 
 $(OUT_DIR):

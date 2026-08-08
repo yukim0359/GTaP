@@ -471,9 +471,15 @@ static void gtap_k_clique_print_results(
     }
 #endif
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
     if (hooks.profile_name != nullptr) {
-        gtap_export_profile(hooks.profile_name);
+        char profile_directory[512];
+        snprintf(profile_directory, sizeof(profile_directory), "./profile/%s",
+                 hooks.profile_name);
+        gtap_export_profile({
+            .output_directory = profile_directory,
+            .overwrite = true,
+        });
     }
 #endif
 }

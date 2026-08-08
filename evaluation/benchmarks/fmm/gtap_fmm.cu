@@ -30,7 +30,7 @@
 #define FMM3D_WORKLIST_DTT 0
 #endif
 
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
 #include "fmm_real.cuh"
 
@@ -2890,8 +2890,8 @@ int main(int argc, char **argv) {
   }
 #endif
 
-#ifdef GTAP_PROFILE
-  gtap_export_profile("fmm3d_dtt");
+#ifdef GTAP_ENABLE_PROFILING
+  gtap_export_profile();
 #endif
 
   // 7. GPU M2L: accumulate remote contributions into Ci.L

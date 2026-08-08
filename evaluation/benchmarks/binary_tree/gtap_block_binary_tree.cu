@@ -3,7 +3,7 @@
 #include <vector>
 #include <random>
 #include <algorithm>
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_block.cuh"
 
 // ------------------------------
@@ -242,8 +242,8 @@ int main(int argc, char** argv) {
     printf("Root: %.6e\n", root);
     printf("Execution time: %.3f ms\n", ms);
 
-#ifdef GTAP_PROFILE
-    gtap_export_profile("tree_block");
+#ifdef GTAP_ENABLE_PROFILING
+    gtap_export_profile();
 #endif
 
     cudaFree(d_input);

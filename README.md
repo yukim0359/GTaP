@@ -78,7 +78,7 @@ Example: Fibonacci
 ```bash
 cd examples/fib
 make
-./bin/fib
+./bin/fib_thread
 ```
 
 Compilation flags, runtime configuration parameters, and required preprocessor definitions are described in [`examples/README.md`](examples/README.md).
@@ -92,24 +92,21 @@ Detailed instructions for reproducing experimental results are provided in [`eva
 
 GTaP includes a profiler for inspecting GPU-side task scheduling.
 
-Define `GTAP_PROFILE` before including the runtime header:
+![GTaP task execution timeline](examples/fib/img/fib_thread_timeline.png)
 
-```cpp
-#define GTAP_PROFILE
-#include "gtap_thread.cuh"  // or "gtap_block.cuh"
-```
+Compile with `-DGTAP_ENABLE_PROFILING` to enable profiling.
 
 After executing and synchronizing the GTaP kernel, call:
 
 ```cpp
-gtap_export_profile("app_name");
+gtap_profile_export_result result = gtap_export_profile();
 ```
 
-The profiler writes CSV files under `./profile/`, including task timelines and summary statistics for warps or blocks.
+The profiler writes each run to a result directory under `./profile/`.
 
-Set `config.profile_capacity_per_warp` (thread mode) or `config.profile_capacity_per_block` (block mode) when more samples are required.
+Set `config.profile_capacity_per_warp` (thread mode) or `config.profile_capacity_per_block` (block mode) when more intervals are required.
 
-See [`examples/fib_profile`](examples/fib_profile) for an example.
+See [`examples/fib`](examples/fib) for an example.
 
 
 ## License

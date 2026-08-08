@@ -21,7 +21,7 @@ struct gtap_launch_config {
     int tasks_per_worker;
     int num_queues;
     int queue_capacity;
-    int profile_capacity;
+    int profile_interval_capacity;
     size_t dynamic_shared_bytes;
 };
 
@@ -36,7 +36,7 @@ inline gtap_launch_config& gtap_stored_launch_config() {
         0,
         1,
         0,
-        30000,
+        15000,
         0
     };
     return config;
@@ -44,9 +44,9 @@ inline gtap_launch_config& gtap_stored_launch_config() {
 
 __host__ __device__ __forceinline__ int gtap_profile_capacity() {
 #ifdef __CUDA_ARCH__
-    return d_gtap_launch_config.profile_capacity;
+    return 2 * d_gtap_launch_config.profile_interval_capacity;
 #else
-    return gtap_stored_launch_config().profile_capacity;
+    return 2 * gtap_stored_launch_config().profile_interval_capacity;
 #endif
 }
 
@@ -356,7 +356,7 @@ __device__ __forceinline__ int gtap_select_next_fullest_queue_idx(
     return max_k;
 }
 
-#ifdef GTAP_PROFILE
+#ifdef GTAP_ENABLE_PROFILING
 __device__ __forceinline__ unsigned long long get_global_time() {
     unsigned long long time;
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(time));

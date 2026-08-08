@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <limits>
 #include <cuda_runtime.h>
-// #define GTAP_PROFILE
+// #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
 #include "cilksort_options.hpp"
 
@@ -289,8 +289,11 @@ int main(int argc, char** argv) {
     }
     printf("Execution time: %.3f ms\n", ms);
 
-#ifdef GTAP_PROFILE
-    gtap_export_profile("cilksort");
+#ifdef GTAP_ENABLE_PROFILING
+    gtap_export_profile({
+        .output_directory = "./profile",
+        .overwrite = true,
+    });
 #endif
 
     cudaFree(d_data); cudaFree(d_buf);

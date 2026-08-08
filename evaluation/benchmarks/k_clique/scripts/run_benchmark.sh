@@ -47,7 +47,7 @@ KCGPU_SORT=${KCGPU_SORT:-1}
 KCGPU_CUDA_ARCH=${KCGPU_CUDA_ARCH:-90}
 KCGPU_FORCE_REBUILD=${KCGPU_FORCE_REBUILD:-0}
 KCGPU_PROFILE=${KCGPU_PROFILE:-0}
-GTAP_PROFILE=${GTAP_PROFILE:-0}
+GTAP_ENABLE_PROFILING=${GTAP_ENABLE_PROFILING:-0}
 
 DBLP_GRAPH=${DBLP_GRAPH:-"$GRAPH_DIR/com-DBLP/com-DBLP.mtx"}
 SKITTER_GRAPH=${SKITTER_GRAPH:-"$GRAPH_DIR/as-Skitter/as-Skitter.mtx"}
@@ -146,8 +146,8 @@ build_gtap_for_case() {
         make_args+=("$line")
     done < <(python3 "$GTAP_CONFIG_LOADER" -c "$GTAP_CONFIG" --make-args "$GTAP_VARIANT" "$graph_name" "$k")
 
-    echo "Rebuilding $GTAP_TARGET for $graph_name k=$k: GTAP_PROFILE=$GTAP_PROFILE ${make_args[*]}"
-    make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" GTAP_PROFILE="$GTAP_PROFILE" "${make_args[@]}" >/dev/null
+    echo "Rebuilding $GTAP_TARGET for $graph_name k=$k: GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING ${make_args[*]}"
+    make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" "${make_args[@]}" >/dev/null
 }
 
 parse_gtap_count() {

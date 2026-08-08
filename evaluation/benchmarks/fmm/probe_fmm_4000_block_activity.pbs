@@ -9,7 +9,7 @@
 # Answer: of the launched GTAP_GRID_SIZE=4000 blocks (1 warp/block), how many
 # actually execute DTT tasks for paper N=5e7 theta=0.2?
 #
-# Builds GTAP_PROFILE-enabled fmm_profile with paper 1.5x caps, runs once, summarizes
+# Builds GTAP_ENABLE_PROFILING-enabled fmm_profile with paper 1.5x caps, runs once, summarizes
 # profile/fmm3d_dtt_warp_statistics_working.csv.
 #
 #   qsub probe_fmm_4000_block_activity.pbs
