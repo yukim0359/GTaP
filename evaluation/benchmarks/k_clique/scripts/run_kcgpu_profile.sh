@@ -184,21 +184,13 @@ else
     fi
 fi
 
-viz_args=(
-    --profile-dir "$PROFILE_ROOT"
-    --img-dir "$IMG_ROOT"
-    --variant "$KCGPU_VARIANT"
-    --tag "$tag"
-    --format "$FIG_FORMAT"
-    --max-workers "$MAX_WORKERS"
-)
-if [ "${KCGPU_SM_TIMELINE_ONLY:-0}" = "1" ]; then
-    viz_args+=(--sm-timeline-only)
-    echo "Generating SM working timeline only"
-else
-    echo "Generating figures (max_workers=$MAX_WORKERS)"
-fi
-python3 "$SCRIPT_DIR/kcgpu_visualize_profile.py" "${viz_args[@]}"
+echo "Generating SM working timeline (max_sms=$MAX_WORKERS)"
+python3 "$K_CLIQUE_DIR/../../scripts/plot_kcgpu_sm_timeline_paper.py" \
+    --profile-dir "$PROFILE_ROOT" \
+    --variant "$KCGPU_VARIANT" \
+    --profile-tag "$tag" \
+    --max-sms "$MAX_WORKERS" \
+    --output "$IMG_ROOT/${KCGPU_APP_NAME}${tag}_sm_timeline.${FIG_FORMAT}"
 
 echo "Profile CSV: $timeline_csv"
 echo "SM balance CSV: $sm_csv"

@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """Paper figure: k-clique pivoting warp timeline heatmap (GTaP thread workers).
 
-Same layout as plot_sort_timelines_paper.py (3.33 in wide, 8pt, shared colorbar).
-Expects profile CSVs under k_clique/profile/ from gtap_pivot with GTAP_ENABLE_PROFILING=1, e.g.:
-
-  k_clique/profile/k_clique_pivot_warp_timeline_working.csv
-  k_clique/profile/k_clique_pivot_warp_statistics_working.csv
-
-Optional --profile-tag (e.g. _DBLP_k7) is appended before .csv.
+Same layout as plot_sort_timelines_paper.py. Reads a current-format GTaP
+result directory under k_clique/profile/.
 
 X-axis modes (--xscale):
   native       GTaP's own duration (default output: gtap_k_clique_pivot_timeline.pdf)
@@ -33,9 +28,7 @@ EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
 K_CLIQUE_DIR = COMPARE_DIR / "k_clique"
-sys.path.insert(0, str(COMPARE_DIR))
-
-from thread_visualize_profile import (  # noqa: E402
+from gtap_profile_visualization import (  # noqa: E402
     DEFAULT_TIME_BINS,
     TIMELINE_HEATMAP_CMAP,
     TIMELINE_HEATMAP_NORM,
@@ -45,6 +38,8 @@ from thread_visualize_profile import (  # noqa: E402
     tasks_in_batch_scalar_mappable,
     COLORBAR_LABEL_TASKS,
     configure_tasks_in_batch_colorbar,
+    load_profile,
+    profile_time_bounds,
 )
 
 FIG_WIDTH_IN = 239.75 / 72.0  # ≈ 3.33 in
@@ -61,7 +56,7 @@ STRONG_STATE = "Working"
 # Default: 2 px/warp so a single busy tail row survives PDF rasterization.
 DEFAULT_MIN_PX_PER_WARP = 2.0
 # Default: paper caption (as-Skitter, k=9, pivoting).
-DEFAULT_PROFILE_TAG = "_as-Skitter_k9"
+DEFAULT_PROFILE_TAG = ""
 # Match plot_kcgpu_sm_timeline_paper.DEFAULT_PROFILE_TAG for shared x-axis runs.
 DEFAULT_ALIGN_KCGPU_STATS = (
     K_CLIQUE_DIR
@@ -196,21 +191,14 @@ def _normalize_profile_tag(profile_tag: str) -> str:
     return profile_tag if profile_tag.startswith("_") else f"_{profile_tag}"
 
 
-def resolve_profile_csv_paths(
+def resolve_profile_directory(
     *,
     profile_dir: Path,
     app_name: str,
     profile_tag: str,
-) -> tuple[Path, Path]:
+) -> Path:
     tag = _normalize_profile_tag(profile_tag)
-    primary_tl = profile_dir / f"{app_name}_warp_timeline_working{tag}.csv"
-    primary_st = profile_dir / f"{app_name}_warp_statistics_working{tag}.csv"
-    fallback_tl = profile_dir / f"warp_timeline_working{tag}.csv"
-    fallback_st = profile_dir / f"warp_statistics_working{tag}.csv"
-
-    timeline_path = primary_tl if primary_tl.exists() else fallback_tl
-    stats_path = primary_st if primary_st.exists() else fallback_st
-    return timeline_path, stats_path
+    return profile_dir / f"{app_name}{tag}"
 
 
 def load_k_clique_pivot_data(
@@ -219,26 +207,14 @@ def load_k_clique_pivot_data(
     app_name: str,
     profile_tag: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
-    timeline_path, stats_path = resolve_profile_csv_paths(
+    result_dir = resolve_profile_directory(
         profile_dir=profile_dir,
         app_name=app_name,
         profile_tag=profile_tag,
     )
-    if not timeline_path.exists():
-        raise FileNotFoundError(f"Missing timeline CSV: {timeline_path}")
-    if not stats_path.exists():
-        raise FileNotFoundError(f"Missing statistics CSV: {stats_path}")
-
-    print(f"Loading: {timeline_path}")
-    print(f"Loading: {stats_path}")
-    timeline_df = pd.read_csv(timeline_path)
-    stats_df = pd.read_csv(stats_path)
-
-    if "warp_id" not in timeline_df.columns:
-        raise ValueError(f"'warp_id' column missing in {timeline_path}")
-    if "warp_id" not in stats_df.columns:
-        raise ValueError(f"'warp_id' column missing in {stats_path}")
-
+    print(f"Loading: {result_dir}")
+    _, timeline_df, stats_df = load_profile(
+        result_dir, expected_mode="thread")
     return timeline_df, stats_df, STRONG_STATE
 
 
@@ -256,8 +232,7 @@ def _prepare_heatmap(
         app_name=app_name,
         profile_tag=profile_tag,
     )
-    t_min = float(timeline_df["relative_time_ms"].min())
-    t_max = float(timeline_df["relative_time_ms"].max())
+    t_min, t_max = profile_time_bounds(timeline_df)
     total_duration = max(0.0, t_max - t_min)
     if total_duration <= 0.0:
         raise ValueError("No timeline span in k-clique pivot profile")
@@ -420,18 +395,18 @@ def main() -> None:
         "--profile-dir",
         type=Path,
         default=K_CLIQUE_DIR / "profile",
-        help="Directory with k_clique_pivot_warp_timeline_working*.csv",
+        help="Directory containing k-clique GTaP result directories",
     )
     parser.add_argument(
         "--app-name",
         default=DEFAULT_APP_NAME,
-        help=f"Profile CSV prefix (default: {DEFAULT_APP_NAME})",
+        help=f"GTaP result-directory name (default: {DEFAULT_APP_NAME})",
     )
     parser.add_argument(
         "--profile-tag",
         default=DEFAULT_PROFILE_TAG,
         help=(
-            "Suffix before .csv "
+            "Suffix appended to the result-directory name "
             f"(default: {DEFAULT_PROFILE_TAG}; paper: as-Skitter k=9 pivoting)"
         ),
     )

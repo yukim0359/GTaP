@@ -114,7 +114,10 @@ int main(int argc, char** argv) {
     hetero_print_mix_stats("block");
 
 #ifdef GTAP_ENABLE_PROFILING
-    gtap_export_profile();
+    gtap_export_profile({
+        .output_directory = "./profile/hetero_tree_block",
+        .overwrite = true,
+    });
 #endif
 
     cudaFree(d_out);

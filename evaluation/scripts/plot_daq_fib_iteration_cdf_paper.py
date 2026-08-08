@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Paper figure: CDF of per-warp task-function execution time per iteration (Fibonacci).
+"""Paper figure: CDF of task-execution interval durations (Fibonacci).
 
-Uses profile CSVs from evaluation/daq/fib (n=40, cutoff=10 by default) and
+Uses current-format profiles from evaluation/daq/fib (n=40, cutoff=10 by default) and
 compares 1-queue (without DAQ) vs 3-queue DAQ (cutoff / non-cutoff / continuation).
 """
 
@@ -63,43 +63,19 @@ COL_WITH_DAQ = COL_OMP
 class SeriesSpec:
     key: str
     label: str
-    timeline_csv: Path
+    profile_dir: Path
     color: str
 
 
-def extract_working_durations(
-    timeline_df: pd.DataFrame,
-    strong_state: str = "Working",
-) -> np.ndarray:
-    """Return per-iteration task-function execution times (ms) for each warp."""
-    required = {"warp_id", "relative_time_ms", "state_description"}
-    missing = required - set(timeline_df.columns)
+def extract_working_durations(intervals: pd.DataFrame) -> np.ndarray:
+    """Return task-execution interval durations in milliseconds."""
+    required = {"start_ns", "end_ns"}
+    missing = required - set(intervals.columns)
     if missing:
         raise ValueError(f"timeline CSV missing columns: {sorted(missing)}")
 
-    durations: list[float] = []
-    for _, grp in timeline_df.groupby("warp_id", sort=False):
-        g = grp.sort_values("relative_time_ms", kind="mergesort")
-        times = g["relative_time_ms"].to_numpy(dtype=np.float64, copy=False)
-        states = g["state_description"].to_numpy(copy=False)
-
-        working_start: float | None = None
-        for t, state in zip(times, states):
-            if state == strong_state:
-                if working_start is None:
-                    working_start = float(t)
-            elif working_start is not None:
-                duration = float(t) - working_start
-                if duration > 0.0:
-                    durations.append(duration)
-                working_start = None
-
-        if working_start is not None and len(times) > 0:
-            duration = float(times[-1]) - working_start
-            if duration > 0.0:
-                durations.append(duration)
-
-    return np.asarray(durations, dtype=np.float64)
+    durations = (intervals["end_ns"] - intervals["start_ns"]) / 1_000_000.0
+    return durations[durations > 0.0].to_numpy(dtype=np.float64)
 
 
 def empirical_cdf(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -110,11 +86,8 @@ def empirical_cdf(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return x, y
 
 
-def load_iteration_durations(timeline_csv: Path) -> np.ndarray:
-    df = pd.read_csv(
-        timeline_csv,
-        usecols=["warp_id", "relative_time_ms", "state_description"],
-    )
+def load_iteration_durations(profile_dir: Path) -> np.ndarray:
+    df = pd.read_csv(profile_dir / "task_execution_intervals.csv")
     return extract_working_durations(df)
 
 
@@ -124,13 +97,13 @@ def default_series() -> tuple[SeriesSpec, SeriesSpec]:
         SeriesSpec(
             key="without_daq",
             label="w/o DAQ (1 queue)",
-            timeline_csv=profile_dir / "fib_queue_1_warp_timeline_working.csv",
+            profile_dir=profile_dir / "fib_queue_1",
             color=COL_WITHOUT_DAQ,
         ),
         SeriesSpec(
             key="with_daq",
             label="w/ DAQ (3 queues)",
-            timeline_csv=profile_dir / "fib_queue_3_warp_timeline_working.csv",
+            profile_dir=profile_dir / "fib_queue_3",
             color=COL_WITH_DAQ,
         ),
     )
@@ -184,25 +157,21 @@ def plot_cdf(
 def parse_args() -> argparse.Namespace:
     without, with_daq = default_series()
     parser = argparse.ArgumentParser(
-        description="Plot Fibonacci DAQ iteration-time CDF (paper figure).",
+        description="Plot Fibonacci DAQ execution-interval CDF (paper figure).",
     )
     parser.add_argument(
-        "--without-daq-csv",
-        "--without-wdaq-csv",
-        "--without-epaq-csv",
-        dest="without_daq_csv",
+        "--without-daq-profile",
+        dest="without_daq_profile",
         type=Path,
-        default=without.timeline_csv,
-        help="1-queue warp timeline CSV (default: daq/fib/profile/...)",
+        default=without.profile_dir,
+        help="1-queue GTaP profile directory",
     )
     parser.add_argument(
-        "--with-daq-csv",
-        "--with-wdaq-csv",
-        "--with-epaq-csv",
-        dest="with_daq_csv",
+        "--with-daq-profile",
+        dest="with_daq_profile",
         type=Path,
-        default=with_daq.timeline_csv,
-        help="3-queue warp timeline CSV (default: daq/fib/profile/...)",
+        default=with_daq.profile_dir,
+        help="3-queue GTaP profile directory",
     )
     parser.add_argument(
         "--output",
@@ -246,16 +215,17 @@ def main() -> int:
 
     without, with_daq = default_series()
     series = (
-        SeriesSpec(without.key, without.label, args.without_daq_csv, without.color),
-        SeriesSpec(with_daq.key, with_daq.label, args.with_daq_csv, with_daq.color),
+        SeriesSpec(without.key, without.label, args.without_daq_profile, without.color),
+        SeriesSpec(with_daq.key, with_daq.label, args.with_daq_profile, with_daq.color),
     )
 
     series_data: list[tuple[SeriesSpec, np.ndarray]] = []
     for spec in series:
-        if not spec.timeline_csv.is_file():
-            print(f"ERROR: missing timeline CSV: {spec.timeline_csv}", file=sys.stderr)
+        intervals_path = spec.profile_dir / "task_execution_intervals.csv"
+        if not intervals_path.is_file():
+            print(f"ERROR: missing intervals CSV: {intervals_path}", file=sys.stderr)
             return 1
-        durations = load_iteration_durations(spec.timeline_csv)
+        durations = load_iteration_durations(spec.profile_dir)
         series_data.append((spec, durations))
         if args.print_stats:
             p99 = float(np.quantile(durations, P99_QUANTILE)) if durations.size else float("nan")

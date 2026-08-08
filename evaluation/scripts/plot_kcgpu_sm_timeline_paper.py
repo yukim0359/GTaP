@@ -30,22 +30,52 @@ EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
 K_CLIQUE_DIR = COMPARE_DIR / "k_clique"
-K_CLIQUE_SCRIPTS = K_CLIQUE_DIR / "scripts"
-sys.path.insert(0, str(K_CLIQUE_SCRIPTS))
+SM_TIMELINE_BINS = 1200
 
-from kcgpu_visualize_profile import (  # noqa: E402
-    SM_TIMELINE_BINS,
-    _add_interval_to_sm_timeline,
-    _infer_slots_per_sm,
-    _timeline_paths,
-    _worker_col,
-)
+
+def _worker_col(frame):
+    for column in ("slot_id", "worker_id", "warp_id"):
+        if column in frame.columns:
+            return column
+    raise ValueError("KCGPU statistics contain no worker ID column")
+
+
+def _timeline_paths(profile_dir, app_name, tag):
+    base = Path(profile_dir)
+    return (
+        str(base / f"{app_name}_warp_timeline_working{tag}.csv"),
+        str(base / f"{app_name}_warp_statistics_working{tag}.csv"),
+    )
+
+
+def _infer_slots_per_sm(stats_df, id_col, sm_count=132):
+    active = stats_df[stats_df["total_samples"] > 0]
+    if active.empty:
+        return 1
+    return max(1, (int(active[id_col].max()) + sm_count) // sm_count)
+
+
+def _add_interval_to_sm_timeline(
+    timeline, sm_id, start_ms, end_ms, first_ms, bin_width_ms
+):
+    if end_ms <= start_ms or bin_width_ms <= 0.0:
+        return
+    first_bin = max(0, int((start_ms - first_ms) / bin_width_ms))
+    last_bin = min(
+        len(timeline[sm_id]) - 1,
+        int((end_ms - first_ms) / bin_width_ms),
+    )
+    for bin_index in range(first_bin, last_bin + 1):
+        bin_start = first_ms + bin_index * bin_width_ms
+        overlap = min(end_ms, bin_start + bin_width_ms) - max(start_ms, bin_start)
+        if overlap > 0.0:
+            timeline[sm_id][bin_index] += overlap / bin_width_ms
 
 FIG_WIDTH_IN = 239.75 / 72.0  # ≈ 3.33 in
 DEFAULT_SAVE_DPI = 600
 OUTPUT_FORMAT = "pdf"
 COLORBAR_HEIGHT_SHRINK = 0.88
-PANEL_HEIGHT_SCALE = 0.82  # shrink auto height vs. kcgpu_visualize_profile aspect
+PANEL_HEIGHT_SCALE = 0.82
 DEFAULT_SM_COUNT = 132
 # Distinct from GTaP timeline (Blues + orange idle).
 SM_ACTIVE_CMAP = plt.cm.Greens

@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 """Paper figure: hetero_tree warp/block timeline heatmaps (4 configs).
 
-Same layout as plot_k_clique_pivot_timeline_paper.py (3.33 in wide, paper RC,
-shared colorbar style). Expects CSVs under hetero_tree/profile/ from a GTAP_ENABLE_PROFILING
-build, e.g.:
-
-  hetero_tree/profile/hetero_tree_thread_warp_timeline_working.csv
-  hetero_tree/profile/hetero_tree_thread_daq_warp_timeline_working.csv
-  hetero_tree/profile/hetero_tree_block_block_timeline_working.csv
-  hetero_tree/profile/hetero_tree_block_cutoff_block_timeline_working.csv
+Same layout as plot_k_clique_pivot_timeline_paper.py. Each panel reads a
+current-format GTaP result directory under hetero_tree/profile/.
 
 Default: one PDF per config under hetero_tree/img/.
 Use --stack for a 4-row comparison figure.
@@ -31,9 +25,7 @@ EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
 HETERO_DIR = COMPARE_DIR / "hetero_tree"
-sys.path.insert(0, str(COMPARE_DIR))
-
-from thread_visualize_profile import (  # noqa: E402
+from gtap_profile_visualization import (  # noqa: E402
     DEFAULT_TIME_BINS,
     TIMELINE_HEATMAP_CMAP,
     TIMELINE_HEATMAP_NORM,
@@ -43,6 +35,8 @@ from thread_visualize_profile import (  # noqa: E402
     tasks_in_batch_scalar_mappable,
     COLORBAR_LABEL_TASKS,
     configure_tasks_in_batch_colorbar,
+    load_profile as load_exported_profile,
+    profile_time_bounds,
 )
 
 FIG_WIDTH_IN = 239.75 / 72.0  # ≈ 3.33 in
@@ -107,19 +101,14 @@ def dpi_for_min_px_per_row(
     return max(int(floor_dpi), int(math.ceil(n_rows * min_px_per_row / axes_h_in)))
 
 
-def resolve_profile_csv_paths(
+def resolve_profile_directory(
     *,
     profile_dir: Path,
     app_name: str,
     worker: str,
-) -> tuple[Path, Path]:
-    if worker == "block":
-        tl = profile_dir / f"{app_name}_block_timeline_working.csv"
-        st = profile_dir / f"{app_name}_block_statistics_working.csv"
-    else:
-        tl = profile_dir / f"{app_name}_warp_timeline_working.csv"
-        st = profile_dir / f"{app_name}_warp_statistics_working.csv"
-    return tl, st
+) -> Path:
+    del worker
+    return profile_dir / app_name
 
 
 def load_profile(
@@ -128,35 +117,15 @@ def load_profile(
     app_name: str,
     worker: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    timeline_path, stats_path = resolve_profile_csv_paths(
+    result_dir = resolve_profile_directory(
         profile_dir=profile_dir,
         app_name=app_name,
         worker=worker,
     )
-    if not timeline_path.exists():
-        raise FileNotFoundError(f"Missing timeline CSV: {timeline_path}")
-    if not stats_path.exists():
-        raise FileNotFoundError(f"Missing statistics CSV: {stats_path}")
-
-    print(f"Loading: {timeline_path}")
-    print(f"Loading: {stats_path}")
-    timeline_df = pd.read_csv(timeline_path)
-    stats_df = pd.read_csv(stats_path)
-
-    # Reuse warp heatmap helpers: alias block_id -> warp_id.
-    if worker == "block":
-        if "block_id" not in timeline_df.columns:
-            raise ValueError(f"'block_id' missing in {timeline_path}")
-        if "block_id" not in stats_df.columns:
-            raise ValueError(f"'block_id' missing in {stats_path}")
-        timeline_df = timeline_df.rename(columns={"block_id": "warp_id"})
-        stats_df = stats_df.rename(columns={"block_id": "warp_id"})
-    else:
-        if "warp_id" not in timeline_df.columns:
-            raise ValueError(f"'warp_id' missing in {timeline_path}")
-        if "warp_id" not in stats_df.columns:
-            raise ValueError(f"'warp_id' missing in {stats_path}")
-
+    print(f"Loading: {result_dir}")
+    mode = "block" if worker == "block" else "thread"
+    _, timeline_df, stats_df = load_exported_profile(
+        result_dir, expected_mode=mode)
     return timeline_df, stats_df
 
 
@@ -172,8 +141,7 @@ def _prepare_heatmap(
         app_name=spec.app_name,
         worker=spec.worker,
     )
-    t_min = float(timeline_df["relative_time_ms"].min())
-    t_max = float(timeline_df["relative_time_ms"].max())
+    t_min, t_max = profile_time_bounds(timeline_df)
     total_duration = max(0.0, t_max - t_min)
     if total_duration <= 0.0:
         raise ValueError(f"No timeline span for {spec.app_name}")
@@ -405,7 +373,7 @@ def main() -> None:
         "--profile-dir",
         type=Path,
         default=HETERO_DIR / "profile",
-        help="Directory with hetero_tree_*_{warp,block}_timeline_working.csv",
+        help="Directory containing hetero_tree_* GTaP result directories",
     )
     parser.add_argument(
         "--output-dir",

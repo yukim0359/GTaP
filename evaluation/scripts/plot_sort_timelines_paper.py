@@ -16,19 +16,18 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-# benchmarks/ holds benchmark CSVs and thread_visualize_profile.py.
 EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
-sys.path.insert(0, str(COMPARE_DIR))
 
-from thread_visualize_profile import (  # noqa: E402
+from gtap_profile_visualization import (  # noqa: E402
     DEFAULT_TIME_BINS,
     TIMELINE_HEATMAP_CMAP,
     TIMELINE_HEATMAP_NORM,
     build_warp_heatmap_matrix,
     compute_busy_time_per_warp,
-    load_and_process_data,
+    load_profile,
+    profile_time_bounds,
     ordered_warp_ids,
     tasks_in_batch_scalar_mappable,
     COLORBAR_LABEL_TASKS,
@@ -92,9 +91,10 @@ def _prepare_heatmap(
     sort_by_busy: bool,
     max_warps: int,
 ):
-    timeline_df, stats_df, strong_state = load_and_process_data(app_name)
-    t_min = float(timeline_df["relative_time_ms"].min())
-    t_max = float(timeline_df["relative_time_ms"].max())
+    _, timeline_df, stats_df = load_profile(
+        COMPARE_DIR / app_name / "profile", expected_mode="thread")
+    strong_state = None
+    t_min, t_max = profile_time_bounds(timeline_df)
     total_duration = max(0.0, t_max - t_min)
     if total_duration <= 0.0:
         raise ValueError(f"No timeline span for app={app_name!r}")

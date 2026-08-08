@@ -117,7 +117,10 @@ int main(int argc, char** argv) {
     hetero_print_mix_stats("thread-DAQ");
 
 #ifdef GTAP_ENABLE_PROFILING
-    gtap_export_profile();
+    gtap_export_profile({
+        .output_directory = "./profile/hetero_tree_thread_daq",
+        .overwrite = true,
+    });
 #endif
 
     cudaFree(d_out);
