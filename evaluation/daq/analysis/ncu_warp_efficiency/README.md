@@ -5,13 +5,13 @@ This experiment profiles average active lanes per executed instruction for:
 - the artificial dispatch probe:
   - `null-uniform`
   - `state-divergent`
-- fib EPAQ off/on:
+- fib DAQ off/on:
   - `fib_queue_1`
   - `fib_queue_3`
-- N-Queens EPAQ off/on:
+- N-Queens DAQ off/on:
   - `nq_queue_1`
   - `nq_queue_2`
-- CilkSort EPAQ off/on:
+- CilkSort DAQ off/on:
   - `cilksort_queue_1`
   - `cilksort_queue_3`
 
@@ -62,9 +62,9 @@ Interpretation:
 - `dispatch_probe/null_uniform` should be close to full-lane execution.
 - `dispatch_probe/state_divergent` should be much lower and slower, validating
   the control.
-- If fib queue_3 improves this metric over queue_1, EPAQ is improving SIMT
+- If fib queue_3 improves this metric over queue_1, DAQ is improving SIMT
   lane utilization where it improves time.
-- If NQ queue_2 does not improve this metric, NQ's weak EPAQ result is likely
+- If NQ queue_2 does not improve this metric, NQ's weak DAQ result is likely
   not caused by the dispatch path itself. The remaining candidates are
   class-internal divergence, task granularity, queue/scheduler cost, or a
   non-divergence bottleneck.

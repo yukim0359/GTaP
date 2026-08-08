@@ -1036,46 +1036,6 @@ static void h_dtt_fixed(int ci, int cj,
   }
 }
 
-#if 0  // Legacy one-shot helper; unused.
-[[maybe_unused]] static HostFixedLists h_build_fixed_interaction_lists(
-    const std::vector<TreeNode> &tree, Real theta,
-    HostDttBreakdown *breakdown = nullptr) {
-  const int ncells = static_cast<int>(tree.size());
-  HostFixedLists lists;
-  const auto t_alloc_start = std::chrono::high_resolution_clock::now();
-  lists.m2l_count.assign(ncells, 0);
-  lists.p2p_count.assign(ncells, 0);
-  const size_t m2l_size = static_cast<size_t>(ncells) * DTT_M2L_CAP;
-  const size_t p2p_size = static_cast<size_t>(ncells) * DTT_P2P_CAP;
-  lists.m2l_src.reset(new int[m2l_size]);
-  lists.p2p_src.reset(new int[p2p_size]);
-  const auto t_alloc_end = std::chrono::high_resolution_clock::now();
-  const auto t_traverse_start = std::chrono::high_resolution_clock::now();
-  #pragma omp parallel
-  {
-    #pragma omp single nowait
-    h_dtt_fixed(0, 0, tree, lists, theta, 0);
-  }
-  const auto t_traverse_end = std::chrono::high_resolution_clock::now();
-  const auto t_stats_start = std::chrono::high_resolution_clock::now();
-  for (int ci = 0; ci < ncells; ++ci) {
-    lists.total_m2l += lists.m2l_count[ci];
-    lists.total_p2p += lists.p2p_count[ci];
-    lists.max_m2l = std::max(lists.max_m2l, lists.m2l_count[ci]);
-    lists.max_p2p = std::max(lists.max_p2p, lists.p2p_count[ci]);
-  }
-  const auto t_stats_end = std::chrono::high_resolution_clock::now();
-  if (breakdown) {
-    breakdown->ms_buffer_alloc =
-        std::chrono::duration<double, std::milli>(t_alloc_end - t_alloc_start).count();
-    breakdown->ms_traverse =
-        std::chrono::duration<double, std::milli>(t_traverse_end - t_traverse_start).count();
-    breakdown->ms_stats =
-        std::chrono::duration<double, std::milli>(t_stats_end - t_stats_start).count();
-  }
-  return lists;
-}
-#endif
 
 static cudaError_t h_copy_dtt_counts_from_device(
     int *d_m2l_count, int *d_p2p_count, int *d_dtt_overflow,
@@ -2891,7 +2851,10 @@ int main(int argc, char **argv) {
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
-  gtap_export_profile();
+  gtap_export_profile({
+      .output_directory = "./profile",
+      .overwrite = true,
+  });
 #endif
 
   // 7. GPU M2L: accumulate remote contributions into Ci.L

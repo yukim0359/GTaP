@@ -75,7 +75,7 @@ ax.set_xlabel("Cutoff Depth")
 ax.set_ylabel("Execution Time (ms)")
 ax.grid(True)
 ax.set_xscale("log")
-ax.set_title(f"EPAQ Comparison for {TITLE_BENCHMARK_NAME}")
+ax.set_title(f"DAQ Comparison for {TITLE_BENCHMARK_NAME}")
 ax.set_ylim(bottom=0)
 ax.legend()
 
@@ -96,7 +96,7 @@ if not speedup_df.empty:
     ax2.set_ylabel(r"Normalized time" + "\n" + r"($T_{3\mathrm{queues}}/T_{1\mathrm{queue}}$)")
     ax2.set_xscale("log")
     ax2.grid(True)
-    ax2.set_title(f"EPAQ Relative Time for {TITLE_BENCHMARK_NAME}")
+    ax2.set_title(f"DAQ Relative Time for {TITLE_BENCHMARK_NAME}")
     ax2.set_ylim(bottom=0)
     ax2.legend()
     
@@ -126,7 +126,7 @@ if not queue1_df.empty and not speedup_df.empty:
     ax_top.set_ylim(bottom=0)
     ax_top.grid(True)
     ax_top.legend()
-    ax_top.set_title(f"EPAQ Comparison: {TITLE_BENCHMARK_NAME}")
+    ax_top.set_title(f"DAQ Comparison: {TITLE_BENCHMARK_NAME}")
 
     # Bottom: relative time (3 queues / 1 queue)
     x = speedup_df["cutoff"].to_numpy()

@@ -7,7 +7,6 @@ hetero_tree performance plots (depth + compute_iters):
 Compute CSVs may be tagged by K:
   hetero_tree_compute_results_K2.csv
   hetero_tree_compute_results_K4.csv
-Legacy untagged hetero_tree_compute_results.csv is also accepted.
 """
 
 from __future__ import annotations
@@ -252,28 +251,19 @@ def _read_csv(path: Path) -> Optional[pd.DataFrame]:
     return df
 
 
-def _k_from_compute_csv(path: Path) -> Optional[int]:
+def _k_from_compute_csv(path: Path) -> int:
     m = re.search(r"_K(\d+)\.csv$", path.name)
-    if m:
-        return int(m.group(1))
-    return None
+    if not m:
+        raise ValueError(f"Invalid compute result filename: {path}")
+    return int(m.group(1))
 
 
-def _iter_compute_csvs() -> list[tuple[Path, Optional[int]]]:
-    """Prefer K-tagged CSVs; fall back to legacy untagged file."""
+def _iter_compute_csvs() -> list[tuple[Path, int]]:
     tagged = sorted(Path(".").glob(f"{BENCHMARK_NAME}_compute_results_K*.csv"))
-    out: list[tuple[Path, Optional[int]]] = []
-    for p in tagged:
-        out.append((p, _k_from_compute_csv(p)))
-    if out:
-        return out
-    legacy = Path(f"{BENCHMARK_NAME}_compute_results.csv")
-    if legacy.exists():
-        return [(legacy, None)]
-    return []
+    return [(path, _k_from_compute_csv(path)) for path in tagged]
 
 
-def _plot_compute_csv(path: Path, k: Optional[int]) -> None:
+def _plot_compute_csv(path: Path, k: int) -> None:
     df = _read_csv(path)
     if df is None:
         return
@@ -282,8 +272,8 @@ def _plot_compute_csv(path: Path, k: Optional[int]) -> None:
         if "compute_iters" in df.columns
         else ("n" if "n" in df.columns else df.columns[0])
     )
-    k_tag = f"K={k}" if k is not None else "K=?"
-    stem_suffix = f"_K{k}" if k is not None else ""
+    k_tag = f"K={k}"
+    stem_suffix = f"_K{k}"
     make_time_plot(
         df,
         x_col=x_col,
@@ -323,7 +313,7 @@ def main():
     if not compute_csvs:
         print(f"Warning: no {BENCHMARK_NAME}_compute_results*.csv found.")
     for path, k in compute_csvs:
-        print(f"Plotting compute CSV: {path} ({'K=' + str(k) if k is not None else 'untagged'})")
+        print(f"Plotting compute CSV: {path} (K={k})")
         _plot_compute_csv(path, k)
 
     print("\nAll plots generated!")

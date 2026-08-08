@@ -10,7 +10,7 @@
 # actually execute DTT tasks for paper N=5e7 theta=0.2?
 #
 # Builds GTAP_ENABLE_PROFILING-enabled fmm_profile with paper 1.5x caps, runs once, summarizes
-# profile/fmm3d_dtt_warp_statistics_working.csv.
+# profile/task_execution_aggregates.csv.
 #
 #   qsub probe_fmm_4000_block_activity.pbs
 # Optional: qsub -v N=50000000,THETA=0.2,GTAP_PROFILE_CAPACITY=1000 ...
@@ -71,7 +71,7 @@ set -e
 tail -n 80 "$log"
 echo "(full log: ${log}, rc=${rc})"
 
-STATS="profile/fmm3d_dtt_warp_statistics_working.csv"
+STATS="profile/task_execution_aggregates.csv"
 if [[ ! -f "$STATS" ]]; then
   echo "Missing profile stats: $STATS" >&2
   exit 1
@@ -79,7 +79,7 @@ fi
 
 # Archive with run stamp so we do not confuse with June stale profile.
 stamp=$(date +%Y%m%d_%H%M%S)
-ARCHIVE="profile/fmm3d_dtt_warp_statistics_working_N${N}_theta${THETA}_${stamp}.csv"
+ARCHIVE="profile/task_execution_aggregates_N${N}_theta${THETA}_${stamp}.csv"
 cp -f "$STATS" "$ARCHIVE"
 echo "Archived stats -> ${ARCHIVE}"
 
@@ -91,29 +91,32 @@ import pandas as pd
 stats_path, archive, log_path, rc = sys.argv[1:5]
 df = pd.read_csv(stats_path)
 n = len(df)
-active = df[df["total_tasks"] > 0]
-idle = df[df["total_tasks"] == 0]
-# Also count sample-based activity (total_tasks can undercount if buffer saturates,
-# but samples>0 still means the warp entered Working).
-sampled = df[df["total_samples"] > 0]
+active = df[df["tasks_executed"] > 0]
+idle = df[df["tasks_executed"] == 0]
+recorded = df[df["intervals_recorded"] > 0]
+active_duration_ms = active["recorded_task_execution_ns"] / 1_000_000.0
 
 summary = Path("csv/fmm_4000_block_activity_summary.txt")
 lines = []
 lines.append(f"rc={rc}")
 lines.append(f"stats={archive}")
 lines.append(f"n_warps={n} warp_id=[{df['warp_id'].min()}..{df['warp_id'].max()}]")
-lines.append(f"active_total_tasks>0={len(active)} ({100*len(active)/n:.2f}%)")
-lines.append(f"idle_total_tasks==0={len(idle)} ({100*len(idle)/n:.2f}%)")
-lines.append(f"sampled_total_samples>0={len(sampled)} ({100*len(sampled)/n:.2f}%)")
-lines.append(f"sum_total_tasks={int(df['total_tasks'].sum())}")
+lines.append(f"active_tasks_executed>0={len(active)} ({100*len(active)/n:.2f}%)")
+lines.append(f"idle_tasks_executed==0={len(idle)} ({100*len(idle)/n:.2f}%)")
+lines.append(f"recorded_intervals>0={len(recorded)} ({100*len(recorded)/n:.2f}%)")
+lines.append(f"sum_tasks_executed={int(df['tasks_executed'].sum())}")
+lines.append(f"sum_intervals_recorded={int(df['intervals_recorded'].sum())}")
+lines.append(f"sum_intervals_dropped={int(df['intervals_dropped'].sum())}")
 if len(active):
-    lines.append("duration_ms_active: " + active["duration_ms"].describe().to_string().replace("\n", " | "))
-    lines.append(f"total_tasks_active mean={active['total_tasks'].mean():.1f} "
-                 f"min={int(active['total_tasks'].min())} max={int(active['total_tasks'].max())}")
+    lines.append("recorded_task_execution_ms_active: "
+                 + active_duration_ms.describe().to_string().replace("\n", " | "))
+    lines.append(f"tasks_executed_active mean={active['tasks_executed'].mean():.1f} "
+                 f"min={int(active['tasks_executed'].min())} "
+                 f"max={int(active['tasks_executed'].max())}")
 # Parse launch config from log if present
 text = Path(log_path).read_text(errors="replace")
 for key in ("GTaP config:", "GTaP runtime allocation:", "DTT core traversal:",
-            "Warp statistics saved", "Task ID pool exhausted"):
+            "GTaP profile written", "Task ID pool exhausted"):
     for line in text.splitlines():
         if key in line:
             lines.append(line.strip())
