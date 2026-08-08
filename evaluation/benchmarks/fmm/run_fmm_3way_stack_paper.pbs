@@ -7,7 +7,7 @@
 #PBS -N fmm_3way_stack
 #
 # Rebuild + measure the paper FMM e2e 3-way stack (N=5e7, theta=0.2), then
-# regenerate the paper PDF under evaluation/img and ppopp-paper/img.
+# regenerate the paper PDF under evaluation/img.
 #
 #   qsub run_fmm_3way_stack_paper.pbs
 # Optional overrides:
@@ -15,11 +15,9 @@
 
 set -euo pipefail
 
-if [ -n "${PBS_O_WORKDIR:-}" ]; then
-  cd "$PBS_O_WORKDIR"
-else
-  cd "$(dirname "${BASH_SOURCE[0]}")"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EVAL_SCRIPTS="$(cd "$SCRIPT_DIR/../../scripts" && pwd)"
+cd "$SCRIPT_DIR"
 
 N="${N:-50000000}"
 THETA="${THETA:-0.2}"
@@ -35,19 +33,10 @@ nvidia-smi -L || true
 
 ./plot_fmm_dtt_stack.sh --rebuild "n=${N}" "theta=${THETA}"
 
-PAPER_OUT="/work/gc64/c64099/ppopp-paper/img/fmm_3way_stack_N${N}_theta$(python3 -c "t=format(float('${THETA}'), 'f').rstrip('0'); t=t[:-1] if t.endswith('.') else t; print(t.replace('.', ''))").pdf"
-EVAL_SCRIPTS="/work/gc64/c64099/gtap/evaluation/scripts"
-
-python3 "$EVAL_SCRIPTS/plot_fmm_3way_stack_paper.py" \
-  --n "$N" \
-  --theta "$THETA" \
-  --output "$PAPER_OUT"
-
-# Also keep a copy under evaluation/img (script default).
 python3 "$EVAL_SCRIPTS/plot_fmm_3way_stack_paper.py" \
   --n "$N" \
   --theta "$THETA"
 
 echo "=== Done ==="
 date
-ls -la "csv/fmm_3way_stack_N${N}_theta"*summary.csv "$PAPER_OUT" || true
+ls -la "csv/fmm_3way_stack_N${N}_theta"*summary.csv || true

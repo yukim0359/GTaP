@@ -14,11 +14,9 @@
 
 set -euo pipefail
 
-if [ -n "${PBS_O_WORKDIR:-}" ]; then
-  cd "$PBS_O_WORKDIR"
-else
-  cd "$(dirname "${BASH_SOURCE[0]}")"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLOT_SCRIPT="$(cd "$SCRIPT_DIR/../../scripts" && pwd)/plot_fmm_dtt_theta_row_paper.py"
+cd "$SCRIPT_DIR"
 
 N_VALUES="${N_VALUES:-10000000,50000000}"
 THETA_VALUES="${THETA_VALUES:-0.2,0.3,0.4,0.5}"
@@ -54,13 +52,8 @@ echo "=== compare_fmm_dtt_theta.sh ==="
 ./compare_fmm_dtt_theta.sh
 
 echo "=== paper figure ==="
-python3 /work/gc64/c64099/gtap/evaluation/scripts/plot_fmm_dtt_theta_row_paper.py \
-  --output /work/gc64/c64099/ppopp-paper/img/fmm_dtt_theta_combined_row.pdf
-
-# Also refresh evaluation/img copy.
-python3 /work/gc64/c64099/gtap/evaluation/scripts/plot_fmm_dtt_theta_row_paper.py
+python3 "$PLOT_SCRIPT"
 
 echo "=== Done ==="
 date
-ls -la fmm_dtt_theta_results.csv \
-  /work/gc64/c64099/ppopp-paper/img/fmm_dtt_theta_combined_row.pdf
+ls -la fmm_dtt_theta_results.csv

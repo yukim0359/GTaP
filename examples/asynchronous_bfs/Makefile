@@ -3,7 +3,7 @@ GTAP_ROOT  ?= ../..
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 CLANG_BIN  ?= $(GTAP_ROOT)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(GTAP_ROOT)/runtime
-CUDA_PATH  ?= /work/opt/local/aarch64/cores/nvidia/25.9/Linux_aarch64/25.9/cuda/12.9
+CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
 SRC_THREAD := $(SCRIPT_DIR)/asynchronous_bfs_thread.cu

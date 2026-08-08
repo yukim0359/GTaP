@@ -7,8 +7,12 @@
 #PBS -N pivot_prof_sk9
 
 set -euo pipefail
-cd /work/gc64/c64099/gtap/evaluation/benchmarks/k_clique
-GRAPH=/work/gc64/c64099/KCGPU/graphs/as-Skitter/as-Skitter.mtx
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+K_CLIQUE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+GTAP_ROOT="$(cd "$K_CLIQUE_DIR/../../.." && pwd)"
+KCGPU_DIR="${KCGPU_DIR:-$GTAP_ROOT/../KCGPU}"
+GRAPH="${GRAPH:-$KCGPU_DIR/graphs/as-Skitter/as-Skitter.mtx}"
+cd "$K_CLIQUE_DIR"
 PROF=profile
 
 MAKE_ARGS=$(python3 scripts/load_gtap_graph_k_config.py --make-args pivot as-Skitter 9 | tr '\n' ' ')
@@ -22,10 +26,7 @@ mkdir -p "$PROF"
 ./bin/gtap_pivot "$GRAPH" 9
 
 # Regenerate paper figure
-python3 /work/gc64/c64099/gtap/evaluation/scripts/plot_k_clique_pivot_timeline_paper.py \
-  --output /work/gc64/c64099/gtap/evaluation/img/gtap_k_clique_pivot_timeline.pdf
-cp -f /work/gc64/c64099/gtap/evaluation/img/gtap_k_clique_pivot_timeline.pdf \
-      /work/gc64/c64099/ppopp-paper/img/gtap_k_clique_pivot_timeline.pdf
+python3 "$GTAP_ROOT/evaluation/scripts/plot_k_clique_pivot_timeline_paper.py"
 
 python3 - <<'PY'
 import json
