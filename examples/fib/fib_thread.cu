@@ -65,6 +65,13 @@ int main(int argc, char** argv) {
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
 
+#ifdef GTAP_ENABLE_PROFILING
+    gtap_export_profile({
+        .output_directory = "./profile/fib_thread",
+        .overwrite = true,
+    });
+#endif
+
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     err = gtap_finalize();

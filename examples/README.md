@@ -18,7 +18,7 @@ export CUDA_ARCH=sm_90   # sm_80, sm_70, etc.
 
 cd examples/fib
 make
-./bin/fib
+./bin/fib_thread
 ```
 
 Or override variables on the command line:
@@ -34,8 +34,7 @@ make GTAP_ROOT=/path/to/gtap CUDA_PATH=/path/to/cuda
 
 | Example | Description | Worker |
 |---------|-------------|--------|
-| [fib](fib/) | Fibonacci: basic `task` / `taskwait` usage | thread |
-| [fib_profile](fib_profile/) | Fibonacci with profiling enabled; includes a Python visualization script | thread / block |
+| [fib](fib/) | Fibonacci with thread/block modes and optional profiling visualization | thread / block |
 | [nq](nq/) | N-Queens solver with task spawning and cutoff | thread |
 | [mergesort](mergesort/) | Recursive parallel mergesort | thread |
 | [cilksort](cilksort/) | Parallel mergesort (Cilk-style) | thread |

@@ -110,6 +110,13 @@ int main(int argc, char** argv) {
            non_spawner_received_result ? "YES" : "no");
     printf("Execution time: %.3f ms\n", elapsed_ms);
 
+#ifdef GTAP_ENABLE_PROFILING
+    gtap_export_profile({
+        .output_directory = "./profile/fib_block",
+        .overwrite = true,
+    });
+#endif
+
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     gtap_finalize();
