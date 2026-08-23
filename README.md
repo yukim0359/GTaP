@@ -16,12 +16,12 @@ Tutorial and API Reference are available at [yukim0359.github.io/GTaP](https://y
 
 ## Features
 
-- **Fork-join task parallelism on GPUs**:
+- **Fork-join task parallelism on GPUs**:<br>
   Programmers express fork-join using `#pragma gtap task` and `#pragma gtap taskwait`.
-  GTaP realizes fork-join parallelism by representing each task function as a switch-statement-based state machine.
+  GTaP realizes fork-join parallelism by representing each task function as a switch-statement-based state machine.<br>
   The Clang extension automatically generates these state machines and manages task data across join points.
 
-- **Two modes**:
+- **Two modes**:<br>
   GTaP supports two execution modes: **thread mode** and **block mode**.
   In thread mode, a task function runs on a single CUDA thread and is written like ordinary sequential code.
   In block mode, each task is executed cooperatively by all threads in one thread block, allowing CUDA-style data-parallel code using `threadIdx`, shared memory, and block-wide synchronization.
@@ -31,11 +31,11 @@ Tutorial and API Reference are available at [yukim0359.github.io/GTaP](https://y
 
   The runtime provides `gtap_thread.cuh` and `gtap_block.cuh` for these modes.
 
-- **Divergence-aware queueing (DAQ)**:
+- **Divergence-aware queueing (DAQ)**:<br>
   In thread mode, programmers can optionally specify a queue index using `#pragma gtap task queue(expr)` at spawn or `#pragma gtap taskwait queue(expr)` for the post-join continuation.
   Tasks expected to follow similar execution paths can be placed in the same queue, reducing inter-task warp divergence.
 
-- **Task schedulers**:
+- **Task schedulers**:<br>
   GTaP uses GPU-resident randomized work-stealing.
   In thread mode, a warp acquires up to 32 runnable tasks via a warp-cooperative batched pop/steal.
 
@@ -119,6 +119,6 @@ See [`examples/fib`](examples/fib) for an example.
 
 ## Paper
 
-Yuki Maeda and Kenjiro Taura.
-[GTaP: A GPU-Resident Fork-Join Task-Parallel Runtime with a Pragma-Based Interface](https://arxiv.org/abs/2604.05982).
+Yuki Maeda and Kenjiro Taura.<br>
+[GTaP: A GPU-Resident Fork-Join Task-Parallel Runtime with a Pragma-Based Interface](https://arxiv.org/abs/2604.05982).<br>
 arXiv:2604.05982, 2026.
