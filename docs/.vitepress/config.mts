@@ -7,7 +7,6 @@ export default defineConfig({
   lang: 'en-US',
   base: '/GTaP/',
   cleanUrls: true,
-  lastUpdated: true,
   appearance: false,
 
   head: [
