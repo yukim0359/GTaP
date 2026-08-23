@@ -9,17 +9,19 @@ GTaP consists of:
 
 GTaP enables structured fork-join parallelism directly on GPUs using a pragma-based programming model.
 
+Tutorial and API Reference are available at [yukim0359.github.io/GTaP](https://yukim0359.github.io/GTaP/).
+
 > 🔬 GTaP is a research prototype under active development.
 > Its interfaces and internal mechanisms may change.
 
 ## Features
 
-- **Fork-join task parallelism on GPUs**:  
+- **Fork-join task parallelism on GPUs**:
   Programmers express fork-join using `#pragma gtap task` and `#pragma gtap taskwait`.
-  GTaP realizes fork-join parallelism by representing each task function as a switch-statement-based state machine.  
-  The Clang extension automatically generates these state machines and manages task data across join points.  
+  GTaP realizes fork-join parallelism by representing each task function as a switch-statement-based state machine.
+  The Clang extension automatically generates these state machines and manages task data across join points.
 
-- **Two modes**:  
+- **Two modes**:
   GTaP supports two execution modes: **thread mode** and **block mode**.
   In thread mode, a task function runs on a single CUDA thread and is written like ordinary sequential code.
   In block mode, each task is executed cooperatively by all threads in one thread block, allowing CUDA-style data-parallel code using `threadIdx`, shared memory, and block-wide synchronization.
@@ -29,11 +31,11 @@ GTaP enables structured fork-join parallelism directly on GPUs using a pragma-ba
 
   The runtime provides `gtap_thread.cuh` and `gtap_block.cuh` for these modes.
 
-- **Divergence-aware queueing (DAQ)**:  
+- **Divergence-aware queueing (DAQ)**:
   In thread mode, programmers can optionally specify a queue index using `#pragma gtap task queue(expr)` at spawn or `#pragma gtap taskwait queue(expr)` for the post-join continuation.
   Tasks expected to follow similar execution paths can be placed in the same queue, reducing inter-task warp divergence.
 
-- **Task schedulers**:  
+- **Task schedulers**:
   GTaP uses GPU-resident randomized work-stealing.
   In thread mode, a warp acquires up to 32 runnable tasks via a warp-cooperative batched pop/steal.
 
@@ -117,6 +119,6 @@ See [`examples/fib`](examples/fib) for an example.
 
 ## Paper
 
-Yuki Maeda and Kenjiro Taura.  
-[GTaP: A GPU-Resident Fork-Join Task-Parallel Runtime with a Pragma-Based Interface](https://arxiv.org/abs/2604.05982).  
+Yuki Maeda and Kenjiro Taura.
+[GTaP: A GPU-Resident Fork-Join Task-Parallel Runtime with a Pragma-Based Interface](https://arxiv.org/abs/2604.05982).
 arXiv:2604.05982, 2026.
