@@ -1,0 +1,183 @@
+:root {
+  color-scheme: light;
+  --gtap-c-paper: #fbfbf9;
+  --gtap-c-paper-deep: #f4f4f1;
+  --gtap-c-ink: #1c2d3c;
+  --vp-c-brand-1: #2b6094;
+  --vp-c-brand-2: #224f7d;
+  --vp-c-brand-3: #183e65;
+  --vp-c-brand-soft: rgba(43, 96, 148, 0.11);
+  --vp-c-tip-1: #2b6094;
+  --vp-c-tip-2: #224f7d;
+  --vp-c-tip-3: #183e65;
+  --vp-c-tip-soft: rgba(43, 96, 148, 0.1);
+  --vp-c-warning-1: #536b80;
+  --vp-c-warning-2: #435a6e;
+  --vp-c-warning-3: #34495c;
+  --vp-c-warning-soft: rgba(83, 107, 128, 0.1);
+  --vp-c-bg: var(--gtap-c-paper);
+  --vp-c-bg-alt: var(--gtap-c-paper-deep);
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #eff0ed;
+  --vp-c-border: #d8dbd7;
+  --vp-c-divider: #e2e4e1;
+  --vp-c-gutter: #ebedea;
+  --vp-c-text-1: var(--gtap-c-ink);
+  --vp-c-text-2: #52606c;
+  --vp-c-text-3: #7a827f;
+  --vp-code-bg: #eff0ed;
+  --vp-code-block-bg: #f1f2ef;
+  --vp-font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    Arial, sans-serif;
+  --vp-font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --vp-nav-height: 60px;
+}
+
+::selection {
+  background: rgba(43, 96, 148, 0.2);
+}
+
+.VPNav {
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.VPNavBar {
+  background: rgba(251, 251, 249, 0.94) !important;
+  backdrop-filter: blur(10px);
+}
+
+/* Keep the search field next to the site title on pages with a sidebar. */
+@media (min-width: 960px) {
+  #app .VPNavBar.has-sidebar .wrapper {
+    padding: 0 32px;
+  }
+
+  #app .VPNavBar.has-sidebar .container {
+    max-width: calc(var(--vp-layout-max-width) - 64px);
+  }
+
+  #app .VPNavBar.has-sidebar .title {
+    position: static;
+    z-index: auto;
+    padding: 0;
+    width: auto;
+    height: calc(var(--vp-nav-height) - 1px);
+  }
+
+  #app .VPNavBar.has-sidebar .content {
+    position: static;
+    z-index: auto;
+    padding-right: 0;
+    padding-left: 0;
+  }
+}
+
+.VPNavBarTitle .title {
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: 0.015em;
+  color: var(--gtap-c-ink);
+}
+
+.VPNavBarMenuLink,
+.VPNavBarMenuGroup .text {
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.VPDoc:not(.has-sidebar):not(.has-aside) .container {
+  max-width: 960px !important;
+}
+
+.VPDoc:not(.has-sidebar):not(.has-aside) .content {
+  max-width: 760px !important;
+}
+
+@media (min-width: 960px) {
+  .VPDoc.has-sidebar {
+    padding-top: 40px;
+  }
+
+  .VPDoc.has-sidebar.has-aside > .container > .content > .content-container {
+    max-width: 736px;
+  }
+}
+
+.VPDocAsideOutline .outline-link {
+  overflow: visible;
+  padding: 6px 0;
+  line-height: 1.4;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.vp-doc h1 {
+  margin-bottom: 20px;
+  font-size: 2rem;
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: normal;
+  color: var(--gtap-c-ink);
+}
+
+.vp-doc h2 {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top-color: var(--vp-c-divider);
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: normal;
+  color: var(--gtap-c-ink);
+}
+
+.vp-doc h3 {
+  margin-top: 28px;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: normal;
+  color: var(--gtap-c-ink);
+}
+
+.vp-doc p,
+.vp-doc li {
+  line-height: 1.65;
+}
+
+.vp-doc a {
+  text-decoration-color: rgba(43, 96, 148, 0.38);
+  text-underline-offset: 3px;
+}
+
+.vp-doc blockquote {
+  border-left-color: #8799aa;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc div[class*='language-'],
+.vp-doc .custom-block {
+  border-radius: 3px;
+}
+
+.vp-doc table {
+  font-size: 0.9rem;
+}
+
+.VPSidebar {
+  background: #f6f7f4 !important;
+}
+
+.VPFooter {
+  border-top: 1px solid var(--vp-c-divider) !important;
+  background: var(--vp-c-bg) !important;
+}
+
+@media (max-width: 640px) {
+  .vp-doc h1 {
+    font-size: 1.875rem;
+  }
+
+  .vp-doc h2 {
+    margin-top: 36px;
+  }
+
+}

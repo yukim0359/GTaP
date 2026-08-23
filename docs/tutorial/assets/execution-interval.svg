@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 470" role="img" aria-labelledby="title desc">
+  <title id="title">GTaP execution intervals in the scheduler loop</title>
+  <desc id="desc">Two consecutive scheduler cycles. Each cycle pops or steals runnable tasks, executes them during a highlighted execution interval, and pushes newly runnable tasks before repeating.</desc>
+  <defs>
+    <marker id="phase-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#71808c"/></marker>
+    <marker id="cycle-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#52606c"/></marker>
+    <style>
+      text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+      .diagram-title{fill:#1c2d3c;font-size:18px;font-weight:700}
+      .cycle-title{fill:#1c2d3c;font-size:17px;font-weight:700}
+      .phase-title{fill:#314657;font-size:15px;font-weight:700;text-anchor:middle}
+      .execute-text{fill:#fff;font-size:16px;font-weight:700;text-anchor:middle}
+      .interval{fill:#204c77;font-size:14px;font-weight:700;text-anchor:middle}
+      .math-var{font-family:inherit;font-style:normal;font-weight:700}
+    </style>
+  </defs>
+
+  <text class="diagram-title" x="20" y="32">Persistent scheduler loop</text>
+
+  <rect x="20" y="50" width="640" height="160" rx="16" fill="#f7f8f5" stroke="#d8dbd7" stroke-width="2"/>
+  <text class="cycle-title" x="40" y="85">Scheduler cycle <tspan class="math-var">n</tspan></text>
+  <rect x="40" y="105" width="140" height="70" rx="10" fill="#eef1f3" stroke="#c8d0d6" stroke-width="2"/>
+  <text class="phase-title" x="110" y="146">Pop / Steal</text>
+  <line x1="180" y1="140" x2="210" y2="140" stroke="#71808c" stroke-width="2" marker-end="url(#phase-arrow)"/>
+  <rect x="210" y="105" width="250" height="70" rx="10" fill="#2b6094" stroke="#204c77" stroke-width="2"/>
+  <text class="execute-text" x="335" y="146">Execute task(s)</text>
+  <line x1="460" y1="140" x2="500" y2="140" stroke="#71808c" stroke-width="2" marker-end="url(#phase-arrow)"/>
+  <rect x="500" y="105" width="130" height="70" rx="10" fill="#eef1f3" stroke="#c8d0d6" stroke-width="2"/>
+  <text class="phase-title" x="565" y="146">Push</text>
+  <text class="interval" x="335" y="198">Execution interval <tspan class="math-var">n</tspan></text>
+
+  <rect x="20" y="270" width="640" height="160" rx="16" fill="#f7f8f5" stroke="#d8dbd7" stroke-width="2"/>
+  <text class="cycle-title" x="40" y="305">Scheduler cycle <tspan class="math-var">n</tspan> + 1</text>
+  <rect x="40" y="325" width="140" height="70" rx="10" fill="#eef1f3" stroke="#c8d0d6" stroke-width="2"/>
+  <text class="phase-title" x="110" y="366">Pop / Steal</text>
+  <line x1="180" y1="360" x2="210" y2="360" stroke="#71808c" stroke-width="2" marker-end="url(#phase-arrow)"/>
+  <rect x="210" y="325" width="250" height="70" rx="10" fill="#2b6094" stroke="#204c77" stroke-width="2"/>
+  <text class="execute-text" x="335" y="366">Execute task(s)</text>
+  <line x1="460" y1="360" x2="500" y2="360" stroke="#71808c" stroke-width="2" marker-end="url(#phase-arrow)"/>
+  <rect x="500" y="325" width="130" height="70" rx="10" fill="#eef1f3" stroke="#c8d0d6" stroke-width="2"/>
+  <text class="phase-title" x="565" y="366">Push</text>
+  <text class="interval" x="335" y="418">Execution interval <tspan class="math-var">n</tspan> + 1</text>
+  <line x1="500" y1="175" x2="180" y2="325" stroke="#52606c" stroke-width="3" marker-end="url(#cycle-arrow)"/>
+  <line x1="500" y1="395" x2="372" y2="455" stroke="#52606c" stroke-width="3" marker-end="url(#cycle-arrow)"/>
+</svg>

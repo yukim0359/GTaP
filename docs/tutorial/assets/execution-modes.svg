@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">GTaP thread mode and block mode task mapping</title>
+  <desc id="desc">Thread mode maps each CUDA thread to a separate GTaP task. Block mode maps all threads in one CUDA thread block to one cooperative GTaP task.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 8 4 L 0 8 Z" fill="#70869a"/>
+    </marker>
+    <style>
+      text {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        fill: #1c2d3c;
+      }
+      .panel {
+        fill: #f7f8f5;
+        stroke: #d8dbd7;
+        stroke-width: 2;
+      }
+      .heading {
+        font-size: 24px;
+        font-weight: 700;
+        text-anchor: middle;
+      }
+      .subtitle {
+        fill: #52606c;
+        font-size: 17px;
+        text-anchor: middle;
+      }
+      .task {
+        fill: #e8f0f7;
+        stroke: #2b6094;
+        stroke-width: 2.5;
+      }
+      .task-label {
+        fill: #204c77;
+        font-size: 17px;
+        font-weight: 650;
+        text-anchor: middle;
+      }
+      .task-detail {
+        fill: #52606c;
+        font-size: 15px;
+        text-anchor: middle;
+      }
+      .thread {
+        fill: #2b6094;
+      }
+      .thread-label {
+        fill: #fff;
+        font-size: 17px;
+        font-weight: 650;
+        text-anchor: middle;
+      }
+      .mapping {
+        fill: none;
+        stroke: #70869a;
+        stroke-width: 2.5;
+        marker-end: url(#arrow);
+      }
+      .group-label {
+        fill: #52606c;
+        font-size: 15px;
+        text-anchor: middle;
+      }
+      .summary-list {
+        fill: #1c2d3c;
+        font-size: 16px;
+        font-weight: 600;
+        text-anchor: start;
+      }
+    </style>
+  </defs>
+
+  <rect class="panel" x="20" y="20" width="565" height="520" rx="18"/>
+  <rect class="panel" x="615" y="20" width="565" height="520" rx="18"/>
+
+  <text class="heading" x="302.5" y="66">Thread mode</text>
+  <text class="subtitle" x="302.5" y="98">1 CUDA thread = 1 GTaP task</text>
+
+  <rect class="task" x="67" y="145" width="102" height="72" rx="13"/>
+  <rect class="task" x="190" y="145" width="102" height="72" rx="13"/>
+  <rect class="task" x="313" y="145" width="102" height="72" rx="13"/>
+  <rect class="task" x="436" y="145" width="102" height="72" rx="13"/>
+  <text class="task-label" x="118" y="188">Task 0</text>
+  <text class="task-label" x="241" y="188">Task 1</text>
+  <text class="task-label" x="364" y="188">Task 2</text>
+  <text class="task-label" x="487" y="188">Task 3</text>
+
+  <path class="mapping" d="M 118 329 L 118 229"/>
+  <path class="mapping" d="M 241 329 L 241 229"/>
+  <path class="mapping" d="M 364 329 L 364 229"/>
+  <path class="mapping" d="M 487 329 L 487 229"/>
+
+  <rect class="thread" x="67" y="338" width="102" height="60" rx="10"/>
+  <rect class="thread" x="190" y="338" width="102" height="60" rx="10"/>
+  <rect class="thread" x="313" y="338" width="102" height="60" rx="10"/>
+  <rect class="thread" x="436" y="338" width="102" height="60" rx="10"/>
+  <text class="thread-label" x="118" y="374">Thread 0</text>
+  <text class="thread-label" x="241" y="374">Thread 1</text>
+  <text class="thread-label" x="364" y="374">Thread 2</text>
+  <text class="thread-label" x="487" y="374">Thread 3</text>
+  <text class="group-label" x="302.5" y="425">threads in one CUDA warp</text>
+
+  <text class="heading" x="897.5" y="66">Block mode</text>
+  <text class="subtitle" x="897.5" y="98">1 CUDA thread block = 1 GTaP task</text>
+
+  <rect class="task" x="720" y="140" width="355" height="82" rx="15"/>
+  <text class="task-label" x="897.5" y="188">One GTaP task</text>
+
+  <path class="mapping" d="M 713 329 L 835 232"/>
+  <path class="mapping" d="M 836 329 L 876 234"/>
+  <path class="mapping" d="M 959 329 L 919 234"/>
+  <path class="mapping" d="M 1082 329 L 960 232"/>
+
+  <rect class="thread" x="662" y="338" width="102" height="60" rx="10"/>
+  <rect class="thread" x="785" y="338" width="102" height="60" rx="10"/>
+  <rect class="thread" x="908" y="338" width="102" height="60" rx="10"/>
+  <rect class="thread" x="1031" y="338" width="102" height="60" rx="10"/>
+  <text class="thread-label" x="713" y="374">Thread 0</text>
+  <text class="thread-label" x="836" y="374">Thread 1</text>
+  <text class="thread-label" x="959" y="374">Thread 2</text>
+  <text class="thread-label" x="1082" y="374">Thread 3</text>
+  <text class="group-label" x="897.5" y="425">threads in one CUDA block</text>
+
+  <text class="summary-list" x="48" y="457">
+    <tspan x="48" dy="0">• Up to 32 tasks are concurrently executed in a warp.</tspan>
+    <tspan x="48" dy="25">• Programmers write each task in a sequential manner.</tspan>
+    <tspan x="48" dy="25">• Inter-task warp divergence can occur.</tspan>
+  </text>
+
+  <text class="summary-list" x="643" y="457">
+    <tspan x="643" dy="0">• All threads in a block cooperatively execute one task.</tspan>
+    <tspan x="643" dy="25">• Programmers write each task as a block-parallel CUDA program.</tspan>
+    <tspan x="643" dy="25">• Inter-task warp divergence does not occur.</tspan>
+  </text>
+</svg>
