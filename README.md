@@ -40,7 +40,7 @@ Tutorial and API Reference are available at [yukim0359.github.io/GTaP](https://y
   In thread mode, a warp acquires up to 32 runnable tasks via a warp-cooperative batched pop/steal.
 
 
-## Repository layout
+## Repository Layout
 
 | Directory | Description |
 |-----------|-------------|
