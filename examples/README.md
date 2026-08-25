@@ -34,6 +34,7 @@ make GTAP_ROOT=/path/to/gtap CUDA_PATH=/path/to/cuda
 
 | Example | Description | Worker |
 |---------|-------------|--------|
+| [adaptive_integration](adaptive_integration/) | Adaptive numerical integration from the paper | thread / block |
 | [fib](fib/) | Fibonacci with thread/block modes and optional profiling visualization | thread / block |
 | [nq](nq/) | N-Queens solver with task spawning and cutoff | thread |
 | [mergesort](mergesort/) | Recursive parallel mergesort | thread |
