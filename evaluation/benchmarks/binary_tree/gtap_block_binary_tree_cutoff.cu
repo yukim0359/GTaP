@@ -202,6 +202,7 @@ int main(int argc, char** argv) {
 
     gtap_block_config config{
         .grid_size = GTAP_BENCH_GRID_SIZE,
+        .block_size = GTAP_BENCH_BLOCK_SIZE,
         .max_tasks_per_block = GTAP_BENCH_MAX_TASKS_PER_BLOCK,
     };
     st = gtap_initialize(config);

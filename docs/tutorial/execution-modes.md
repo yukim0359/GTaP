@@ -68,10 +68,9 @@ Each integration task uses an entire CUDA thread block. The block cooperates
 inside `block_trap`, while only thread 0 spawns the two child tasks:
 
 ```cpp
-#define GTAP_BLOCK_SIZE 256
 #include "gtap_block.cuh"
 
-__device__ double d_result[GTAP_BLOCK_SIZE];
+__device__ double d_result[BLOCK_SIZE];
 
 #pragma gtap function
 __device__ double integrate(double a, double b) {
@@ -164,13 +163,6 @@ and the [Configuration Reference](../reference/configuration) for
 In block mode, each GTaP task runs cooperatively on all threads in one CUDA
 thread block. A task body can use `threadIdx`, shared memory, block-wide
 synchronization, and familiar CUDA data-parallel patterns.
-
-Define the CUDA thread-block size before including the block-mode runtime:
-
-```cpp
-#define GTAP_BLOCK_SIZE 256
-#include "gtap_block.cuh"
-```
 
 Block mode is useful when each task contains substantial data-parallel work,
 such as shared-memory staging, cooperative graph processing, or parallel work

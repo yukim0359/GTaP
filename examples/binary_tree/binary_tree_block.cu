@@ -163,6 +163,7 @@ int main(int argc, char** argv) {
     // Init task runtime
     gtap_block_config config;
     config.grid_size = 1000;
+    config.block_size = 64;
     config.max_tasks_per_block = 100000;
     st = gtap_initialize(config);
     if (st != cudaSuccess) {

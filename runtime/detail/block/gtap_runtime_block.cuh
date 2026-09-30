@@ -12,10 +12,6 @@
 
 #include "gtap_block_core.cuh"
 
-#ifndef GTAP_BLOCK_SIZE
-#error "GTAP block mode requires GTAP_BLOCK_SIZE at compile time"
-#endif
-
 struct BlockTaskQueue {
     int top;
     int bottom;
@@ -23,18 +19,20 @@ struct BlockTaskQueue {
 
 struct gtap_block_config {
     int grid_size = 1024;
+    int block_size = 256;
     int max_tasks_per_block = 10000;
     int profile_capacity_per_block = 15000;
     size_t dynamic_shared_bytes = 0;
     cudaStream_t stream = nullptr;
 };
 
-inline constexpr int gtap_compiled_block_size = GTAP_BLOCK_SIZE;
+extern const size_t __gtap_auto_entry_result_size;
 
 inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
     if (config.grid_size <= 0 ||
-        gtap_compiled_block_size <= 0 ||
-        gtap_compiled_block_size > GTAP_MAX_THREADS_PER_BLOCK) {
+        config.block_size <= 0 ||
+        config.block_size > GTAP_MAX_THREADS_PER_BLOCK ||
+        config.block_size % GTAP_WARP_SIZE != 0) {
         return cudaErrorInvalidConfiguration;
     }
     if (config.max_tasks_per_block <= 0) {
@@ -72,9 +70,12 @@ static size_t __gtap_runtime_device_allocation_bytes() {
     const size_t task_id_storage_bytes = sizeof(int) * tasks;
     const size_t header_bytes = sizeof(TaskHeader) * tasks;
     const size_t task_data_bytes = gtap_host_task_data_stride() * tasks;
+    const size_t entry_result_bytes =
+        __gtap_auto_entry_result_size * static_cast<size_t>(c.block_size);
     size_t total =
         queue_metadata_bytes + queue_storage_bytes + task_id_list_bytes +
-        task_id_storage_bytes + header_bytes + task_data_bytes;
+        task_id_storage_bytes + header_bytes + task_data_bytes +
+        entry_result_bytes;
 #ifdef GTAP_ENABLE_PROFILING
     total += sizeof(long long) * workers * gtap_profile_capacity();
     total += sizeof(unsigned long long) * workers;
@@ -139,6 +140,16 @@ cudaError_t __gtap_init_task_runtime() {
     GTAP_CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_task_data_bytes_ptr), task_data_size));
     GTAP_CUDA_TRY(cudaMemsetAsync(d_task_data_bytes_ptr, 0, task_data_size, streams[3]));
 
+    char* d_entry_result_bytes_ptr = nullptr;
+    const size_t entry_result_size =
+        __gtap_auto_entry_result_size *
+        static_cast<size_t>(runtime_config.block_size);
+    GTAP_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&d_entry_result_bytes_ptr),
+        entry_result_size));
+    GTAP_CUDA_TRY(cudaMemsetAsync(
+        d_entry_result_bytes_ptr, 0, entry_result_size, streams[3]));
+
     for (int i = 0; i < NUM_STREAMS; ++i) {
         GTAP_CUDA_TRY(cudaStreamSynchronize(streams[i]));
     }
@@ -152,6 +163,9 @@ cudaError_t __gtap_init_task_runtime() {
         d_task_id_storage, &d_task_id_storage_ptr, sizeof(int*)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_task_headers, &d_task_headers_ptr, sizeof(TaskHeader*)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_task_data_bytes, &d_task_data_bytes_ptr, sizeof(char*)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(
+        d_gtap_entry_result_bytes, &d_entry_result_bytes_ptr,
+        sizeof(char*)));
     GTAP_CUDA_TRY(gtap_init_device_task_data_stride());
 
 #ifdef GTAP_ENABLE_PROFILING
@@ -212,6 +226,10 @@ cudaError_t __gtap_finalize_task_runtime() {
 
     char* d_task_data_bytes_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_data_bytes_ptr, d_task_data_bytes, sizeof(char*)));
+    char* d_entry_result_bytes_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &d_entry_result_bytes_ptr, d_gtap_entry_result_bytes,
+        sizeof(char*)));
 #ifdef GTAP_ENABLE_PROFILING
     long long* working_time_ptr = nullptr;
     unsigned long long* profile_dropped_events_ptr = nullptr;
@@ -242,6 +260,9 @@ cudaError_t __gtap_finalize_task_runtime() {
 
     if (d_task_data_bytes_ptr != nullptr) {
         GTAP_CUDA_TRY(cudaFree(d_task_data_bytes_ptr));
+    }
+    if (d_entry_result_bytes_ptr != nullptr) {
+        GTAP_CUDA_TRY(cudaFree(d_entry_result_bytes_ptr));
     }
 #ifdef GTAP_ENABLE_PROFILING
     if (working_time_ptr != nullptr) GTAP_CUDA_TRY(cudaFree(working_time_ptr));
@@ -274,8 +295,8 @@ cudaError_t gtap_initialize(
     if (gtap_initialized_flag()) return cudaErrorInitializationError;
     gtap_launch_config launch_config{
         config.grid_size,
-        gtap_compiled_block_size,
-        (gtap_compiled_block_size + GTAP_WARP_SIZE - 1) / GTAP_WARP_SIZE,
+        config.block_size,
+        config.block_size / GTAP_WARP_SIZE,
         config.grid_size,
         config.max_tasks_per_block,
         1,
@@ -333,6 +354,10 @@ cudaError_t __gtap_reset_task_runtime() {
 
     char* d_task_data_bytes_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_data_bytes_ptr, d_task_data_bytes, sizeof(char*)));
+    char* d_entry_result_bytes_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &d_entry_result_bytes_ptr, d_gtap_entry_result_bytes,
+        sizeof(char*)));
 
     // Clear task queues
     if (d_block_task_queues_ptr != nullptr) {
@@ -363,6 +388,13 @@ cudaError_t __gtap_reset_task_runtime() {
     if (d_task_data_bytes_ptr != nullptr) {
         size_t task_data_size = max_task_size * total_tasks;
         GTAP_CUDA_TRY(cudaMemsetAsync(d_task_data_bytes_ptr, 0, task_data_size, streams[3]));
+    }
+    if (d_entry_result_bytes_ptr != nullptr) {
+        const size_t entry_result_size =
+            __gtap_auto_entry_result_size *
+            static_cast<size_t>(runtime_config.block_size);
+        GTAP_CUDA_TRY(cudaMemsetAsync(
+            d_entry_result_bytes_ptr, 0, entry_result_size, streams[3]));
     }
 
     // Reset profile data if enabled

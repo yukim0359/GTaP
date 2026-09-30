@@ -14,9 +14,6 @@ OUT_BLOCK  := $(OUT_DIR)/spmv_block
 
 GTAP_CFLAGS ?=
 
-# ---- Block variant settings ----
-GTAP_BLOCK_SIZE_B ?= 128
-
 .PHONY: all thread block clean
 all: thread block
 
@@ -43,7 +40,6 @@ $(OUT_BLOCK): $(SRC_BLOCK) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE_B) \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK)"

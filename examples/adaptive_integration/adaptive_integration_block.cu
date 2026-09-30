@@ -12,14 +12,14 @@ constexpr double kValidationTolerance = 1.0e-7;
 constexpr double kDefaultFrequency = 300.0;
 constexpr int kTrapezoids = 256;
 
-__device__ double d_result[GTAP_BLOCK_SIZE];
+__device__ double d_result[32];
 
 __device__ __forceinline__ double integrand(double x, double frequency) {
     return cos(frequency * x);
 }
 
 __device__ double block_trap(double a, double b, int n, double frequency) {
-    __shared__ double partial[GTAP_BLOCK_SIZE];
+    __shared__ double partial[32];
 
     const double h = (b - a) / static_cast<double>(n);
     double local_sum = 0.0;
@@ -94,6 +94,7 @@ int main(int argc, char** argv) {
 
     gtap_block_config config{
         .grid_size = 1000,
+        .block_size = 32,
         .max_tasks_per_block = 10000,
     };
 

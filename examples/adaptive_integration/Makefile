@@ -12,8 +12,7 @@ OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_THREAD := $(OUT_DIR)/adaptive_integration_thread
 OUT_BLOCK  := $(OUT_DIR)/adaptive_integration_block
 
-GTAP_CFLAGS     ?=
-GTAP_BLOCK_SIZE ?= 32
+GTAP_CFLAGS ?=
 
 .PHONY: all thread block clean
 all: thread block
@@ -39,7 +38,6 @@ $(OUT_BLOCK): $(SRC_BLOCK) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
-	  -DGTAP_BLOCK_SIZE=$(GTAP_BLOCK_SIZE) \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK)"

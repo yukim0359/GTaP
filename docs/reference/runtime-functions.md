@@ -46,7 +46,6 @@ application allocations or the CUDA context.
 ### Preconditions
 
 - Include exactly one execution-mode header for the runtime being initialized.
-- For block mode, define a valid `GTAP_BLOCK_SIZE` before including the header.
 - Do not call [`gtap_initialize`](#gtap-initialize) again until
   [`gtap_finalize`](#gtap-finalize) has completed successfully. Use
   [`gtap_reset`](#gtap-reset) to reuse an existing allocation.

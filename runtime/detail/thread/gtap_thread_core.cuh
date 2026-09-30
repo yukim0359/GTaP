@@ -6,6 +6,17 @@
 #define __GTAP_WORKER_IS_THREAD
 #endif
 
+extern const size_t __gtap_auto_task_data_size;
+
+inline size_t gtap_host_task_data_stride() {
+    return gtap_align_up(__gtap_auto_task_data_size, 16);
+}
+
+inline cudaError_t gtap_init_device_task_data_stride() {
+    size_t stride = gtap_host_task_data_stride();
+    return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
+}
+
 inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
 
 // #define GTAP_INTERNAL_DEBUG

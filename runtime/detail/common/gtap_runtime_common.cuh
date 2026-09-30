@@ -10,7 +10,6 @@
 
 // #define GTAP_INTERNAL_DEBUG
 
-extern const size_t __gtap_auto_task_data_size;
 __constant__ size_t d_gtap_task_data_stride;
 
 struct gtap_launch_config {
@@ -105,17 +104,8 @@ inline constexpr size_t gtap_compile_time_task_data_size_limit() {
     return static_cast<size_t>(-1);
 }
 
-inline size_t gtap_host_task_data_stride() {
-    return gtap_align_up(__gtap_auto_task_data_size, 16);
-}
-
 __device__ __forceinline__ size_t gtap_device_task_data_stride() {
     return d_gtap_task_data_stride;
-}
-
-inline cudaError_t gtap_init_device_task_data_stride() {
-    size_t stride = gtap_host_task_data_stride();
-    return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
 }
 
 inline void gtap_store_optional_size(size_t* out, size_t value) {

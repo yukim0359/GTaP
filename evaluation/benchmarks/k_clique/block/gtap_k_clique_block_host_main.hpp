@@ -262,6 +262,7 @@ static bool gtap_k_clique_run_count_phase(
     clock_gettime(CLOCK_MONOTONIC, &init_start);
     gtap_block_config config{
         .grid_size = GTAP_PIVOT_BLOCK_GRID_SIZE,
+        .block_size = GTAP_PIVOT_BLOCK_BLOCK_SIZE,
         .max_tasks_per_block = GTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK,
     };
     cudaError_t err = gtap_initialize(config);
@@ -346,7 +347,7 @@ static bool gtap_k_clique_run_count_phase(
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
     fprintf(stderr, "launching exec_kernel_k<<<GRID=%d, BLOCK=%d>>> ...\n",
-            GTAP_PIVOT_BLOCK_GRID_SIZE, GTAP_BLOCK_SIZE);
+            GTAP_PIVOT_BLOCK_GRID_SIZE, GTAP_PIVOT_BLOCK_BLOCK_SIZE);
     fflush(stderr);
     CUDA_CHECK(cudaEventRecord(start));
     CUDA_CHECK(gtap_launch(exec_kernel_k));
@@ -419,8 +420,8 @@ static void gtap_k_clique_print_results(
                args.graph.undirected_edges, gtap_orient_mode_name(orient_mode));
     }
     printf("oriented_edges: %zu\n", exec_graph.col_idx.size());
-    printf("GTAP_BLOCK_SIZE: %d\n", GTAP_BLOCK_SIZE);
-    printf("GTAP_GRID_SIZE: %d\n", GTAP_PIVOT_BLOCK_GRID_SIZE);
+    printf("GTAP_PIVOT_BLOCK_BLOCK_SIZE: %d\n", GTAP_PIVOT_BLOCK_BLOCK_SIZE);
+    printf("GTAP_PIVOT_BLOCK_GRID_SIZE: %d\n", GTAP_PIVOT_BLOCK_GRID_SIZE);
     printf("GTAP_K_RANGE_CUTOFF: %d\n", GTAP_K_RANGE_CUTOFF);
     printf("GTAP_K_MAX_CANDIDATES: %d\n", GTAP_K_MAX_CANDIDATES);
     printf("GTAP_K_BIT_BUFFER_COUNT: %d\n", GTAP_K_BIT_BUFFER_COUNT);

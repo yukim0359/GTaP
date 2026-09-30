@@ -57,6 +57,7 @@ int main(int argc, char** argv) {
 
     gtap_block_config config;
     config.grid_size = 4000;
+    config.block_size = 32;
     config.max_tasks_per_block = 10000;
 
     cudaError_t err = gtap_initialize(config);

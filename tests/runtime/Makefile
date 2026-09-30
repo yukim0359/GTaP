@@ -23,13 +23,13 @@ $(OUT_DIR)/fib_thread: fib_thread.cu | $(OUT_DIR)
 	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
 
 $(OUT_DIR)/fib_block: fib_block.cu | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) -DGTAP_BLOCK_SIZE=32 "$<" -o "$@"
+	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
 
 $(OUT_DIR)/binary_tree_thread: binary_tree_thread.cu | $(OUT_DIR)
 	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
 
 $(OUT_DIR)/binary_tree_block: binary_tree_block.cu | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) -DGTAP_BLOCK_SIZE=32 "$<" -o "$@"
+	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
 
 $(OUT_DIR)/multiple_taskwait_queue: multiple_taskwait_queue.cu | $(OUT_DIR)
 	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"

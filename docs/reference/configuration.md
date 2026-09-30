@@ -10,7 +10,7 @@ block.
 | Purpose | Thread mode | Block mode |
 | --- | --- | --- |
 | Grid size | `grid_size = 1024` | `grid_size = 1024` |
-| CUDA block size | `block_size = 256` | `GTAP_BLOCK_SIZE` (compile time) |
+| CUDA block size | `block_size = 256` | `block_size = 256` |
 | Task capacity | `max_tasks_per_warp = 150000` | `max_tasks_per_block = 10000` |
 | Profile capacity | `profile_capacity_per_warp = 15000` | `profile_capacity_per_block = 15000` |
 | CUDA stream | `stream = nullptr` | `stream = nullptr` |
@@ -43,8 +43,8 @@ struct gtap_thread_config {
 };
 ```
 
-`block_size` must be a multiple of 32. Task capacity is allocated to each CUDA
-warp and divided equally among the configured queues:
+Task capacity is allocated to each CUDA warp and divided equally among the
+configured queues:
 
 ```text
 capacity per queue = max_tasks_per_warp / num_queues
@@ -57,7 +57,8 @@ capacity per queue = max_tasks_per_warp / num_queues
 ```cpp
 struct gtap_block_config {
     int grid_size = 1024;
-    int max_tasks_per_block = 100000;
+    int block_size = 256;
+    int max_tasks_per_block = 10000;
     int profile_capacity_per_block = 15000;
     size_t dynamic_shared_bytes = 0;
     cudaStream_t stream = nullptr;
@@ -65,8 +66,7 @@ struct gtap_block_config {
 ```
 
 Task capacity is allocated to each CUDA thread block. `dynamic_shared_bytes`
-specifies the dynamic shared memory supplied to each block. Block size is set
-with `GTAP_BLOCK_SIZE`; see [Compile-time settings](#compile-time-settings).
+specifies the dynamic shared memory supplied to each block.
 
 ## `gtap_validate_config`
 
@@ -82,12 +82,12 @@ Both modes require:
 
 - `grid_size > 0`
 - a CUDA block size in `(0, GTAP_MAX_THREADS_PER_BLOCK]`
+- `block_size` to be a multiple of 32
 - a positive task capacity
 - when profiling is enabled, a profile capacity in `(0, INT_MAX / 2]`
 
 Thread mode additionally requires:
 
-- `block_size` to be a multiple of `GTAP_WARP_SIZE` (32 on CUDA)
 - `num_queues > 0`
 - `max_tasks_per_warp % num_queues == 0`
 
@@ -99,19 +99,10 @@ The function returns `cudaSuccess` for a valid configuration,
 
 | Setting | Kind | Purpose |
 | --- | --- | --- |
-| `GTAP_BLOCK_SIZE` | Preprocessor macro | Required in block mode; sets the number of threads in each CUDA thread block |
 | `GTAP_ENABLE_PROFILING` | Preprocessor macro | Enables collection of profiling data |
 | `-fgtap-no-taskwait` | GTaP Clang option | Selects the compact runtime for programs that do not use `taskwait` |
 
-Define `GTAP_BLOCK_SIZE` before including `gtap_block.cuh`, either in the
-source or on the compiler command line:
-
-```text
--DGTAP_BLOCK_SIZE=256
-```
-
-The selected value is exposed as `gtap_compiled_block_size`. For profiling,
-compile with `-DGTAP_ENABLE_PROFILING`; see the
+For profiling, compile with `-DGTAP_ENABLE_PROFILING`; see the
 [Profiling API Reference](./profiling).
 
 `-fgtap-no-taskwait` removes join-state support. Do not use it if the program

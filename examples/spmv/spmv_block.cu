@@ -35,7 +35,7 @@ static inline cudaError_t bind_device_arrays(
 // Compute y[row_idx] = sum_k A[row_idx, k] * x[k] using all threads in the block
 #pragma gtap function
 __device__ void spmv_row(int row_idx) {
-    __shared__ double s_sum[GTAP_BLOCK_SIZE];
+    __shared__ double s_sum[128];
 
     int row_begin = g_row_ptr[row_idx];
     int row_end   = g_row_ptr[row_idx + 1];
@@ -162,6 +162,7 @@ int main(int argc, char** argv) {
 
     gtap_block_config config{
         .grid_size = 4000,
+        .block_size = 128,
         .max_tasks_per_block = 20000,
     };
     cudaError_t st = gtap_initialize(config);

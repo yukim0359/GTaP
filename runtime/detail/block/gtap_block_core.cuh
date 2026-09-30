@@ -6,6 +6,21 @@
 #define __GTAP_WORKER_IS_BLOCK
 #endif
 
+extern const size_t __gtap_auto_block_task_data_sizes[
+    GTAP_MAX_THREADS_PER_BLOCK / GTAP_WARP_SIZE + 1];
+
+inline size_t gtap_host_task_data_stride() {
+    return gtap_align_up(
+        __gtap_auto_block_task_data_sizes[
+            gtap_stored_launch_config().block_size / GTAP_WARP_SIZE],
+        16);
+}
+
+inline cudaError_t gtap_init_device_task_data_stride() {
+    size_t stride = gtap_host_task_data_stride();
+    return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
+}
+
 inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
 
 struct TaskContext;
@@ -44,6 +59,7 @@ __constant__ TaskIdList* d_task_id_lists;
 __constant__ int* d_task_id_storage;
 __constant__ TaskHeader* d_task_headers;
 __constant__ char* d_task_data_bytes;
+__constant__ char* d_gtap_entry_result_bytes;
 __constant__ int* d_task_id_generated;
 __device__ int d_first_task_finished;
 __device__ int d_all_tasks_finished_flag;
@@ -122,6 +138,10 @@ __device__ __forceinline__ void release_task_id_to_block_pool(int id) {
 
 __device__ __forceinline__ void* __gtap_get_task_data(int tid) {
     return d_task_data_bytes + (size_t)tid * gtap_device_task_data_stride();
+}
+
+__device__ __forceinline__ void* __gtap_get_entry_result_data() {
+    return d_gtap_entry_result_bytes;
 }
 
 template <typename TaskType>

@@ -5,7 +5,7 @@
 
 __device__ int d_result;
 __device__ int d_non_spawner_received_result;
-__device__ int d_entry_lane_results[GTAP_BLOCK_SIZE];
+__device__ int d_entry_lane_results[GTAP_MAX_THREADS_PER_BLOCK];
 __device__ int d_non_master_entry_assignment;
 
 #pragma gtap function
@@ -51,9 +51,11 @@ static int serial_fib(int n) {
 
 int main(int argc, char **argv) {
   int n = argc > 1 ? std::atoi(argv[1]) : 10;
+  constexpr int block_size = 64;
 
   gtap_block_config config;
   config.grid_size = 8;
+  config.block_size = block_size;
   config.max_tasks_per_block = 1024;
 
   cudaError_t status = gtap_initialize(config);
@@ -77,7 +79,7 @@ int main(int argc, char **argv) {
   int result = 0;
   int non_spawner_received_result = 0;
   int non_master_entry_assignment = 0;
-  int entry_lane_results[GTAP_BLOCK_SIZE] = {};
+  int entry_lane_results[GTAP_MAX_THREADS_PER_BLOCK] = {};
   if (status == cudaSuccess)
     status = cudaMemcpyFromSymbol(&result, d_result, sizeof(result));
   if (status == cudaSuccess)
@@ -103,7 +105,7 @@ int main(int argc, char **argv) {
 
   int expected = serial_fib(n);
   bool lane_results_ok = entry_lane_results[0] == expected;
-  for (int lane = 1; lane < GTAP_BLOCK_SIZE; ++lane)
+  for (int lane = 1; lane < block_size; ++lane)
     lane_results_ok = lane_results_ok && entry_lane_results[lane] == 0;
 
   std::printf(
