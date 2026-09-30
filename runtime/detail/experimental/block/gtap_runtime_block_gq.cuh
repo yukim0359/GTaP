@@ -4,10 +4,6 @@
 #include <climits>
 #include "../../common/gtap_runtime_common.cuh"
 
-#ifndef __GTAP_WORKER_IS_BLOCK
-#define __GTAP_WORKER_IS_BLOCK
-#endif
-
 #define GTAP_EXPERIMENTAL_PROFILE_LEGACY 1
 
 #include "../../block/gtap_block_core.cuh"

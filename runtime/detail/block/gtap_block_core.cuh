@@ -2,8 +2,8 @@
 
 #include "../common/gtap_runtime_common.cuh"
 
-#ifndef __GTAP_WORKER_IS_BLOCK
-#define __GTAP_WORKER_IS_BLOCK
+#ifndef __GTAP_IS_BLOCK_MODE
+#define __GTAP_IS_BLOCK_MODE
 #endif
 
 extern const size_t __gtap_auto_block_task_data_sizes[
