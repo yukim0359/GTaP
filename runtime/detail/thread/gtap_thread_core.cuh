@@ -2,8 +2,8 @@
 
 #include "../common/gtap_runtime_common.cuh"
 
-#ifndef __GTAP_WORKER_IS_THREAD
-#define __GTAP_WORKER_IS_THREAD
+#ifndef __GTAP_IS_THREAD_MODE
+#define __GTAP_IS_THREAD_MODE
 #endif
 
 extern const size_t __gtap_auto_task_data_size;

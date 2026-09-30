@@ -275,8 +275,9 @@ cudaError_t gtap_initialize(
     cudaError_t err = __gtap_init_task_runtime();
     if (err == cudaSuccess) {
         gtap_initialized_flag() = true;
-        gtap_store_optional_size(
-            device_bytes_allocated, __gtap_runtime_device_allocation_bytes());
+        if (device_bytes_allocated != nullptr) {
+            *device_bytes_allocated = __gtap_runtime_device_allocation_bytes();
+        }
     }
     return err;
 }

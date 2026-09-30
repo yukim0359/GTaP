@@ -4,10 +4,6 @@
 #include <climits>
 #include "../../common/gtap_runtime_common.cuh"
 
-#ifndef __GTAP_WORKER_IS_THREAD
-#define __GTAP_WORKER_IS_THREAD
-#endif
-
 #define GTAP_EXPERIMENTAL_PROFILE_LEGACY 1
 
 #include "../../thread/gtap_thread_core.cuh"
@@ -527,8 +523,9 @@ cudaError_t gtap_initialize(
     cudaError_t err = __gtap_init_task_runtime();
     if (err == cudaSuccess) {
         gtap_initialized_flag() = true;
-        gtap_store_optional_size(
-            device_bytes_allocated, __gtap_runtime_device_allocation_bytes());
+        if (device_bytes_allocated != nullptr) {
+            *device_bytes_allocated = __gtap_runtime_device_allocation_bytes();
+        }
     }
     return err;
 }

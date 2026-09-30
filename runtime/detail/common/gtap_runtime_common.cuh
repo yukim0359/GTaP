@@ -108,12 +108,6 @@ __device__ __forceinline__ size_t gtap_device_task_data_stride() {
     return d_gtap_task_data_stride;
 }
 
-inline void gtap_store_optional_size(size_t* out, size_t value) {
-    if (out != nullptr) {
-        *out = value;
-    }
-}
-
 // Safety thresholds for error detection
 #define GTAP_QUEUE_MARGIN 100
 #define GTAP_TASK_ID_POOL_MIN_FREE 100  // Minimum free task IDs before overflow warning
