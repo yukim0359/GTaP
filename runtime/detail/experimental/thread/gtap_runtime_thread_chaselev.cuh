@@ -93,14 +93,15 @@ static size_t __gtap_runtime_device_allocation_bytes() {
         (size_t)GTAP_RUNTIME_NUM_QUEUES * sizeof(WarpTaskQueue) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS;
     const size_t header_bytes = sizeof(TaskHeader) * GTAP_RUNTIME_TOTAL_TASKS;
     const size_t task_data_bytes = gtap_host_task_data_stride() * GTAP_RUNTIME_TOTAL_TASKS;
-    const size_t task_id_list_bytes = sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS;
+    const size_t task_id_free_position_bytes =
+        sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS;
     const size_t queue_storage_bytes =
         sizeof(int) * GTAP_RUNTIME_TOTAL_TASKS;
     const size_t task_id_pool_bytes =
         2 * sizeof(int) * GTAP_RUNTIME_TOTAL_TASKS;
     size_t total =
         queue_ptr_array_bytes + queue_plane_bytes + header_bytes + task_data_bytes +
-           task_id_list_bytes +
+           task_id_free_position_bytes +
            queue_storage_bytes + task_id_pool_bytes;
 #ifdef GTAP_ENABLE_PROFILING
     total += GTAP_RUNTIME_TOTAL_WORKERS * gtap_profile_capacity() *
@@ -217,21 +218,29 @@ cudaError_t __gtap_init_task_runtime() {
     cudaEventRecord(start);
     #endif
 
-    TaskIdList* d_task_id_lists_ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_task_id_lists_ptr), sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS));
+    int* d_task_id_list_free_positions_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&d_task_id_list_free_positions_ptr),
+        sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS));
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMalloc(TaskIdLists, %zu bytes): %.3f ms\n", sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS, elapsed);
+    printf("  cudaMalloc(Task ID free positions, %zu bytes): %.3f ms\n",
+           sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS,
+           elapsed);
     cudaEventRecord(start);
     #endif
-    GTAP_CUDA_TRY(cudaMemset(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS));
+    GTAP_CUDA_TRY(cudaMemset(
+        d_task_id_list_free_positions_ptr, 0xFF,
+        sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS));
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMemset(TaskIdLists, %zu bytes): %.3f ms\n", sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS, elapsed);
+    printf("  cudaMemset(Task ID free positions, %zu bytes): %.3f ms\n",
+           sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS,
+           elapsed);
     cudaEventRecord(start);
     #endif
 
@@ -263,12 +272,14 @@ cudaError_t __gtap_init_task_runtime() {
     printf("  cudaMemcpyToSymbol(d_task_data_bytes): %.3f ms\n", elapsed);
     cudaEventRecord(start);
     #endif
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_task_id_lists, &d_task_id_lists_ptr, sizeof(TaskIdList*)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(
+        d_task_id_list_free_positions, &d_task_id_list_free_positions_ptr,
+        sizeof(int*)));
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMemcpyToSymbol(d_task_id_lists): %.3f ms\n", elapsed); 
+    printf("  cudaMemcpyToSymbol(d_task_id_list_free_positions): %.3f ms\n", elapsed);
     cudaEventRecord(start);
     #endif
     int* d_task_id_storage_ptr = nullptr;
@@ -402,8 +413,10 @@ cudaError_t __gtap_finalize_task_runtime() {
     char* d_task_data_bytes_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_data_bytes_ptr, d_task_data_bytes, sizeof(char*)));
     
-    TaskIdList* d_task_id_lists_ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_lists_ptr, d_task_id_lists, sizeof(TaskIdList*)));
+    int* d_task_id_list_free_positions_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &d_task_id_list_free_positions_ptr, d_task_id_list_free_positions,
+        sizeof(int*)));
     
 #ifdef GTAP_ENABLE_PROFILING
     long long* having_task_time_ptr = nullptr;
@@ -458,8 +471,8 @@ cudaError_t __gtap_finalize_task_runtime() {
         GTAP_CUDA_TRY(cudaFree(d_task_data_bytes_ptr));
     }
     
-    if (d_task_id_lists_ptr != nullptr) {
-        GTAP_CUDA_TRY(cudaFree(d_task_id_lists_ptr));
+    if (d_task_id_list_free_positions_ptr != nullptr) {
+        GTAP_CUDA_TRY(cudaFree(d_task_id_list_free_positions_ptr));
     }
     
 #ifdef GTAP_ENABLE_PROFILING
@@ -558,8 +571,10 @@ cudaError_t __gtap_reset_task_runtime() {
     char* d_task_data_bytes_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_data_bytes_ptr, d_task_data_bytes, sizeof(char*)));
     
-    TaskIdList* d_task_id_lists_ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_lists_ptr, d_task_id_lists, sizeof(TaskIdList*)));
+    int* d_task_id_list_free_positions_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &d_task_id_list_free_positions_ptr, d_task_id_list_free_positions,
+        sizeof(int*)));
     
 #ifdef GTAP_ENABLE_PROFILING
     long long* having_task_time_ptr = nullptr;
@@ -606,9 +621,11 @@ cudaError_t __gtap_reset_task_runtime() {
         GTAP_CUDA_TRY(cudaMemset(d_task_data_bytes_ptr, 0, task_data_size));
     }
     
-    // Reset task ID lists
-    if (d_task_id_lists_ptr != nullptr) {
-        GTAP_CUDA_TRY(cudaMemset(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS));
+    // Reset task ID free positions.
+    if (d_task_id_list_free_positions_ptr != nullptr) {
+        GTAP_CUDA_TRY(cudaMemset(
+            d_task_id_list_free_positions_ptr, 0xFF,
+            sizeof(int) * GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_NUM_WARPS));
     }
     if (d_task_id_valid_ptr != nullptr) {
         GTAP_CUDA_TRY(cudaMemset(
@@ -1067,7 +1084,7 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
     }
     int warp_id_global = get_warp_id_global();
     int new_tid = get_task_id_from_warp_pool(
-        &d_task_id_lists[warp_id_global],
+        &d_task_id_list_free_positions[warp_id_global],
         &ctx->id_list_alloc_pos,
         &ctx->id_list_free_pos_stale);
     TaskHeader* new_hdr = &d_task_headers[new_tid];
@@ -1107,9 +1124,10 @@ extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
     }
 
     int warp_id_global = get_warp_id_global();
-    TaskIdList* tid_list = &d_task_id_lists[warp_id_global];
     int new_tid = get_task_id_from_warp_pool(
-        tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
+        &d_task_id_list_free_positions[warp_id_global],
+        &ctx->id_list_alloc_pos,
+        &ctx->id_list_free_pos_stale);
     
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     new_hdr->func = func;

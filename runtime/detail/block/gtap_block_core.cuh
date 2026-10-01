@@ -51,15 +51,11 @@ struct TaskContext {
 #endif
 };
 
-struct TaskIdList {
-    int id_list_free_pos;
-};
-
-__constant__ TaskIdList* d_task_id_lists;
-__constant__ int* d_task_id_storage;
 __constant__ TaskHeader* d_task_headers;
 __constant__ char* d_task_data_bytes;
 __constant__ char* d_gtap_entry_result_bytes;
+__constant__ int* d_task_id_list_free_positions;
+__constant__ int* d_task_id_storage;
 __constant__ int* d_task_id_generated;
 __device__ int d_first_task_finished;
 __device__ int d_all_tasks_finished_flag;
@@ -89,21 +85,22 @@ __device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int
 
 __global__ void init_block_id_pools_metadata() {
     if (threadIdx.x == 0) {
-        TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
-        tid_list->id_list_free_pos = d_gtap_launch_config.tasks_per_worker;
+        d_task_id_list_free_positions[blockIdx.x] =
+            d_gtap_launch_config.tasks_per_worker;
     }
     __threadfence();
 }
 
 __device__ __forceinline__ int get_task_id_from_block_pool(
-    TaskIdList* tid_list,
+    int* id_list_free_pos,
     int* id_list_alloc_pos,
     int* id_list_free_pos_stale
 ) {
     int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     const int tasks_per_block = d_gtap_launch_config.tasks_per_worker;
     int idx = old_alloc % tasks_per_block;
-    int block_id = static_cast<int>(tid_list - d_task_id_lists);
+    int block_id = static_cast<int>(
+        id_list_free_pos - d_task_id_list_free_positions);
     int id;
     bool first_use = (old_alloc < tasks_per_block);
     if (first_use) {
@@ -114,7 +111,7 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
     if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
-        int new_free_pos = load_L2(&tid_list->id_list_free_pos);
+        int new_free_pos = load_L2(id_list_free_pos);
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
@@ -128,8 +125,8 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
 __device__ __forceinline__ void release_task_id_to_block_pool(int id) {
     const int tasks_per_block = d_gtap_launch_config.tasks_per_worker;
     int block_id = id / tasks_per_block;
-    TaskIdList* tid_list = &d_task_id_lists[block_id];
-    int old_free = atomicAdd(&tid_list->id_list_free_pos, 1);
+    int* id_list_free_pos = &d_task_id_list_free_positions[block_id];
+    int old_free = atomicAdd(id_list_free_pos, 1);
     store_L2(
         &d_task_id_storage[
             block_id * tasks_per_block + old_free % tasks_per_block],

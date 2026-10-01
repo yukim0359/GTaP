@@ -54,13 +54,9 @@ struct TaskContext {
 #endif
 };
 
-struct TaskIdList {
-    int id_list_free_pos;
-};
-
 __constant__ TaskHeader* d_task_headers;
 __constant__ char* d_task_data_bytes;
-__constant__ TaskIdList* d_task_id_lists;
+__constant__ int* d_task_id_list_free_positions;
 __constant__ int* d_task_id_storage;
 __constant__ int* d_task_id_valid;
 __device__ int d_first_task_finished;
@@ -76,9 +72,13 @@ __constant__ int* tasks_processed_count;
 __constant__ unsigned long long* profile_dropped_events;
 #endif
 
-__device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, int* id_list_alloc_pos, int* id_list_free_pos_stale) {
+__device__ __forceinline__ int get_task_id_from_warp_pool(
+    int* id_list_free_pos,
+    int* id_list_alloc_pos,
+    int* id_list_free_pos_stale
+) {
     int old_alloc = atomicAdd(id_list_alloc_pos, 1);
-    int warp_id_global = (tid_list - d_task_id_lists);
+    int warp_id_global = id_list_free_pos - d_task_id_list_free_positions;
     int id = 0;
     const int task_ids_per_warp = d_gtap_launch_config.tasks_per_worker;
     bool first_use = (old_alloc < task_ids_per_warp);
@@ -96,7 +96,7 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, 
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
     if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
-        int new_free_pos = load_L2(&tid_list->id_list_free_pos);
+        int new_free_pos = load_L2(id_list_free_pos);
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_TASK_ID_POOL_MIN_FREE) {
@@ -109,8 +109,8 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(TaskIdList* tid_list, 
 
 __device__ __forceinline__ void release_task_id_to_warp_pool(int id) {
     int warp_id_global = get_warp_id_global();
-    TaskIdList* tid_list = &d_task_id_lists[warp_id_global];
-    int old_free = atomicAdd(&tid_list->id_list_free_pos, 1);
+    int* id_list_free_pos = &d_task_id_list_free_positions[warp_id_global];
+    int old_free = atomicAdd(id_list_free_pos, 1);
     const int task_ids_per_warp = d_gtap_launch_config.tasks_per_worker;
     const int storage_idx =
         warp_id_global * task_ids_per_warp + old_free % task_ids_per_warp;
@@ -124,8 +124,8 @@ __global__ void init_warp_id_pools_metadata() {
     if (warp_id_in_block < d_gtap_launch_config.warps_per_block && lane == 0) {
         int qid =
             blockIdx.x * d_gtap_launch_config.warps_per_block + warp_id_in_block;
-        TaskIdList* tid_list = &d_task_id_lists[qid];
-        tid_list->id_list_free_pos = d_gtap_launch_config.tasks_per_worker;
+        d_task_id_list_free_positions[qid] =
+            d_gtap_launch_config.tasks_per_worker;
     }
     __threadfence();
 }

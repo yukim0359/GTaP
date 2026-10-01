@@ -45,8 +45,8 @@ static size_t __gtap_runtime_device_allocation_bytes() {
     const size_t tasks =
         static_cast<size_t>(c.total_workers) * c.tasks_per_worker;
     const size_t global_queue_bytes = sizeof(int) * tasks;
-    const size_t task_id_list_bytes =
-        sizeof(TaskIdList) * c.total_workers;
+    const size_t task_id_free_position_bytes =
+        sizeof(int) * c.total_workers;
     const size_t task_id_pool_bytes = sizeof(int) * tasks;
     const size_t header_bytes = sizeof(TaskHeader) * tasks;
     const size_t task_data_bytes = gtap_host_task_data_stride() * tasks;
@@ -54,9 +54,9 @@ static size_t __gtap_runtime_device_allocation_bytes() {
         __gtap_auto_entry_result_size * static_cast<size_t>(c.block_size);
     const size_t task_id_generated_bytes =
         sizeof(int) * c.total_workers * GTAP_MAX_CHILD_TASKS;
-    size_t total = global_queue_bytes + task_id_list_bytes + header_bytes +
-        task_data_bytes + entry_result_bytes + task_id_generated_bytes +
-        task_id_pool_bytes;
+    size_t total = global_queue_bytes + task_id_free_position_bytes +
+        header_bytes + task_data_bytes + entry_result_bytes +
+        task_id_generated_bytes + task_id_pool_bytes;
 #ifdef GTAP_ENABLE_PROFILING
     total += 2 * sizeof(long long) * c.total_workers *
              (2 * c.profile_interval_capacity);
@@ -91,10 +91,14 @@ cudaError_t __gtap_init_task_runtime() {
     GTAP_CUDA_TRY(cudaMemsetAsync(
         d_global_task_queue_ptr, 0, sizeof(int) * total_tasks, streams[0]));
     
-    TaskIdList* d_task_id_lists_ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_task_id_lists_ptr), sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE));
-    // Lazy initialization: set id_list to -1, will be computed on first access
-    GTAP_CUDA_TRY(cudaMemsetAsync(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE, streams[1]));  // 0xFF = -1 for all bytes
+    int* d_task_id_list_free_positions_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&d_task_id_list_free_positions_ptr),
+        sizeof(int) * GTAP_RUNTIME_GRID_SIZE));
+    // Lazy initialization: set free positions to -1; they are initialized later.
+    GTAP_CUDA_TRY(cudaMemsetAsync(
+        d_task_id_list_free_positions_ptr, 0xFF,
+        sizeof(int) * GTAP_RUNTIME_GRID_SIZE, streams[1]));
     
     TaskHeader* d_task_headers_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(&d_task_headers_ptr), sizeof(TaskHeader) * GTAP_RUNTIME_TOTAL_TASKS));
@@ -134,7 +138,9 @@ cudaError_t __gtap_init_task_runtime() {
 
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(
         d_global_task_queue, &d_global_task_queue_ptr, sizeof(int*)));
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_task_id_lists, &d_task_id_lists_ptr, sizeof(TaskIdList*)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(
+        d_task_id_list_free_positions, &d_task_id_list_free_positions_ptr,
+        sizeof(int*)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_task_headers, &d_task_headers_ptr, sizeof(TaskHeader*)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_task_data_bytes, &d_task_data_bytes_ptr, sizeof(char*)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(
@@ -193,8 +199,10 @@ cudaError_t __gtap_finalize_task_runtime() {
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
         &d_task_id_storage_ptr, d_task_id_storage, sizeof(int*)));
     
-    TaskIdList* d_task_id_lists_ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_lists_ptr, d_task_id_lists, sizeof(TaskIdList*)));
+    int* d_task_id_list_free_positions_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &d_task_id_list_free_positions_ptr, d_task_id_list_free_positions,
+        sizeof(int*)));
     
     TaskHeader* d_task_headers_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_headers_ptr, d_task_headers, sizeof(TaskHeader*)));
@@ -223,8 +231,8 @@ cudaError_t __gtap_finalize_task_runtime() {
         GTAP_CUDA_TRY(cudaFree(d_global_task_queue_ptr));
     }
     
-    if (d_task_id_lists_ptr != nullptr) {
-        GTAP_CUDA_TRY(cudaFree(d_task_id_lists_ptr));
+    if (d_task_id_list_free_positions_ptr != nullptr) {
+        GTAP_CUDA_TRY(cudaFree(d_task_id_list_free_positions_ptr));
     }
     
     if (d_task_headers_ptr != nullptr) {
@@ -307,8 +315,10 @@ cudaError_t __gtap_reset_task_runtime() {
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
         &d_global_task_queue_ptr, d_global_task_queue, sizeof(int*)));
     
-    TaskIdList* d_task_id_lists_ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_lists_ptr, d_task_id_lists, sizeof(TaskIdList*)));
+    int* d_task_id_list_free_positions_ptr = nullptr;
+    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(
+        &d_task_id_list_free_positions_ptr, d_task_id_list_free_positions,
+        sizeof(int*)));
     
     TaskHeader* d_task_headers_ptr = nullptr;
     GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_headers_ptr, d_task_headers, sizeof(TaskHeader*)));
@@ -331,9 +341,11 @@ cudaError_t __gtap_reset_task_runtime() {
             sizeof(int) * GTAP_RUNTIME_TOTAL_TASKS, streams[0]));
     }
     
-    // Reset task ID lists (0xFF = -1 for lazy initialization)
-    if (d_task_id_lists_ptr != nullptr) {
-        GTAP_CUDA_TRY(cudaMemsetAsync(d_task_id_lists_ptr, 0xFF, sizeof(TaskIdList) * GTAP_RUNTIME_GRID_SIZE, streams[1]));
+    // Reset task ID free positions (0xFF = -1 for lazy initialization).
+    if (d_task_id_list_free_positions_ptr != nullptr) {
+        GTAP_CUDA_TRY(cudaMemsetAsync(
+            d_task_id_list_free_positions_ptr, 0xFF,
+            sizeof(int) * GTAP_RUNTIME_GRID_SIZE, streams[1]));
     }
     
     // Clear task headers
@@ -676,9 +688,10 @@ __device__ __forceinline__ void* __gtap_spawn_task(
     int* child_count,
     void (*func)(void*, int, TaskContext*)
 ) {
-    TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
     int new_tid = get_task_id_from_block_pool(
-        tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
+        &d_task_id_list_free_positions[blockIdx.x],
+        &ctx->id_list_alloc_pos,
+        &ctx->id_list_free_pos_stale);
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     TaskHeader* cached_hdr = &ctx->cached_task_header;
     new_hdr->func = func;
@@ -714,9 +727,10 @@ __device__ __forceinline__ void __gtap_spawn_task_raw(
     const void* task_data_ptr,
     size_t task_data_size
 ) {
-    TaskIdList* tid_list = &d_task_id_lists[blockIdx.x];
     int new_tid = get_task_id_from_block_pool(
-        tid_list, &ctx->id_list_alloc_pos, &ctx->id_list_free_pos_stale);
+        &d_task_id_list_free_positions[blockIdx.x],
+        &ctx->id_list_alloc_pos,
+        &ctx->id_list_free_pos_stale);
     
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     TaskHeader* cached_hdr = &ctx->cached_task_header;
