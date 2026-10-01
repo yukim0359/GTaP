@@ -16,9 +16,9 @@ struct WarpTaskQueueMetadata {
 };
 
 struct gtap_thread_config {
-    int grid_size = 1024;
-    int block_size = 256;
-    int max_tasks_per_warp = 150000;
+    int grid_size = 4096;
+    int block_size = 32;
+    int max_tasks_per_warp = 10000;
     int num_queues = 1;
     int profile_capacity_per_warp = 15000;
     cudaStream_t stream = nullptr;
