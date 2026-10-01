@@ -21,8 +21,6 @@ inline cudaError_t gtap_init_device_task_data_stride() {
     return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
 }
 
-inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
-
 struct TaskContext;
 
 struct TaskHeader {
@@ -57,8 +55,8 @@ __constant__ char* d_gtap_entry_result_bytes;
 __constant__ int* d_task_id_list_free_positions;
 __constant__ int* d_task_id_storage;
 __device__ int d_first_task_finished;
-__device__ int d_all_tasks_finished_flag;
-__device__ int d_active_worker_count;
+__device__ int d_all_tasks_finished;
+__device__ int d_active_block_count;
 
 #ifdef GTAP_ENABLE_PROFILING
 #ifdef GTAP_EXPERIMENTAL_PROFILE_LEGACY
@@ -119,14 +117,9 @@ __device__ __forceinline__ void release_task_id_to_block_pool(int id) {
 }
 
 __device__ __forceinline__ void* __gtap_get_task_data(int tid) {
-    return d_task_data_bytes + (size_t)tid * gtap_device_task_data_stride();
+    return d_task_data_bytes + (size_t)tid * d_gtap_task_data_stride;
 }
 
 __device__ __forceinline__ void* __gtap_get_entry_result_data() {
     return d_gtap_entry_result_bytes;
-}
-
-template <typename TaskType>
-__device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
-    return reinterpret_cast<TaskType*>(__gtap_get_task_data(tid));
 }

@@ -17,8 +17,6 @@ inline cudaError_t gtap_init_device_task_data_stride() {
     return cudaMemcpyToSymbol(d_gtap_task_data_stride, &stride, sizeof(size_t));
 }
 
-inline constexpr size_t __gtap_max_task_size = gtap_compile_time_task_data_size_limit();
-
 // #define GTAP_INTERNAL_DEBUG
 // #define GTAP_INTERNAL_PROFILE_INIT
 
@@ -60,8 +58,8 @@ __constant__ int* d_task_id_list_free_positions;
 __constant__ int* d_task_id_storage;
 __constant__ int* d_task_id_valid;
 __device__ int d_first_task_finished;
-__device__ int d_all_tasks_finished_flag;
-__device__ int d_active_worker_count;
+__device__ int d_all_tasks_finished;
+__device__ int d_active_warp_count;
 
 #ifdef GTAP_ENABLE_PROFILING
 #ifdef GTAP_EXPERIMENTAL_PROFILE_LEGACY
@@ -71,6 +69,18 @@ __constant__ long long* working_time;
 __constant__ int* tasks_processed_count;
 __constant__ unsigned long long* profile_dropped_events;
 #endif
+
+__global__ void init_warp_id_pools_metadata() {
+    int warp_id_in_block = get_warp_id_in_block();
+    int lane = get_lane_id();
+    if (warp_id_in_block < d_gtap_launch_config.warps_per_block && lane == 0) {
+        int qid =
+            blockIdx.x * d_gtap_launch_config.warps_per_block + warp_id_in_block;
+        d_task_id_list_free_positions[qid] =
+            d_gtap_launch_config.tasks_per_worker;
+    }
+    __threadfence();
+}
 
 __device__ __forceinline__ int get_task_id_from_warp_pool(
     int* id_list_free_pos,
@@ -118,23 +128,21 @@ __device__ __forceinline__ void release_task_id_to_warp_pool(int id) {
     store_L2(&d_task_id_valid[storage_idx], 1);
 }
 
-__global__ void init_warp_id_pools_metadata() {
-    int warp_id_in_block = get_warp_id_in_block();
-    int lane = get_lane_id();
-    if (warp_id_in_block < d_gtap_launch_config.warps_per_block && lane == 0) {
-        int qid =
-            blockIdx.x * d_gtap_launch_config.warps_per_block + warp_id_in_block;
-        d_task_id_list_free_positions[qid] =
-            d_gtap_launch_config.tasks_per_worker;
-    }
-    __threadfence();
-}
-
 __device__ __forceinline__ void* __gtap_get_task_data(int tid) {
-    return d_task_data_bytes + (size_t)tid * gtap_device_task_data_stride();
+    return d_task_data_bytes + (size_t)tid * d_gtap_task_data_stride;
 }
 
-template <typename TaskType>
-__device__ __forceinline__ TaskType* __gtap_get_task_data(int tid) {
-    return reinterpret_cast<TaskType*>(__gtap_get_task_data(tid));
+__device__ __forceinline__ int gtap_select_next_fullest_queue_idx(
+    int* queue_counts, int num_queues
+) {
+    int max_k = 0;
+    int max_count = -1;
+    for (int k = 0; k < num_queues; ++k) {
+        if (queue_counts[k] > max_count) {
+            max_count = queue_counts[k];
+            max_k = k;
+        }
+    }
+    queue_counts[max_k] = -1;
+    return max_k;
 }

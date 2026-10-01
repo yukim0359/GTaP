@@ -8,6 +8,12 @@
 
 #include "../../thread/gtap_thread_core.cuh"
 
+// Depth of the per-queue unpublished child-task buffer. Override with -D.
+#ifndef GTAP_MAX_CHILD_TASKS
+#define GTAP_MAX_CHILD_TASKS 32
+#endif
+static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negative");
+
 constexpr int GTAP_TASK_ID_GEN_QUEUE_STRIDE =
     GTAP_MAX_CHILD_TASKS * GTAP_WARP_SIZE;
 
@@ -354,12 +360,12 @@ cudaError_t __gtap_init_task_runtime() {
     #endif
     int zero = 0;
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished_flag, &zero, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
-    // Initialize d_active_worker_count to 1 to prevent early termination
+    // Initialize d_active_warp_count to 1 to prevent early termination
     // before the initial task is pushed by the master thread
     int one = 1;
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_worker_count, &one, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)));
     
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
@@ -613,10 +619,10 @@ cudaError_t __gtap_reset_task_runtime() {
     // Reset global state
     int zero = 0;
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished_flag, &zero, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
     int one = 1;
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_worker_count, &one, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)));
     
     // Reset queue head, tail, and alloc
     int* d_queue_head_ptr = nullptr;
@@ -686,33 +692,6 @@ cudaError_t get_warp_tasks_processed_count_data(int* host_counts) {
     return cudaMemcpy(host_counts, ptr, sizeof(int) *
         gtap_stored_launch_config().total_workers * gtap_profile_capacity(),
         cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_single_warp_having_task_time_data(int warp_global_id, long long* host_having_task_time, int max_samples) {
-    long long* ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, having_task_time, sizeof(ptr)));
-    const int count = max_samples < gtap_profile_capacity() ? max_samples : gtap_profile_capacity();
-    return cudaMemcpy(host_having_task_time,
-        ptr + static_cast<size_t>(warp_global_id) * gtap_profile_capacity(),
-        sizeof(long long) * count, cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_single_warp_working_time_data(int warp_global_id, long long* host_working_time, int max_samples) {
-    long long* ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    const int count = max_samples < gtap_profile_capacity() ? max_samples : gtap_profile_capacity();
-    return cudaMemcpy(host_working_time,
-        ptr + static_cast<size_t>(warp_global_id) * gtap_profile_capacity(),
-        sizeof(long long) * count, cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_single_warp_tasks_processed_count_data(int warp_global_id, int* host_counts, int max_samples) {
-    int* ptr = nullptr;
-    GTAP_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, tasks_processed_count, sizeof(ptr)));
-    const int count = max_samples < gtap_profile_capacity() ? max_samples : gtap_profile_capacity();
-    return cudaMemcpy(host_counts,
-        ptr + static_cast<size_t>(warp_global_id) * gtap_profile_capacity(),
-        sizeof(int) * count, cudaMemcpyDeviceToHost);
 }
 
 __global__ void get_final_warp_having_task_time_indices(int* indices) {
@@ -791,7 +770,7 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
                 base_head = old_head;
                 // Increment active worker count if this worker was previously idle
                 if (M == TERMINATE_ON_ALL_TASKS_FINISH && !prev_get_task) {
-                    atomicAdd(&d_active_worker_count, 1);
+                    atomicAdd(&d_active_warp_count, 1);
                 }
                 break;
             }
@@ -912,7 +891,7 @@ __device__ __forceinline__ int __gtap_get_task_state(int tid) {
     (void)tid;
     return 0;
 #else
-    return load_L2_u16t(&d_task_headers[tid].state);
+    return load_L2(&d_task_headers[tid].state);
 #endif
 }
 
@@ -943,7 +922,7 @@ __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
     printf("notify_parent: %d (remaining child count: %d) in lane %d of warp %d of block %d\n", parentId, rem, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     if (rem == 1) {
-        int parent_queue_idx = load_L2_u16t(&parent_hdr->queue_idx);
+        int parent_queue_idx = load_L2(&parent_hdr->queue_idx);
         reserve_unpublished_task_id(ctx, parent_queue_idx, parentId);
     }
     return rem;
@@ -967,7 +946,7 @@ extern "C" __device__ __forceinline__ void __gtap_finish_task(int tid, TaskConte
     d_task_headers[tid].generation = generation + 1;
 
     if (tid != 0 &&
-        load_L2_u16t(&d_task_headers[parent_tid].generation) ==
+        load_L2(&d_task_headers[parent_tid].generation) ==
             parent_generation) {
         notify_parent(parent_tid, ctx);
     }
@@ -1204,8 +1183,8 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
                 if (lane == 0) {
                     if (prev_get_task) {
-                        int active_worker_count = atomicSub(&d_active_worker_count, 1) - 1;
-                        if (active_worker_count == 0) {
+                        int active_warp_count = atomicSub(&d_active_warp_count, 1) - 1;
+                        if (active_warp_count == 0) {
                             // Check if all queues are empty
                             bool all_tasks_finished = 1;
                             #pragma unroll
@@ -1217,7 +1196,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
                                     break;
                                 }
                             }
-                            atomicExch(&d_all_tasks_finished_flag, all_tasks_finished);
+                            atomicExch(&d_all_tasks_finished, all_tasks_finished);
                         }
                     }
                 }
@@ -1236,7 +1215,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             
             // Check termination condition
             if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                if (lane == 0) should_continue = (load_L2(&d_all_tasks_finished_flag) == 0);
+                if (lane == 0) should_continue = (load_L2(&d_all_tasks_finished) == 0);
                 should_continue = __shfl_sync(0xFFFFFFFFu, should_continue, 0);
             } else {
                 if (lane == 0) should_continue = (load_L2(&d_first_task_finished) == 0);
@@ -1267,9 +1246,9 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
                 TaskContext* dst_ctx = &warp_contexts[warp_id_in_block];
-                uint16_t generation = load_L2_u16t(&src_hdr->generation);
+                uint16_t generation = load_L2(&src_hdr->generation);
                 uint16_t parent_generation =
-                    load_L2_u16t(&src_hdr->parent_generation);
+                    load_L2(&src_hdr->parent_generation);
                 dst_ctx->task_parent_tids[lane] =
                     load_L2(&src_hdr->parent_tid);
                 dst_ctx->task_generations[lane] =
@@ -1289,7 +1268,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 #endif
             // Execute task
             void* task_data = __gtap_get_task_data(execute_task_id);
-            void* func_ptr = load_L2_ptr(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
+            void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &warp_contexts[warp_id_in_block]);
 #ifdef GTAP_INTERNAL_DEBUG

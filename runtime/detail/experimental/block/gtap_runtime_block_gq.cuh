@@ -8,6 +8,12 @@
 
 #include "../../block/gtap_block_core.cuh"
 
+// Depth of the per-block unpublished child-task buffer. Override with -D.
+#ifndef GTAP_MAX_CHILD_TASKS
+#define GTAP_MAX_CHILD_TASKS 32
+#endif
+static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negative");
+
 struct gtap_block_config {
     int grid_size = 1024;
     int block_size = 256;
@@ -192,13 +198,13 @@ cudaError_t __gtap_init_task_runtime() {
     int zero = 0;
     unsigned int uzero = 0;
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished_flag, &zero, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_queue_head, &uzero, sizeof(unsigned int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_queue_tail, &uzero, sizeof(unsigned int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_queue_alloc, &uzero, sizeof(unsigned int)));
     int one = 1;
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_worker_count, &one, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int)));
     
     init_block_id_pools_metadata<<<
         runtime_config.grid_size, 1, 0, gtap_stored_stream()>>>();
@@ -409,13 +415,13 @@ cudaError_t __gtap_reset_task_runtime() {
     int zero = 0;
     unsigned int uzero = 0;
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished_flag, &zero, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_queue_head, &uzero, sizeof(unsigned int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_queue_tail, &uzero, sizeof(unsigned int)));
     GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_queue_alloc, &uzero, sizeof(unsigned int)));
     int one = 1;
-    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_worker_count, &one, sizeof(int)));
+    GTAP_CUDA_TRY(cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int)));
     
     // Reinitialize block ID pools metadata
     init_block_id_pools_metadata<<<GTAP_RUNTIME_GRID_SIZE, 1>>>();
@@ -519,7 +525,7 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
             pop_success = true;
             // Increment active worker count if this worker was previously idle
             if (M == TERMINATE_ON_ALL_TASKS_FINISH && !prev_get_task) {
-                atomicAdd(&d_active_worker_count, 1);
+                atomicAdd(&d_active_block_count, 1);
             }
             break;
         }
@@ -627,7 +633,7 @@ __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_cou
 
 extern "C" {
 __device__ __forceinline__ int __gtap_get_task_state(int tid) {
-    return load_L2_u16t(&d_task_headers[tid].state);
+    return load_L2(&d_task_headers[tid].state);
 }
 
 __device__ __forceinline__ void __gtap_set_state_for_join(int tid, int child_count, int next_state, int unused_value) {
@@ -679,7 +685,7 @@ __device__ void __gtap_finish_task(int tid, TaskContext* ctx) {
         int parent_tid = cached_hdr->parent_tid;
         d_task_headers[tid].generation = cached_hdr->generation + 1;
         
-        if (tid != 0 && load_L2_u16t(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
+        if (tid != 0 && load_L2(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 #ifdef GTAP_INTERNAL_DEBUG
             printf("finish_task: %d, parent_tid: %d\n", tid, parent_tid);
@@ -861,8 +867,8 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             if (threadIdx.x == 0) {
                 if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
                     if (prev_get_task) {
-                        int active_worker_count = atomicSub(&d_active_worker_count, 1) - 1;
-                        if (active_worker_count == 0) {
+                        int active_block_count = atomicSub(&d_active_block_count, 1) - 1;
+                        if (active_block_count == 0) {
                             // Check if queue is empty (unsigned comparison handles wrap-around)
                             bool all_tasks_finished = 1;
                             unsigned int head = load_L2(&d_queue_head);
@@ -870,7 +876,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
                             if (tail - head > 0) {  // unsigned subtraction
                                 all_tasks_finished = 0;
                             }
-                            atomicExch(&d_all_tasks_finished_flag, all_tasks_finished);
+                            atomicExch(&d_all_tasks_finished, all_tasks_finished);
                         }
                     }
                 }
@@ -882,7 +888,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 #endif
                 prev_get_task = false;
                 if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                    should_continue = (load_L2(&d_all_tasks_finished_flag) == 0);
+                    should_continue = (load_L2(&d_all_tasks_finished) == 0);
                 } else {
                     should_continue = (load_L2(&d_first_task_finished) == 0);
                 }
@@ -910,9 +916,9 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
             if (threadIdx.x == 0) {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
                 TaskHeader* dst_hdr = &block_ctx.cached_task_header;
-                dst_hdr->generation = load_L2_u16t(&src_hdr->generation);
+                dst_hdr->generation = load_L2(&src_hdr->generation);
                 dst_hdr->parent_tid = load_L2(&src_hdr->parent_tid);
-                dst_hdr->parent_generation = load_L2_u16t(&src_hdr->parent_generation);
+                dst_hdr->parent_generation = load_L2(&src_hdr->parent_generation);
             }
             __syncthreads();
             
@@ -926,7 +932,7 @@ __device__ __forceinline__ void __gtap_execute_task_loop_device_impl() {
 #endif
             void* task_data = __gtap_get_task_data(execute_task_id);
             // Read function pointer atomically (64-bit) via L2 cache
-            void* func_ptr = load_L2_ptr(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
+            void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &block_ctx);
             __threadfence();
