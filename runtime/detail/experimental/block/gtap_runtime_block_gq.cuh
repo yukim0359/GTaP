@@ -39,6 +39,21 @@ __constant__ int* d_global_task_queue;
 __device__ unsigned int d_queue_head;     // Global queue head (consumer reads from here)
 __device__ unsigned int d_queue_tail;     // Global queue tail (consumer-visible, committed)
 __device__ unsigned int d_queue_alloc;    // Write allocation position (producers reserve here)
+__constant__ int* d_task_id_generated;
+
+__device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
+    int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
+    return d_task_id_generated[offset];
+}
+
+__device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int task_id) {
+    if (idx >= GTAP_MAX_CHILD_TASKS) {
+        GTAP_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
+            task_id, -1, idx, GTAP_MAX_CHILD_TASKS);
+    }
+    int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
+    d_task_id_generated[offset] = task_id;
+}
 
 static size_t __gtap_runtime_device_allocation_bytes() {
     const gtap_launch_config& c = gtap_stored_launch_config();

@@ -29,13 +29,13 @@ struct TaskHeader {
     void (*func)(void* task, int tid, TaskContext* ctx);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     // Info of current task
-    uint16_t generation;
-    uint16_t state;
+    uint16_t  generation;
+    uint16_t  state;
     // Info of parent task
-    int parent_tid;
-    uint16_t parent_generation;
+    int       parent_tid;
+    uint16_t  parent_generation;
     // Info of child tasks
-    int waiting_child_count;
+    int       waiting_child_count;
 #endif
 };
 
@@ -56,7 +56,6 @@ __constant__ char* d_task_data_bytes;
 __constant__ char* d_gtap_entry_result_bytes;
 __constant__ int* d_task_id_list_free_positions;
 __constant__ int* d_task_id_storage;
-__constant__ int* d_task_id_generated;
 __device__ int d_first_task_finished;
 __device__ int d_all_tasks_finished_flag;
 __device__ int d_active_worker_count;
@@ -68,20 +67,6 @@ __constant__ long long* having_task_time;
 __constant__ long long* working_time;
 __constant__ unsigned long long* profile_dropped_events;
 #endif
-
-__device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
-    int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
-    return d_task_id_generated[offset];
-}
-
-__device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int task_id) {
-    if (idx >= GTAP_MAX_CHILD_TASKS) {
-        GTAP_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
-            task_id, -1, idx, GTAP_MAX_CHILD_TASKS);
-    }
-    int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
-    d_task_id_generated[offset] = task_id;
-}
 
 __global__ void init_block_id_pools_metadata() {
     if (threadIdx.x == 0) {
