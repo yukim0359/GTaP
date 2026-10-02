@@ -76,31 +76,26 @@ inline bool runtime_error_code_is_valid(int error_code) {
 }
 
 static void print_detail_invalid_queue_idx(const runtime_error_record* r) {
-    printf(
-        "Invalid queue index %d for task tid=%d (num_queues=%d)",
+    fprintf(stderr, "Invalid queue index %d for task tid=%d (num_queues=%d)",
         r->queue_idx, r->tid, r->limit);
 }
 
 static void print_detail_invalid_queue_idx_after_join(const runtime_error_record* r) {
-    printf(
-        "Invalid queue index %d after join for task tid=%d (num_queues=%d)",
+    fprintf(stderr, "Invalid queue index %d after join for task tid=%d (num_queues=%d)",
         r->queue_idx, r->tid, r->limit);
 }
 
 static void print_detail_queue_overflow(const runtime_error_record* r) {
     if (r->queue_idx >= 0) {
-        printf(
-            "Task queue %d overflow for task tid=%d "
+        fprintf(stderr, "Task queue %d overflow for task tid=%d "
             "(usage=%d, capacity=%d)",
             r->queue_idx, r->tid, r->value, r->limit);
     } else if (r->tid >= 0) {
-        printf(
-            "Task queue overflow for task tid=%d "
+        fprintf(stderr, "Task queue overflow for task tid=%d "
             "(usage=%d, capacity=%d)",
             r->tid, r->value, r->limit);
     } else {
-        printf(
-            "Task queue overflow (kind=%d, usage=%d, capacity=%d)",
+        fprintf(stderr, "Task queue overflow (kind=%d, usage=%d, capacity=%d)",
             r->queue_idx, r->value, r->limit);
     }
 }
@@ -108,15 +103,13 @@ static void print_detail_queue_overflow(const runtime_error_record* r) {
 static void print_detail_task_id_pool_slot_busy(const runtime_error_record* r) {
     const int unreleased_slot =
         (r->limit > 0) ? (r->value % r->limit) : r->value;
-    printf(
-        "Task ID pool exhausted: reuse slot %d still in use "
+    fprintf(stderr, "Task ID pool exhausted: reuse slot %d still in use "
         "(alloc_count=%d, pool_size=%d, task_tid=%d)",
         unreleased_slot, r->value, r->limit, r->tid);
 }
 
 static void print_detail_task_id_pool_low_headroom(const runtime_error_record* r) {
-    printf(
-        "Task ID pool exhausted: headroom=%d below minimum %d "
+    fprintf(stderr, "Task ID pool exhausted: headroom=%d below minimum %d "
         "(task_tid=%d)",
         r->value, r->limit, r->tid);
 }
@@ -125,13 +118,11 @@ static void print_detail_generated_task_id_buffer_overflow(
     const runtime_error_record* r
 ) {
     if (r->queue_idx >= 0) {
-        printf(
-            "Generated task-ID buffer overflow for task tid=%d "
+        fprintf(stderr, "Generated task-ID buffer overflow for task tid=%d "
             "(queue=%d, index=%d, capacity=%d)",
             r->tid, r->queue_idx, r->value, r->limit);
     } else {
-        printf(
-            "Generated task-ID buffer overflow for task tid=%d "
+        fprintf(stderr, "Generated task-ID buffer overflow for task tid=%d "
             "(index=%d, capacity=%d)",
             r->tid, r->value, r->limit);
     }
@@ -186,11 +177,6 @@ __device__ __forceinline__ void record_runtime_error_and_trap(
     __trap();
 }
 
-inline cudaError_t get_runtime_error_code(int* error_code) {
-    return cudaMemcpyFromSymbol(
-        error_code, d_runtime_error_code, sizeof(int));
-}
-
 inline const char* get_runtime_error_string(int error_code) {
     if (runtime_error_code_is_valid(error_code)) {
         return error_short_message[error_code];
@@ -198,64 +184,50 @@ inline const char* get_runtime_error_string(int error_code) {
     return "Unknown error";
 }
 
-inline void print_runtime_error_details(const runtime_error_record* r) {
+static void print_error_details(const runtime_error_record* r) {
     if (runtime_error_code_is_valid(r->code) &&
         error_detail_printer[r->code] != nullptr) {
         error_detail_printer[r->code](r);
         return;
     }
-    printf(
+    fprintf(stderr,
         "%s (code=%d, tid=%d, queue=%d, value=%d, limit=%d)",
         get_runtime_error_string(r->code), r->code,
         r->tid, r->queue_idx, r->value, r->limit);
 }
 
-inline bool print_runtime_error_report() {
-    if (h_runtime_error_record == nullptr ||
-        h_runtime_error_record->valid == 0) {
-        return false;
+inline bool read_error_report(runtime_error_record* record) {
+    if (h_runtime_error_record != nullptr &&
+        h_runtime_error_record->valid != 0) {
+        *record = *h_runtime_error_record;
+        return true;
     }
-    const runtime_error_record* r = h_runtime_error_record;
-    printf(
+    *record = {};
+    return false;
+}
+
+inline void print_error_report(const runtime_error_record* r) {
+    fprintf(stderr,
         "GTaP Runtime Error at block %d, thread %d: ",
         r->block_idx, r->thread_idx);
-    print_runtime_error_details(r);
-    printf(" (source_line: %d)\n", r->src_line);
-    return true;
-}
-
-inline cudaError_t check_runtime_error() {
-    if (print_runtime_error_report()) {
-        return cudaSuccess;
-    }
-
-    int error_code = 0;
-    cudaError_t cuda_err = get_runtime_error_code(&error_code);
-    if (cuda_err != cudaSuccess) {
-        printf("GTaP Runtime Error: Unable to read error code (CUDA error: %s)\n", cudaGetErrorString(cuda_err));
-        return cuda_err;
-    }
-    if (error_code != static_cast<int>(runtime_error_code::none)) {
-        printf("GTaP Runtime Error: %s (code: %d)\n", get_runtime_error_string(error_code), error_code);
-    }
-    return cudaSuccess;
-}
-
-inline cudaError_t report_cuda_error(cudaError_t st) {
-    if (st != cudaSuccess) {
-        if (!print_runtime_error_report()) {
-            printf("CUDA ERROR: %s\n", cudaGetErrorString(st));
-        }
-        return st;
-    }
-    return check_runtime_error();
+    print_error_details(r);
+    fprintf(stderr, " (source_line: %d)\n", r->src_line);
 }
 
 }  // namespace gtap::detail
 
 inline cudaError_t gtap_synchronize() {
     cudaError_t st = cudaDeviceSynchronize();
-    return gtap::detail::report_cuda_error(st);
+    gtap::detail::runtime_error_record record{};
+    if (gtap::detail::read_error_report(&record)) {
+        gtap::detail::print_error_report(&record);
+        return st;
+    }
+    if (st != cudaSuccess) {
+        fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
+        return st;
+    }
+    return cudaSuccess;
 }
 
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(tid, queue_idx, num_queues) \

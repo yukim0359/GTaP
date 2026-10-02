@@ -116,9 +116,9 @@ cudaError_t gtap_synchronize();
 
 ### Return value
 
-Returns the result of device synchronization. If CUDA reports a failure, GTaP
-prints the captured task-runtime details when available and returns that CUDA
-error.
+Returns the result of device synchronization. Diagnostics are written to
+stderr. If CUDA reports a failure, GTaP prints the captured task-runtime
+details when available and returns that CUDA error.
 
 ### Notes
 
