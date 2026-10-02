@@ -149,7 +149,3 @@ __device__ __forceinline__ int select_next_fullest_queue_idx(
 }
 
 }  // namespace gtap::detail::thread
-
-__device__ __forceinline__ void* __gtap_get_task_data(int tid) {
-    return gtap::detail::thread::get_task_data(tid);
-}

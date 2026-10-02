@@ -128,11 +128,3 @@ __device__ __forceinline__ void* get_entry_result_data() {
 }
 
 }  // namespace gtap::detail::block
-
-__device__ __forceinline__ void* __gtap_get_task_data(int tid) {
-    return gtap::detail::block::get_task_data(tid);
-}
-
-__device__ __forceinline__ void* __gtap_get_entry_result_data() {
-    return gtap::detail::block::get_entry_result_data();
-}
