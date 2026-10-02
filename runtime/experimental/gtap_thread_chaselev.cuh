@@ -1,4 +1,4 @@
 #pragma once
 
-#include "../detail/experimental/thread/gtap_runtime_thread_chaselev.cuh"
+#include "../detail/experimental/thread/gtap_thread_chaselev_host.cuh"
 #include "../detail/thread/gtap_profile_thread.cuh"
