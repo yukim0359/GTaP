@@ -35,21 +35,27 @@ int main() {
     return 1;
   }
 
-  status = gtap_launch(test_kernel);
-  if (status == cudaSuccess)
-    status = gtap_synchronize();
+  cudaError_t launch_status = gtap_launch(test_kernel);
+  cudaError_t sync_status = cudaSuccess;
+  if (launch_status == cudaSuccess)
+    sync_status = gtap_synchronize();
 
   cudaGetLastError();
   cudaError_t finalize_status = gtap_finalize();
   if (finalize_status != cudaSuccess)
     cudaGetLastError();
 
-  if (status == cudaSuccess) {
+  if (launch_status != cudaSuccess) {
+    std::fprintf(stderr, "invalid_queue_thread: gtap_launch failed: %s\n",
+                 cudaGetErrorString(launch_status));
+    return 1;
+  }
+  if (sync_status == cudaSuccess) {
     std::fprintf(stderr,
                  "invalid_queue_thread: gtap_synchronize returned success\n");
     return 1;
   }
   std::printf("invalid_queue_thread: gtap_synchronize failed as expected (%s)\n",
-              cudaGetErrorString(status));
+              cudaGetErrorString(sync_status));
   return 0;
 }
