@@ -20,7 +20,7 @@
 #define GTAP_DETAIL_CUDA_TRY(call) do { \
     cudaError_t __st = (call); \
     if (__st != cudaSuccess) { \
-        if (!gtap_print_runtime_error_report()) { \
+        if (!gtap::detail::print_runtime_error_report()) { \
             printf("CUDA ERROR: %s\n", cudaGetErrorString(__st)); \
         } \
         return __st; \

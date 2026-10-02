@@ -57,7 +57,7 @@ __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
 
 __device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int task_id) {
     if (idx >= GTAP_MAX_CHILD_TASKS) {
-        GTAP_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
+        GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
             task_id, -1, idx, GTAP_MAX_CHILD_TASKS);
     }
     int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
@@ -96,7 +96,7 @@ static size_t runtime_device_allocation_bytes() {
     (stored_launch_config().tasks_per_worker)
 
 cudaError_t initialize_runtime() {
-    GTAP_DETAIL_CUDA_TRY(gtap_init_runtime_error_report());
+    GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
     const launch_config& runtime_config = stored_launch_config();
     const size_t total_tasks =
         static_cast<size_t>(runtime_config.total_workers) *
@@ -281,7 +281,7 @@ cudaError_t finalize_runtime() {
     if (working_time_ptr != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(working_time_ptr));
 #endif
     
-    GTAP_DETAIL_CUDA_TRY(gtap_finalize_runtime_error_report());
+    GTAP_DETAIL_CUDA_TRY(finalize_runtime_error_record());
 
     return cudaGetLastError();
 }
@@ -332,7 +332,7 @@ namespace gtap::detail::block {
 using namespace gtap::detail;
 
 cudaError_t reset_runtime() {
-    gtap_reset_runtime_error_report_host();
+    reset_runtime_error_record_host();
 
     constexpr int NUM_STREAMS = 5;
     cudaStream_t streams[NUM_STREAMS];
@@ -606,7 +606,7 @@ __device__ __forceinline__ void push_global_queue(
         // Overflow check (unsigned subtraction handles wrap-around)
         unsigned int head_val = load_L2(&d_queue_head);
         if (base_pos + (unsigned int)push_cnt - head_val > (d_launch_config.total_workers * d_launch_config.tasks_per_worker) - GTAP_DETAIL_QUEUE_MARGIN) {
-            GTAP_RECORD_QUEUE_OVERFLOW(
+            GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
                 -1, 0,
                 static_cast<int>(base_pos + (unsigned int)push_cnt - head_val),
                 (d_launch_config.total_workers * d_launch_config.tasks_per_worker) - GTAP_DETAIL_QUEUE_MARGIN);

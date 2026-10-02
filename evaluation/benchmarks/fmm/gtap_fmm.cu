@@ -2687,7 +2687,7 @@ int main(int argc, char **argv) {
       std::chrono::high_resolution_clock::now();
   CUDA_CHECK(gtap_launch(fmm3d_dtt_fill_kernel));
   CUDA_CHECK(cudaGetLastError());
-  gtap_report_cuda_error(cudaDeviceSynchronize());
+  gtap_synchronize();
   // CUDA_CHECK(cudaDeviceSynchronize());
   const std::chrono::high_resolution_clock::time_point t_dtt_kernel_end =
       std::chrono::high_resolution_clock::now();

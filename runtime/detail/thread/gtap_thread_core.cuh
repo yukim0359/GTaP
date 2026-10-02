@@ -102,7 +102,7 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
             id = load_L2(&d_task_id_storage[storage_idx]);
             store_L2(&d_task_id_valid[storage_idx], 0);
         } else {
-            GTAP_RECORD_TASK_ID_POOL_SLOT_BUSY(id, old_alloc, task_ids_per_warp);
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(id, old_alloc, task_ids_per_warp);
         }
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
@@ -111,7 +111,7 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
-            GTAP_RECORD_TASK_ID_POOL_LOW_HEADROOM(
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(
                 id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
         }
     }

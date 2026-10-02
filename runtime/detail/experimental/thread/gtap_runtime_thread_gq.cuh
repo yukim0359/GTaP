@@ -118,7 +118,7 @@ __device__ __forceinline__ void set_task_id_generated(
     int warp_id_global, int queue_idx, int idx, int task_id
 ) {
     if (idx >= GTAP_TASK_ID_GEN_QUEUE_STRIDE) {
-        GTAP_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
+        GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
             task_id, queue_idx, idx, GTAP_TASK_ID_GEN_QUEUE_STRIDE);
     }
     int offset =
@@ -151,7 +151,7 @@ static size_t runtime_device_allocation_bytes() {
 }
 
 cudaError_t initialize_runtime() {
-    GTAP_DETAIL_CUDA_TRY(gtap_init_runtime_error_report());
+    GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
     const launch_config& runtime_config = stored_launch_config();
     const size_t total_workers = runtime_config.total_workers;
     const size_t total_tasks =
@@ -517,7 +517,7 @@ cudaError_t finalize_runtime() {
         GTAP_DETAIL_CUDA_TRY(cudaFree(tasks_processed_count_ptr));
 #endif
     
-    GTAP_DETAIL_CUDA_TRY(gtap_finalize_runtime_error_report());
+    GTAP_DETAIL_CUDA_TRY(finalize_runtime_error_record());
 
     return cudaGetLastError();
 }
@@ -569,7 +569,7 @@ namespace gtap::detail::thread {
 using namespace gtap::detail;
 
 cudaError_t reset_runtime() {
-    gtap_reset_runtime_error_report_host();
+    reset_runtime_error_record_host();
 
     // Get device pointers from symbols
     int* d_global_task_queue_ptr = nullptr;
@@ -868,7 +868,7 @@ __device__ __forceinline__ void push_global_queue(
             // Overflow check
             int head_val = load_L2(&d_queue_head[kind]);
             if (base_pos + push_cnt - head_val > (d_launch_config.total_workers * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN) {
-            GTAP_RECORD_QUEUE_OVERFLOW(
+            GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
                 -1, kind, base_pos + push_cnt - head_val,
                 (d_launch_config.total_workers * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN);
             }
@@ -911,7 +911,7 @@ __device__ __forceinline__ int get_task_state(int tid) {
 
 __device__ __forceinline__ bool set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
     if (queue_idx_after_join >= d_launch_config.num_queues) {
-        GTAP_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(
+        GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(
             tid, queue_idx_after_join, d_launch_config.num_queues);
     }
 #ifndef GTAP_ASSUME_NO_TASKWAIT
@@ -985,7 +985,7 @@ __device__ __forceinline__ void* spawn_task(
     int child_queue_idx
 ) {
     if (child_queue_idx >= d_launch_config.num_queues) {
-        GTAP_RECORD_INVALID_QUEUE_IDX(self_tid, child_queue_idx, d_launch_config.num_queues);
+        GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(self_tid, child_queue_idx, d_launch_config.num_queues);
     }
     int warp_id_global = get_warp_id_global();
     int new_tid = get_task_id_from_warp_pool(

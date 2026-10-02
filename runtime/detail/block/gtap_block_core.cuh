@@ -101,7 +101,7 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
-            GTAP_RECORD_TASK_ID_POOL_LOW_HEADROOM(
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(
                 id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
         }
     }

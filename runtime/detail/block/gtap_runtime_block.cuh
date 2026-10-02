@@ -88,7 +88,7 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
     int top = load_L2(&q->top);
     const int queue_capacity = d_launch_config.queue_capacity;
     if (old_tail + 1 - top > queue_capacity - GTAP_DETAIL_QUEUE_MARGIN) {
-        GTAP_RECORD_QUEUE_OVERFLOW(
+        GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
             task_id, -1, old_tail + 1 - top, queue_capacity - GTAP_DETAIL_QUEUE_MARGIN);
     }
     store_L2(
@@ -97,7 +97,7 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
 }
 
 cudaError_t initialize_runtime() {
-    GTAP_DETAIL_CUDA_TRY(gtap_init_runtime_error_report());
+    GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
     const launch_config& runtime_config = stored_launch_config();
     const size_t total_workers = runtime_config.total_workers;
     const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;
@@ -276,7 +276,7 @@ cudaError_t finalize_runtime() {
     }
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(gtap_finalize_runtime_error_report());
+    GTAP_DETAIL_CUDA_TRY(finalize_runtime_error_record());
 
     return cudaGetLastError();
 }
@@ -340,7 +340,7 @@ namespace gtap::detail::block {
 using namespace gtap::detail;
 
 cudaError_t reset_runtime() {
-    gtap_reset_runtime_error_report_host();
+    reset_runtime_error_record_host();
     const launch_config& runtime_config = stored_launch_config();
     const size_t total_workers = runtime_config.total_workers;
     const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;

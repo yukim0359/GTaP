@@ -15,12 +15,12 @@ static inline gtap_profile_export_result gtap_export_profile(
     const gtap_profile_export_options& options = {}
 ) {
     gtap_profile_export_result result;
-    if (!gtap_profile_valid_label(options.label)) {
+    if (!gtap::detail::valid_label(options.label)) {
         result.status = gtap_profile_export_status::invalid_label;
         printf("GTaP profile not written: invalid label\n");
         return result;
     }
-    if (!gtap_profile_resolve_output(
+    if (!gtap::detail::resolve_output(
             options.output_directory, result.result_directory,
             sizeof(result.result_directory))) {
         result.status = gtap_profile_export_status::invalid_output_directory;
@@ -42,9 +42,9 @@ static inline gtap_profile_export_result gtap_export_profile(
         return result;
     }
     if (!options.overwrite &&
-        (gtap_profile_path_exists(result.profile_path) ||
-         gtap_profile_path_exists(result.intervals_path) ||
-         gtap_profile_path_exists(result.aggregates_path))) {
+        (gtap::detail::path_exists(result.profile_path) ||
+         gtap::detail::path_exists(result.intervals_path) ||
+         gtap::detail::path_exists(result.aggregates_path))) {
         result.status = gtap_profile_export_status::already_exists;
         printf("GTaP profile not written: files already exist in %s\n",
                result.result_directory);
@@ -140,12 +140,12 @@ static inline gtap_profile_export_result gtap_export_profile(
         if (indices[block] > 0)
             active_block_ratios[active_block_index++] = ratio;
     }
-    const gtap_profile_distribution duration_stats =
-        gtap_profile_compute_distribution(durations, task_index);
-    const gtap_profile_distribution all_block_ratio_stats =
-        gtap_profile_compute_distribution(all_block_ratios, blocks);
-    const gtap_profile_distribution active_block_ratio_stats =
-        gtap_profile_compute_distribution(
+    const gtap::detail::profile_distribution duration_stats =
+        gtap::detail::compute_distribution(durations, task_index);
+    const gtap::detail::profile_distribution all_block_ratio_stats =
+        gtap::detail::compute_distribution(all_block_ratios, blocks);
+    const gtap::detail::profile_distribution active_block_ratio_stats =
+        gtap::detail::compute_distribution(
             active_block_ratios, active_block_index);
 
     FILE* timeline = fopen(result.intervals_path, "w");
