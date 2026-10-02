@@ -10,7 +10,8 @@ Covered behavior:
 - recursive block tasks, collective `taskwait`, and spawning-thread-only result
   delivery;
 - transitive thread/block joins over a complete binary task tree;
-- multiple suspension/resumption points and non-default spawn/resume queues.
+- multiple suspension/resumption points and non-default spawn/resume queues;
+- `gtap_synchronize` returns failure when a task is spawned on an out-of-range queue.
 
 Run the suite with:
 

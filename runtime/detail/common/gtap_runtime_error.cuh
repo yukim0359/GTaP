@@ -221,6 +221,7 @@ inline cudaError_t gtap_synchronize() {
     gtap::detail::runtime_error_record record{};
     if (gtap::detail::read_error_report(&record)) {
         gtap::detail::print_error_report(&record);
+        gtap::detail::reset_runtime_error_record_host();
         return st;
     }
     if (st != cudaSuccess) {
