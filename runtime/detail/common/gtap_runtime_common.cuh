@@ -10,14 +10,14 @@
 #define GTAP_WARP_SIZE 32
 #define GTAP_MAX_THREADS_PER_BLOCK 1024
 
-// #define GTAP_INTERNAL_DEBUG
+// #define GTAP_DETAIL_INTERNAL_DEBUG
 
 // Safety thresholds for error detection
-#define GTAP_QUEUE_MARGIN 100
-#define GTAP_TASK_ID_POOL_MIN_FREE 100  // Minimum free task IDs before overflow warning
+#define GTAP_DETAIL_QUEUE_MARGIN 100
+#define GTAP_DETAIL_TASK_ID_POOL_MIN_FREE 100
 
-#ifndef GTAP_CUDA_TRY
-#define GTAP_CUDA_TRY(call) do { \
+#ifndef GTAP_DETAIL_CUDA_TRY
+#define GTAP_DETAIL_CUDA_TRY(call) do { \
     cudaError_t __st = (call); \
     if (__st != cudaSuccess) { \
         if (!gtap_print_runtime_error_report()) { \
@@ -28,9 +28,11 @@
 } while (0)
 #endif
 
-__constant__ size_t d_gtap_task_data_stride;
+namespace gtap::detail {
 
-struct gtap_launch_config {
+__constant__ size_t d_task_data_stride;
+
+struct launch_config {
     int grid_size;
     int block_size;
     int warps_per_block;
@@ -42,15 +44,15 @@ struct gtap_launch_config {
     size_t dynamic_shared_bytes;
 };
 
-__constant__ gtap_launch_config d_gtap_launch_config;
+__constant__ launch_config d_launch_config;
 
 enum TerminationMode {
     TERMINATE_ON_ALL_TASKS_FINISH, // default
     TERMINATE_ON_FIRST_TASK_FINISH  // finish when first task finishes
 };
 
-inline gtap_launch_config& gtap_stored_launch_config() {
-    static gtap_launch_config config{
+inline launch_config& stored_launch_config() {
+    static launch_config config{
         1024,
         256,
         8,
@@ -64,62 +66,30 @@ inline gtap_launch_config& gtap_stored_launch_config() {
     return config;
 }
 
-__host__ __device__ __forceinline__ int gtap_profile_capacity() {
+__host__ __device__ __forceinline__ int profile_capacity() {
 #ifdef __CUDA_ARCH__
-    return 2 * d_gtap_launch_config.profile_interval_capacity;
+    return 2 * d_launch_config.profile_interval_capacity;
 #else
-    return 2 * gtap_stored_launch_config().profile_interval_capacity;
+    return 2 * stored_launch_config().profile_interval_capacity;
 #endif
 }
 
-inline cudaStream_t& gtap_stored_stream() {
+inline cudaStream_t& stored_stream() {
     static cudaStream_t stream = nullptr;
     return stream;
 }
 
-inline bool& gtap_initialized_flag() {
+inline bool& initialized_flag() {
     static bool initialized = false;
     return initialized;
 }
 
-inline cudaError_t gtap_publish_launch_config(const gtap_launch_config& config) {
-    gtap_stored_launch_config() = config;
-    return cudaMemcpyToSymbol(d_gtap_launch_config, &config, sizeof(config));
+inline cudaError_t publish_launch_config(const launch_config& config) {
+    stored_launch_config() = config;
+    return cudaMemcpyToSymbol(d_launch_config, &config, sizeof(config));
 }
 
-template<class Kernel, class... Args>
-inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
-    if (!gtap_initialized_flag()) {
-        return cudaErrorInitializationError;
-    }
-    const gtap_launch_config& config = gtap_stored_launch_config();
-    if constexpr (sizeof...(Args) == 0) {
-        return cudaLaunchKernel(
-            reinterpret_cast<const void*>(kernel),
-            dim3(static_cast<unsigned int>(config.grid_size)),
-            dim3(static_cast<unsigned int>(config.block_size)),
-            nullptr,
-            config.dynamic_shared_bytes,
-            gtap_stored_stream()
-        );
-    } else {
-        void* packed_arguments[] = {
-            const_cast<void*>(
-                static_cast<const void*>(std::addressof(args))
-            )...
-        };
-        return cudaLaunchKernel(
-            reinterpret_cast<const void*>(kernel),
-            dim3(static_cast<unsigned int>(config.grid_size)),
-            dim3(static_cast<unsigned int>(config.block_size)),
-            packed_arguments,
-            config.dynamic_shared_bytes,
-            gtap_stored_stream()
-        );
-    }
-}
-
-inline constexpr size_t gtap_align_up(size_t value, size_t alignment) {
+__host__ __device__ inline constexpr size_t align_up(size_t value, size_t alignment) {
     return (value + alignment - 1) & ~(alignment - 1);
 }
 
@@ -182,6 +152,7 @@ __device__ __forceinline__ void prefetch_global_L2(const void* ptr) {
 __device__ __forceinline__ void lock(int* lock_var) {
     while (atomicCAS(lock_var, 0, 1) != 0) {}
 }
+
 __device__ __forceinline__ void unlock(int* lock_var) {
     atomicExch(lock_var, 0);
 }
@@ -195,7 +166,7 @@ __device__ __forceinline__ unsigned int get_warp_id_in_block() {
 }
 
 __device__ __forceinline__ unsigned int get_warp_id_global() {
-    return blockIdx.x * d_gtap_launch_config.warps_per_block + get_warp_id_in_block();
+    return blockIdx.x * d_launch_config.warps_per_block + get_warp_id_in_block();
 }
 
 __device__ __forceinline__ int get_random_block_id(int selfBlock) {
@@ -203,8 +174,9 @@ __device__ __forceinline__ int get_random_block_id(int selfBlock) {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    int r = seed % d_gtap_launch_config.grid_size;
-    if (r == selfBlock) r = (r + 1) % d_gtap_launch_config.grid_size;
+    int totalBlocks = d_launch_config.grid_size;
+    int r = seed % totalBlocks;
+    if (r == selfBlock) r = (r + 1) % totalBlocks;
     return r;
 }
 
@@ -213,7 +185,7 @@ __device__ __forceinline__ int get_random_warp_id_global(int selfWarp) {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    int totalWarps = d_gtap_launch_config.total_workers;
+    int totalWarps = d_launch_config.total_workers;
     int r = seed % totalWarps;
     if (r == selfWarp) r = (r + 1) % totalWarps;
     return r;
@@ -226,3 +198,37 @@ __device__ __forceinline__ unsigned long long get_global_time() {
     return time;
 }
 #endif
+
+}  // namespace gtap::detail
+
+template<class Kernel, class... Args>
+inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
+    if (!gtap::detail::initialized_flag()) {
+        return cudaErrorInitializationError;
+    }
+    const gtap::detail::launch_config& config = gtap::detail::stored_launch_config();
+    if constexpr (sizeof...(Args) == 0) {
+        return cudaLaunchKernel(
+            reinterpret_cast<const void*>(kernel),
+            dim3(static_cast<unsigned int>(config.grid_size)),
+            dim3(static_cast<unsigned int>(config.block_size)),
+            nullptr,
+            config.dynamic_shared_bytes,
+            gtap::detail::stored_stream()
+        );
+    } else {
+        void* packed_arguments[] = {
+            const_cast<void*>(
+                static_cast<const void*>(std::addressof(args))
+            )...
+        };
+        return cudaLaunchKernel(
+            reinterpret_cast<const void*>(kernel),
+            dim3(static_cast<unsigned int>(config.grid_size)),
+            dim3(static_cast<unsigned int>(config.block_size)),
+            packed_arguments,
+            config.dynamic_shared_bytes,
+            gtap::detail::stored_stream()
+        );
+    }
+}
