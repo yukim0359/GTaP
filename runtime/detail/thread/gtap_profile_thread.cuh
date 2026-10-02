@@ -72,7 +72,7 @@ static inline gtap_profile_export_result gtap_export_profile(
 
     cudaError_t error = cudaMalloc(&device_indices, sizeof(int) * warps);
     if (error == cudaSuccess) {
-        gtap::detail::thread::get_final_warp_working_time_indices<<<warps, 1>>>(device_indices);
+        gtap::detail::thread::get_warp_working_time_counts<<<warps, 1>>>(device_indices);
         error = cudaGetLastError();
     }
     if (error == cudaSuccess) error = cudaDeviceSynchronize();

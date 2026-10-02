@@ -497,7 +497,7 @@ cudaError_t get_block_working_time_data(int block_id, long long* host_working_ti
         sizeof(long long) * count, cudaMemcpyDeviceToHost);
 }
 
-__global__ void get_final_working_time_indices(int* indices) {
+__global__ void get_block_working_time_counts(int* counts) {
     if (threadIdx.x == 0) {
         // Count actual recorded samples for this block
         int count = 0;
@@ -506,7 +506,7 @@ __global__ void get_final_working_time_indices(int* indices) {
                 count++;
             }
         }
-        indices[blockIdx.x] = count;
+        counts[blockIdx.x] = count;
     }
 }
 #endif
@@ -772,7 +772,7 @@ __device__ __forceinline__ void push_initial_task(
 
 
 template<TerminationMode M>
-__device__ __forceinline__ void execute_task_loop_device_impl() {
+__device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
     __shared__ bool have_execute_task;
     __shared__ bool prev_get_task;
@@ -922,11 +922,11 @@ __device__ __forceinline__ void execute_task_loop_device_impl() {
 
 }  // namespace gtap::detail::block
 
-__device__ inline void __gtap_execute_task_loop_device() {
+__device__ inline void __gtap_execute_task_loop() {
 #ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH
-    gtap::detail::block::execute_task_loop_device_impl<gtap::detail::TerminationMode::TERMINATE_ON_FIRST_TASK_FINISH>();
+    gtap::detail::block::execute_task_loop<gtap::detail::TerminationMode::TERMINATE_ON_FIRST_TASK_FINISH>();
 #else
-    gtap::detail::block::execute_task_loop_device_impl<gtap::detail::TerminationMode::TERMINATE_ON_ALL_TASKS_FINISH>();
+    gtap::detail::block::execute_task_loop<gtap::detail::TerminationMode::TERMINATE_ON_ALL_TASKS_FINISH>();
 #endif
 }
 

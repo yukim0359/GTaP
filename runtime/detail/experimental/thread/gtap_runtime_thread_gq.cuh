@@ -720,14 +720,14 @@ __global__ void get_final_warp_having_task_time_indices(int* indices) {
     }
 }
 
-__global__ void get_final_warp_working_time_indices(int* indices) {
+__global__ void get_warp_working_time_counts(int* counts) {
     if (threadIdx.x == 0) {
         int wid = blockIdx.x;
         int count = 0;
         for (int i = 0; i < profile_capacity(); i++) {
             if (working_time[wid * profile_capacity() + i] > 0) count++;
         }
-        indices[wid] = count;
+        counts[wid] = count;
     }
 }
 #endif
@@ -1045,7 +1045,7 @@ __device__ __forceinline__ void push_initial_task(
 
 
 template<TerminationMode M>
-__device__ __forceinline__ void execute_task_loop_device_impl() {
+__device__ __forceinline__ void execute_task_loop() {
     int warp_id_in_block = get_warp_id_in_block();
     int warp_id_global = get_warp_id_global();
     int lane = get_lane_id();
@@ -1127,16 +1127,16 @@ __device__ __forceinline__ void execute_task_loop_device_impl() {
                 }
             }
             for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
-                int daq_idx;
+                int queue_idx;
                 if (lane == 0) {
-                    daq_idx = select_next_fullest_queue_idx(
+                    queue_idx = select_next_fullest_queue_idx(
                         warp_queue_counts,
                         d_launch_config.num_queues);
-                    warp_contexts[warp_id_in_block].queue_idx = daq_idx;
+                    warp_contexts[warp_id_in_block].queue_idx = queue_idx;
                 }
-                daq_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
+                queue_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
                 int remaining = GTAP_WARP_SIZE - execute_task_count;
-                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, daq_idx, prev_get_task);
+                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, queue_idx, prev_get_task);
                 execute_task_count += pop_count;
                 if (execute_task_count != 0) break;
             }
@@ -1270,11 +1270,11 @@ __device__ __forceinline__ void execute_task_loop_device_impl() {
 
 }  // namespace gtap::detail::thread
 
-__device__ __forceinline__ void __gtap_execute_task_loop_device() {
+__device__ __forceinline__ void __gtap_execute_task_loop() {
 #ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH
-    gtap::detail::thread::execute_task_loop_device_impl<gtap::detail::TerminationMode::TERMINATE_ON_FIRST_TASK_FINISH>();
+    gtap::detail::thread::execute_task_loop<gtap::detail::TerminationMode::TERMINATE_ON_FIRST_TASK_FINISH>();
 #else
-    gtap::detail::thread::execute_task_loop_device_impl<gtap::detail::TerminationMode::TERMINATE_ON_ALL_TASKS_FINISH>();
+    gtap::detail::thread::execute_task_loop<gtap::detail::TerminationMode::TERMINATE_ON_ALL_TASKS_FINISH>();
 #endif
 }
 

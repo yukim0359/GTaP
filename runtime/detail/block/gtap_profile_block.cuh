@@ -66,7 +66,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     }
     cudaError_t error = cudaMalloc(&device_indices, sizeof(int) * blocks);
     if (error == cudaSuccess) {
-        gtap::detail::block::get_final_working_time_indices<<<blocks, 1>>>(device_indices);
+        gtap::detail::block::get_block_working_time_counts<<<blocks, 1>>>(device_indices);
         error = cudaGetLastError();
     }
     if (error == cudaSuccess) error = cudaDeviceSynchronize();
