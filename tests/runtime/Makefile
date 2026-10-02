@@ -8,8 +8,13 @@ OUT_DIR := bin
 TESTS := fib_thread fib_block binary_tree_thread binary_tree_block \
 	multiple_taskwait_queue invalid_queue_thread
 BINS := $(addprefix $(OUT_DIR)/,$(TESTS))
+RUNTIME_HEADERS := $(wildcard \
+	$(GT_INC)/*.cuh \
+	$(GT_INC)/detail/*/*.cuh \
+	$(GT_INC)/detail/*/*/*.cuh \
+	$(GT_INC)/experimental/*.cuh)
 
-COMMON_FLAGS := -O2 -x cuda --cuda-path="$(CUDA_PATH)" \
+COMMON_FLAGS := -O3 -x cuda --cuda-path="$(CUDA_PATH)" \
 	--cuda-gpu-arch="$(CUDA_ARCH)" -I"$(GT_INC)" \
 	-L"$(CUDA_PATH)/lib64" -lcudart
 
@@ -19,22 +24,7 @@ all: $(BINS)
 $(OUT_DIR):
 	mkdir -p "$@"
 
-$(OUT_DIR)/fib_thread: fib_thread.cu | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
-
-$(OUT_DIR)/fib_block: fib_block.cu | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
-
-$(OUT_DIR)/binary_tree_thread: binary_tree_thread.cu | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
-
-$(OUT_DIR)/binary_tree_block: binary_tree_block.cu | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
-
-$(OUT_DIR)/multiple_taskwait_queue: multiple_taskwait_queue.cu | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
-
-$(OUT_DIR)/invalid_queue_thread: invalid_queue_thread.cu | $(OUT_DIR)
+$(OUT_DIR)/%: %.cu $(RUNTIME_HEADERS) | $(OUT_DIR)
 	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
 
 check: all
