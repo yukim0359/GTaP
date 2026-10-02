@@ -1342,7 +1342,7 @@ __device__ __forceinline__ void execute_task_loop_device_impl() {
 
 }  // namespace gtap::detail::thread
 
-extern "C" __device__ __forceinline__ void __gtap_execute_task_loop_device() {
+__device__ __forceinline__ void __gtap_execute_task_loop_device() {
 #ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH
     gtap::detail::thread::execute_task_loop_device_impl<gtap::detail::TerminationMode::TERMINATE_ON_FIRST_TASK_FINISH>();
 #else
@@ -1361,13 +1361,13 @@ __device__ __forceinline__ bool __gtap_set_state_for_join(
         tid, child_count, next_state, queue_idx_after_join);
 }
 
-extern "C" __device__ __forceinline__ void __gtap_finish_task(
+__device__ __forceinline__ void __gtap_finish_task(
     int tid, gtap::detail::thread::TaskContext* ctx
 ) {
     gtap::detail::thread::finish_task(tid, ctx);
 }
 
-extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
+__device__ __forceinline__ void* __gtap_spawn_task(
     gtap::detail::thread::TaskContext* ctx,
     int self_tid,
     int* child_count,
@@ -1378,7 +1378,7 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
         ctx, self_tid, child_count, func, child_queue_idx);
 }
 
-extern "C" __device__ __forceinline__ void __gtap_push_initial_task(
+__device__ __forceinline__ void __gtap_push_initial_task(
     void (*func)(void*, int, gtap::detail::thread::TaskContext*),
     int initial_queue_idx
 ) {

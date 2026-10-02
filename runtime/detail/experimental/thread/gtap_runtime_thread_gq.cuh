@@ -1013,51 +1013,6 @@ __device__ __forceinline__ void* spawn_task(
     return get_task_data(new_tid);
 }
 
-
-// Non-template version that takes a pointer and size for compiler-generated code
-__device__ __forceinline__ void spawn_task_raw(
-    TaskContext* ctx,
-    int self_tid,
-    int* child_count,
-    void (*func)(void*, int, TaskContext*),
-    const void* task_data_ptr,
-    size_t task_data_size,
-    int child_queue_idx
-) {
-    if (child_queue_idx >= d_launch_config.num_queues) {
-        GTAP_RECORD_INVALID_QUEUE_IDX(self_tid, child_queue_idx, d_launch_config.num_queues);
-    }
-
-    int warp_id_global = get_warp_id_global();
-    int new_tid = get_task_id_from_warp_pool(
-        &d_task_id_list_free_positions[warp_id_global],
-        &ctx->id_list_alloc_pos,
-        &ctx->id_list_free_pos_stale);
-    
-    TaskHeader* new_hdr = &d_task_headers[new_tid];
-    new_hdr->func = func;
-    new_hdr->queue_idx = child_queue_idx;
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-    int lane = get_lane_id();
-    new_hdr->state = 0;
-    new_hdr->parent_tid = self_tid;
-    new_hdr->parent_generation =
-        static_cast<uint16_t>(ctx->task_generations[lane]);
-    new_hdr->waiting_child_count = 0;
-#endif
-
-    // Copy task data
-    void* dest_task = get_task_data(new_tid);
-    memcpy(dest_task, task_data_ptr, task_data_size);
-    
-    reserve_unpublished_task_id(ctx, child_queue_idx, new_tid);
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-    (*child_count)++;
-#else
-    (void)child_count;
-#endif
-}
-
 // Push initial task to global queue
 __device__ __forceinline__ void push_initial_task(
     void (*func)(void*, int, TaskContext*),
@@ -1315,7 +1270,7 @@ __device__ __forceinline__ void execute_task_loop_device_impl() {
 
 }  // namespace gtap::detail::thread
 
-extern "C" __device__ __forceinline__ void __gtap_execute_task_loop_device() {
+__device__ __forceinline__ void __gtap_execute_task_loop_device() {
 #ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH
     gtap::detail::thread::execute_task_loop_device_impl<gtap::detail::TerminationMode::TERMINATE_ON_FIRST_TASK_FINISH>();
 #else
@@ -1334,13 +1289,13 @@ __device__ __forceinline__ bool __gtap_set_state_for_join(
         tid, child_count, next_state, queue_idx_after_join);
 }
 
-extern "C" __device__ __forceinline__ void __gtap_finish_task(
+__device__ __forceinline__ void __gtap_finish_task(
     int tid, gtap::detail::thread::TaskContext* ctx
 ) {
     gtap::detail::thread::finish_task(tid, ctx);
 }
 
-extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
+__device__ __forceinline__ void* __gtap_spawn_task(
     gtap::detail::thread::TaskContext* ctx,
     int self_tid,
     int* child_count,
@@ -1351,20 +1306,7 @@ extern "C" __device__ __forceinline__ void* __gtap_spawn_task(
         ctx, self_tid, child_count, func, child_queue_idx);
 }
 
-extern "C" __device__ __forceinline__ void __gtap_spawn_task_raw(
-    gtap::detail::thread::TaskContext* ctx,
-    int self_tid,
-    int* child_count,
-    void (*func)(void*, int, gtap::detail::thread::TaskContext*),
-    const void* task_data_ptr,
-    size_t task_data_size,
-    int child_queue_idx
-) {
-    gtap::detail::thread::spawn_task_raw(
-        ctx, self_tid, child_count, func, task_data_ptr, task_data_size, child_queue_idx);
-}
-
-extern "C" __device__ __forceinline__ void __gtap_push_initial_task(
+__device__ __forceinline__ void __gtap_push_initial_task(
     void (*func)(void*, int, gtap::detail::thread::TaskContext*),
     int initial_queue_idx
 ) {
