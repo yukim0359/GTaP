@@ -1432,10 +1432,6 @@ extern "C" __device__ __forceinline__ void __gtap_execute_task_loop_device() {
 #endif
 }
 
-cudaError_t __gtap_init_task_runtime() {
-    return gtap::detail::thread::initialize_runtime();
-}
-
 __device__ __forceinline__ int __gtap_get_task_state(int tid) {
     return gtap::detail::thread::get_task_state(tid);
 }

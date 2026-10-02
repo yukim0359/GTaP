@@ -920,8 +920,6 @@ __device__ __forceinline__ void execute_task_loop_device_impl() {
 #endif
 }
 
-// Non-template device-side wrapper
-
 }  // namespace gtap::detail::block
 
 extern "C" __device__ inline void __gtap_execute_task_loop_device() {
@@ -930,10 +928,6 @@ extern "C" __device__ inline void __gtap_execute_task_loop_device() {
 #else
     gtap::detail::block::execute_task_loop_device_impl<gtap::detail::TerminationMode::TERMINATE_ON_ALL_TASKS_FINISH>();
 #endif
-}
-
-cudaError_t __gtap_init_task_runtime() {
-    return gtap::detail::block::initialize_runtime();
 }
 
 __device__ __forceinline__ int __gtap_get_task_state(int tid) {
