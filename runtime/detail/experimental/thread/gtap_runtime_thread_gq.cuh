@@ -446,19 +446,10 @@ __device__ __forceinline__ void execute_task_loop() {
     bool prev_get_task = (warp_id_global == 0);
     bool should_continue = true;
 
-    const int warps_per_block = d_launch_config.warps_per_block;
-    const int num_queues = d_launch_config.num_queues;
     const shared_layout layout = shared_layout_for(
-        warps_per_block, num_queues, false);
-    TaskContext* warp_contexts =
-        reinterpret_cast<TaskContext*>(dynamic_shared);
-    int* generated_counts = reinterpret_cast<int*>(
-        dynamic_shared + layout.generated_task_counts);
-    int* staged_task_ids = reinterpret_cast<int*>(
-        dynamic_shared + layout.staged_task_ids);
-    int* queue_lengths = num_queues > 1
-        ? reinterpret_cast<int*>(dynamic_shared + layout.queue_lengths)
-        : nullptr;
+        d_launch_config.warps_per_block, d_launch_config.num_queues, false);
+    TaskContext* task_context =
+        reinterpret_cast<TaskContext*>(dynamic_shared) + warp_id_in_block;
 
 #ifdef GTAP_ENABLE_PROFILING
     int* working_time_idx = reinterpret_cast<int*>(
@@ -469,23 +460,22 @@ __device__ __forceinline__ void execute_task_loop() {
 #endif
 
     if (lane == 0) {
-        warp_contexts[warp_id_in_block].
-            generated_task_count_by_queue_idx =
-                generated_counts +
-                warp_id_in_block * d_launch_config.num_queues;
-        warp_contexts[warp_id_in_block].staged_task_ids =
-            staged_task_ids + warp_id_in_block *
-                d_launch_config.num_queues * GTAP_WARP_SIZE;
-        warp_contexts[warp_id_in_block].queue_idx = 0;
-        warp_contexts[warp_id_in_block].id_list_free_pos_stale = d_launch_config.tasks_per_worker;
+        task_context->generated_task_count_by_queue_idx =
+            reinterpret_cast<int*>(dynamic_shared + layout.generated_task_counts) +
+            warp_id_in_block * d_launch_config.num_queues;
+        task_context->staged_task_ids =
+            reinterpret_cast<int*>(dynamic_shared + layout.staged_task_ids) +
+            warp_id_in_block * d_launch_config.num_queues * GTAP_WARP_SIZE;
+        task_context->queue_idx = 0;
+        task_context->id_list_free_pos_stale = d_launch_config.tasks_per_worker;
         #pragma unroll
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
-            warp_contexts[warp_id_in_block].generated_task_count_by_queue_idx[k] = 0;
+            task_context->generated_task_count_by_queue_idx[k] = 0;
         }
         if (warp_id_global == 0) {
-            warp_contexts[0].id_list_alloc_pos = 1;
+            task_context->id_list_alloc_pos = 1;
         } else {
-            warp_contexts[warp_id_in_block].id_list_alloc_pos = 0;
+            task_context->id_list_alloc_pos = 0;
         }
     }
     __syncwarp();
@@ -493,33 +483,34 @@ __device__ __forceinline__ void execute_task_loop() {
     while (should_continue) {
         if (execute_task_count == 0) {
             if (d_launch_config.num_queues > 1) {
-            int* warp_queue_lengths = queue_lengths +
-                warp_id_in_block * d_launch_config.num_queues;
-            if (lane == 0) {
-                for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                    int head = load_L2(&d_queue_head[k]);
-                    int tail = load_L2(&d_queue_tail[k]);
-                    warp_queue_lengths[k] = max(0, tail - head);
-                }
-            }
-            for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
-                int queue_idx;
+                int* queue_lengths = reinterpret_cast<int*>(
+                    dynamic_shared + layout.queue_lengths) +
+                    warp_id_in_block * d_launch_config.num_queues;
                 if (lane == 0) {
-                    queue_idx = select_next_fullest_queue_idx(
-                        warp_queue_lengths,
-                        d_launch_config.num_queues);
-                    warp_contexts[warp_id_in_block].queue_idx = queue_idx;
+                    for (int k = 0; k < d_launch_config.num_queues; ++k) {
+                        int head = load_L2(&d_queue_head[k]);
+                        int tail = load_L2(&d_queue_tail[k]);
+                        queue_lengths[k] = max(0, tail - head);
+                    }
                 }
-                queue_idx = __shfl_sync(0xFFFFFFFFu, warp_contexts[warp_id_in_block].queue_idx, 0);
-                int remaining = GTAP_WARP_SIZE - execute_task_count;
-                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, queue_idx, prev_get_task);
-                execute_task_count += pop_count;
-                if (execute_task_count != 0) break;
-            }
+                for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
+                    int queue_idx;
+                    if (lane == 0) {
+                        queue_idx = select_next_fullest_queue_idx(
+                            queue_lengths,
+                            d_launch_config.num_queues);
+                        task_context->queue_idx = queue_idx;
+                    }
+                    queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
+                    int remaining = GTAP_WARP_SIZE - execute_task_count;
+                    int pop_count = pop_global_queue<M>(&execute_task_id, remaining, queue_idx, prev_get_task);
+                    execute_task_count += pop_count;
+                    if (execute_task_count != 0) break;
+                }
             } else {
-            int remaining = GTAP_WARP_SIZE - execute_task_count;
-            int pop_count = pop_global_queue<M>(&execute_task_id, remaining, 0, prev_get_task);
-            execute_task_count += pop_count;
+                int remaining = GTAP_WARP_SIZE - execute_task_count;
+                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, 0, prev_get_task);
+                execute_task_count += pop_count;
             }
         }
 
@@ -560,7 +551,7 @@ __device__ __forceinline__ void execute_task_loop() {
         } else {
             prev_get_task = true;
             if (lane == 0) {
-                for (int k = 0; k < d_launch_config.num_queues; ++k) warp_contexts[warp_id_in_block].generated_task_count_by_queue_idx[k] = 0;
+                for (int k = 0; k < d_launch_config.num_queues; ++k) task_context->generated_task_count_by_queue_idx[k] = 0;
             }
             __syncwarp();
         }
@@ -571,13 +562,12 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                TaskContext* dst_ctx = &warp_contexts[warp_id_in_block];
                 uint16_t generation = load_L2(&src_hdr->generation);
                 uint16_t parent_generation =
                     load_L2(&src_hdr->parent_generation);
-                dst_ctx->task_parent_tids[lane] =
+                task_context->task_parent_tids[lane] =
                     load_L2(&src_hdr->parent_tid);
-                dst_ctx->task_generations[lane] =
+                task_context->task_generations[lane] =
                     static_cast<uint32_t>(generation) |
                     (static_cast<uint32_t>(parent_generation) << 16);
             }
@@ -601,7 +591,7 @@ __device__ __forceinline__ void execute_task_loop() {
             void* task_data = get_task_data(execute_task_id);
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
-            task_func(task_data, execute_task_id, &warp_contexts[warp_id_in_block]);
+            task_func(task_data, execute_task_id, task_context);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
             printf("executed_task_id: %d in lane %d of warp %d of block %d\n", execute_task_id, lane, warp_id_in_block, blockIdx.x);
 #endif
@@ -620,7 +610,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #endif
 
         push_global_queue<M>(
-            &warp_contexts[warp_id_in_block], &execute_task_id,
+            task_context, &execute_task_id,
             &execute_task_count
         );
     }
