@@ -5,9 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../common/gtap_profile_export.cuh"
-#include "../common/gtap_runtime_common.cuh"
-#include "gtap_profile_host_api.cuh"
+#include "../common/profile_export.cuh"
+#include "../common/runtime.cuh"
+#include "profile_host_api.cuh"
 
 #ifdef GTAP_ENABLE_PROFILING
 

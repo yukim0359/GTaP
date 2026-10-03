@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gtap_runtime_thread_chaselev.cuh"
+#include "runtime_chaselev.cuh"
 
 struct gtap_thread_config {
     int grid_size = 4096;

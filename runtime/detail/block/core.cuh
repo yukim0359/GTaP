@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/gtap_runtime_common.cuh"
+#include "../common/runtime.cuh"
 
 #ifndef __GTAP_IS_BLOCK_MODE
 #define __GTAP_IS_BLOCK_MODE

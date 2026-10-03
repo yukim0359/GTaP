@@ -1,6 +1,6 @@
 #pragma once
 
-#include "gtap_runtime_block.cuh"
+#include "runtime.cuh"
 
 struct gtap_block_config {
     int grid_size = 1024;

@@ -2,8 +2,8 @@
 
 #include <cuda_runtime.h>
 #include <climits>
-#include "../../common/gtap_runtime_common.cuh"
-#include "../../thread/gtap_thread_core.cuh"
+#include "../../common/runtime.cuh"
+#include "../../thread/core.cuh"
 
 #define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
 

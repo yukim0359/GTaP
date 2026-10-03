@@ -5,7 +5,7 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include "gtap_runtime_error.cuh"
+#include "runtime_error.cuh"
 
 #define GTAP_MAX_THREADS_PER_BLOCK 1024
 
