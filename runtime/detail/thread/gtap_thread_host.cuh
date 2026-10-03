@@ -17,7 +17,7 @@ inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
     }
     if (config.block_size <= 0 ||
         config.block_size > GTAP_MAX_THREADS_PER_BLOCK ||
-        config.block_size % GTAP_WARP_SIZE != 0) {
+        config.block_size % gtap::detail::warp_size != 0) {
         return cudaErrorInvalidConfiguration;
     }
     if (config.max_tasks_per_warp <= 0 ||
@@ -41,7 +41,7 @@ inline size_t dynamic_shared_bytes(
     int block_size, int num_queues
 ) {
     return shared_layout_for(
-        block_size / GTAP_WARP_SIZE, num_queues, true).bytes;
+        block_size / warp_size, num_queues, true).bytes;
 }
 
 static size_t runtime_device_allocation_bytes() {
@@ -348,7 +348,7 @@ cudaError_t initialize_runtime() {
     #endif
     init_warp_id_pools_metadata<<<
         runtime_config.grid_size,
-        runtime_config.warps_per_block * GTAP_WARP_SIZE>>>();
+        runtime_config.warps_per_block * warp_size>>>();
     GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
@@ -580,7 +580,7 @@ cudaError_t reset_runtime() {
     // Reinitialize warp ID pools metadata
     init_warp_id_pools_metadata<<<
         runtime_config.grid_size,
-        runtime_config.warps_per_block * GTAP_WARP_SIZE>>>();
+        runtime_config.warps_per_block * warp_size>>>();
     GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
 
     for (int i = 0; i < NUM_STREAMS; ++i) {
@@ -614,8 +614,8 @@ cudaError_t gtap_initialize(
     gtap::detail::launch_config launch_config{
         config.grid_size,
         config.block_size,
-        config.block_size / GTAP_WARP_SIZE,
-        config.grid_size * (config.block_size / GTAP_WARP_SIZE),
+        config.block_size / gtap::detail::warp_size,
+        config.grid_size * (config.block_size / gtap::detail::warp_size),
         config.max_tasks_per_warp,
         config.num_queues,
         config.max_tasks_per_warp / config.num_queues,

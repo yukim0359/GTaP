@@ -7,7 +7,6 @@
 #include <utility>
 #include "gtap_runtime_error.cuh"
 
-#define GTAP_WARP_SIZE 32
 #define GTAP_MAX_THREADS_PER_BLOCK 1024
 
 // #define GTAP_DETAIL_INTERNAL_DEBUG
@@ -32,6 +31,8 @@
 #endif
 
 namespace gtap::detail {
+
+inline constexpr int warp_size = 32;
 
 __constant__ size_t d_task_data_stride;
 

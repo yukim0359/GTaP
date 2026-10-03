@@ -14,7 +14,7 @@ struct gtap_thread_config {
 inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
     if (config.grid_size <= 0 || config.block_size <= 0 ||
         config.block_size > GTAP_MAX_THREADS_PER_BLOCK ||
-        config.block_size % GTAP_WARP_SIZE != 0) {
+        config.block_size % gtap::detail::warp_size != 0) {
         return cudaErrorInvalidConfiguration;
     }
     if (config.max_tasks_per_warp <= 0 || config.num_queues <= 0 ||
@@ -37,7 +37,7 @@ inline size_t dynamic_shared_bytes(
     int block_size, int num_queues
 ) {
     return shared_layout_for(
-        block_size / GTAP_WARP_SIZE, num_queues, false).bytes;
+        block_size / warp_size, num_queues, false).bytes;
 }
 
 static size_t runtime_device_allocation_bytes() {
@@ -561,8 +561,8 @@ cudaError_t gtap_initialize(
     gtap::detail::launch_config runtime_config{
         config.grid_size,
         config.block_size,
-        config.block_size / GTAP_WARP_SIZE,
-        config.grid_size * (config.block_size / GTAP_WARP_SIZE),
+        config.block_size / gtap::detail::warp_size,
+        config.grid_size * (config.block_size / gtap::detail::warp_size),
         config.max_tasks_per_warp,
         config.num_queues,
         config.max_tasks_per_warp / config.num_queues,

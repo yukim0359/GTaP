@@ -15,7 +15,7 @@ inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
     if (config.grid_size <= 0 ||
         config.block_size <= 0 ||
         config.block_size > GTAP_MAX_THREADS_PER_BLOCK ||
-        config.block_size % GTAP_WARP_SIZE != 0) {
+        config.block_size % gtap::detail::warp_size != 0) {
         return cudaErrorInvalidConfiguration;
     }
     if (config.max_tasks_per_block <= 0) {
@@ -382,7 +382,7 @@ cudaError_t gtap_initialize(
     gtap::detail::launch_config launch_config{
         config.grid_size,
         config.block_size,
-        config.block_size / GTAP_WARP_SIZE,
+        config.block_size / gtap::detail::warp_size,
         config.grid_size,
         config.max_tasks_per_block,
         1,

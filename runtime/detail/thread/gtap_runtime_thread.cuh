@@ -30,14 +30,14 @@ __device__ __forceinline__ int* warp_queue_slot(
 }
 
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int queue_idx, int task_id) {
-    int gen_idx = atomicAdd(&ctx->generated_task_count_by_queue_idx[queue_idx], 1);
-    if (gen_idx < GTAP_WARP_SIZE) {
-        ctx->staged_task_ids[queue_idx * GTAP_WARP_SIZE + gen_idx] = task_id;
+    int gen_idx = atomicAdd(&ctx->generated_task_counts[queue_idx], 1);
+    if (gen_idx < warp_size) {
+        ctx->staged_task_ids[queue_idx * warp_size + gen_idx] = task_id;
         return;
     }
 
     WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[queue_idx][get_warp_id_global()];
-    int old_tail = atomicAdd(&ctx->tail_by_queue_idx[queue_idx], 1);
+    int old_tail = atomicAdd(&ctx->queue_tails[queue_idx], 1);
     int head = load_L2(&q->head);
     const int queue_capacity = d_launch_config.queue_capacity;
     if (old_tail + 1 - head > queue_capacity - GTAP_DETAIL_QUEUE_MARGIN) {
@@ -110,11 +110,11 @@ __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_
         }
     }
     pop_count = __shfl_sync(0xFFFFFFFFu, pop_count, 0);
-    if (lane >= GTAP_WARP_SIZE - max_count_to_pop && lane < GTAP_WARP_SIZE - max_count_to_pop + pop_count) {
+    if (lane >= warp_size - max_count_to_pop && lane < warp_size - max_count_to_pop + pop_count) {
         int pop_task_id = load_L2(warp_queue_slot(
             queue_idx,
             get_warp_id_global(),
-            (*tail + (lane - GTAP_WARP_SIZE + max_count_to_pop)) %
+            (*tail + (lane - warp_size + max_count_to_pop)) %
                 d_launch_config.queue_capacity));
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
         printf("pop_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", pop_task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
@@ -164,12 +164,12 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
     }
     target_warp_id_global = __shfl_sync(0xFFFFFFFFu, target_warp_id_global, 0);
     old_head = __shfl_sync(0xFFFFFFFFu, old_head, 0);
-    if (lane >= GTAP_WARP_SIZE - max_count_to_steal && lane < GTAP_WARP_SIZE - max_count_to_steal + steal_count) {
+    if (lane >= warp_size - max_count_to_steal && lane < warp_size - max_count_to_steal + steal_count) {
         targetWq = &d_warp_task_queue_metadata[queue_idx][target_warp_id_global];
         int steal_task_id = load_L2(warp_queue_slot(
             queue_idx,
             target_warp_id_global,
-            (old_head + (lane - GTAP_WARP_SIZE + max_count_to_steal)) %
+            (old_head + (lane - warp_size + max_count_to_steal)) %
                 d_launch_config.queue_capacity));
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
         printf("steal_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", steal_task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
@@ -189,7 +189,7 @@ __device__ __forceinline__ void push_batch (
     TaskContext* ctx,
     int* execute_task_id,
     int* execute_task_count,
-    int* tail_by_queue_idx
+    int* queue_tails
 ) {
     int warp_id_global = get_warp_id_global();
     int lane = get_lane_id();
@@ -198,7 +198,7 @@ __device__ __forceinline__ void push_batch (
     int all_generated_count = 0;
     if (lane == 0) {
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
-            int cnt = ctx->generated_task_count_by_queue_idx[k];
+            int cnt = ctx->generated_task_counts[k];
             all_generated_count += cnt;
             if (cnt > max_gen) {
                 max_gen = cnt;
@@ -215,9 +215,9 @@ __device__ __forceinline__ void push_batch (
     k_max = __shfl_sync(0xFFFFFFFFu, k_max, 0);
     max_gen = __shfl_sync(0xFFFFFFFFu, max_gen, 0);
 
-    *execute_task_count = max(0, min(GTAP_WARP_SIZE, max_gen));
+    *execute_task_count = max(0, min(warp_size, max_gen));
     if (lane < *execute_task_count) {
-        *execute_task_id = ctx->staged_task_ids[k_max * GTAP_WARP_SIZE + lane];
+        *execute_task_id = ctx->staged_task_ids[k_max * warp_size + lane];
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
         printf("push_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", *execute_task_id, k_max, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
@@ -225,26 +225,26 @@ __device__ __forceinline__ void push_batch (
     __syncwarp();
 
     for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
-        int push_cnt = ctx->generated_task_count_by_queue_idx[kind];
+        int push_cnt = ctx->generated_task_counts[kind];
         if (kind == k_max) {
             push_cnt -= *execute_task_count;
         }
         if (push_cnt <= 0) continue;
 
         WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[kind][warp_id_global];
-        int total = ctx->generated_task_count_by_queue_idx[kind];
-        int staged_n = min(total, GTAP_WARP_SIZE);
+        int total = ctx->generated_task_counts[kind];
+        int staged_n = min(total, warp_size);
         if (kind != k_max) {
-            for (int j = lane; j < staged_n; j += GTAP_WARP_SIZE) {
+            for (int j = lane; j < staged_n; j += warp_size) {
                 *warp_queue_slot(
                     kind,
                     warp_id_global,
-                    (tail_by_queue_idx[kind] + j) %
+                    (queue_tails[kind] + j) %
                         d_launch_config.queue_capacity) =
-                    ctx->staged_task_ids[kind * GTAP_WARP_SIZE + j];
+                    ctx->staged_task_ids[kind * warp_size + j];
             }
             if (lane == 0) {
-                tail_by_queue_idx[kind] += staged_n;
+                queue_tails[kind] += staged_n;
             }
             __syncwarp();
         }
@@ -254,7 +254,7 @@ __device__ __forceinline__ void push_batch (
     }
     if (lane == 0) {
         for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
-            ctx->generated_task_count_by_queue_idx[kind] = 0;
+            ctx->generated_task_counts[kind] = 0;
         }
     }
 }
@@ -430,17 +430,17 @@ __device__ __forceinline__ void execute_task_loop() {
 
     if (lane == 0) {
         task_context->queue_idx = 0;
-        task_context->generated_task_count_by_queue_idx =
+        task_context->generated_task_counts =
             reinterpret_cast<int*>(dynamic_shared + layout.generated_task_counts) +
             warp_id_in_block * d_launch_config.num_queues;
-        task_context->tail_by_queue_idx = queue_tails;
+        task_context->queue_tails = queue_tails;
         task_context->staged_task_ids =
             reinterpret_cast<int*>(dynamic_shared + layout.staged_task_ids) +
-            warp_id_in_block * d_launch_config.num_queues * GTAP_WARP_SIZE;
+            warp_id_in_block * d_launch_config.num_queues * warp_size;
         task_context->id_list_free_pos_stale =
             d_launch_config.tasks_per_worker;
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
-            task_context->generated_task_count_by_queue_idx[k] = 0;
+            task_context->generated_task_counts[k] = 0;
             queue_tails[k] = 0;
         }
         if (warp_id_global == 0) {
@@ -457,16 +457,16 @@ __device__ __forceinline__ void execute_task_loop() {
     while (should_continue) {
         if (d_launch_config.num_queues == 1) {
             // Single-queue fast path: skip DAQ count collection and selection.
-            if (execute_task_count < GTAP_WARP_SIZE) {
+            if (execute_task_count < warp_size) {
                 if (prev_get_task) {
-                    int remaining = GTAP_WARP_SIZE - execute_task_count;
+                    int remaining = warp_size - execute_task_count;
                     int pop_count = pop_batch(
                         &execute_task_id, remaining, &queue_tails[0], 0
                     );
                     execute_task_count += pop_count;
                 }
-                if (execute_task_count < GTAP_WARP_SIZE) {
-                    int remaining = GTAP_WARP_SIZE - execute_task_count;
+                if (execute_task_count < warp_size) {
+                    int remaining = warp_size - execute_task_count;
                     int steal_count = steal_batch<M>(
                         &execute_task_id, remaining, 0, prev_get_task
                     );
@@ -475,7 +475,7 @@ __device__ __forceinline__ void execute_task_loop() {
             }
         } else {
             // Multi-queue DAQ path.
-            if (execute_task_count < GTAP_WARP_SIZE) {
+            if (execute_task_count < warp_size) {
                 if (execute_task_count == 0) {
                     int* queue_lengths = reinterpret_cast<int*>(
                         dynamic_shared + layout.queue_lengths) +
@@ -498,18 +498,18 @@ __device__ __forceinline__ void execute_task_loop() {
                             task_context->queue_idx,
                             0);
                         if (prev_get_task &&
-                            execute_task_count < GTAP_WARP_SIZE) {
+                            execute_task_count < warp_size) {
                             int remaining =
-                                GTAP_WARP_SIZE - execute_task_count;
+                                warp_size - execute_task_count;
                             int pop_count = pop_batch(
                                 &execute_task_id, remaining,
                                 &queue_tails[queue_idx], queue_idx
                             );
                             execute_task_count += pop_count;
                         }
-                        if (execute_task_count < GTAP_WARP_SIZE) {
+                        if (execute_task_count < warp_size) {
                             int remaining =
-                                GTAP_WARP_SIZE - execute_task_count;
+                                warp_size - execute_task_count;
                             int steal_count = steal_batch<M>(
                                 &execute_task_id, remaining, queue_idx,
                                 prev_get_task
@@ -525,15 +525,15 @@ __device__ __forceinline__ void execute_task_loop() {
                         0
                     );
                     if (prev_get_task) {
-                        int remaining = GTAP_WARP_SIZE - execute_task_count;
+                        int remaining = warp_size - execute_task_count;
                         int pop_count = pop_batch(
                             &execute_task_id, remaining,
                             &queue_tails[queue_idx], queue_idx
                         );
                         execute_task_count += pop_count;
                     }
-                    if (execute_task_count < GTAP_WARP_SIZE) {
-                        int remaining = GTAP_WARP_SIZE - execute_task_count;
+                    if (execute_task_count < warp_size) {
+                        int remaining = warp_size - execute_task_count;
                         int steal_count = steal_batch<M>(
                             &execute_task_id, remaining, queue_idx, prev_get_task
                         );
@@ -574,7 +574,7 @@ __device__ __forceinline__ void execute_task_loop() {
             prev_get_task = true;
             if (lane == 0) {
                 for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                    task_context->generated_task_count_by_queue_idx[k] = 0;
+                    task_context->generated_task_counts[k] = 0;
                 }
             }
             __syncwarp();

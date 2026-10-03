@@ -25,15 +25,16 @@ inline cudaError_t init_device_task_data_stride() {
 }
 
 struct TaskContext {
-    int queue_idx;
-    int* generated_task_count_by_queue_idx;    // int[num_queues] for each warp
-    int* tail_by_queue_idx;                    // int[num_queues] for each warp
-    int* staged_task_ids;                      // int[num_queues * GTAP_WARP_SIZE] for each warp
+    int* generated_task_counts; // int[num_queues] for each warp
+    int* queue_tails;           // int[num_queues] for each warp
+    int* staged_task_ids;       // int[num_queues * warp_size] for each warp
     int id_list_alloc_pos;
     int id_list_free_pos_stale;
+    // TODO: Task functions do not read queue_idx. Move it to its own per-warp shared slot.
+    int queue_idx;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    int task_parent_tids[GTAP_WARP_SIZE];
-    uint32_t task_generations[GTAP_WARP_SIZE];
+    int task_parent_tids[warp_size];
+    uint32_t task_generations[warp_size];
 #endif
 };
 
@@ -67,7 +68,7 @@ __host__ __device__ inline shared_layout shared_layout_for(
         cursor += block_queue_int_bytes;
     }
     layout.staged_task_ids = cursor;
-    cursor += block_queue_int_bytes * GTAP_WARP_SIZE;
+    cursor += block_queue_int_bytes * warp_size;
     layout.queue_lengths = cursor;
     if (num_queues > 1) {
         cursor += block_queue_int_bytes;

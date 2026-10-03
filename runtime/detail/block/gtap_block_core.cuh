@@ -7,7 +7,7 @@
 #endif
 
 extern const size_t __gtap_auto_block_task_data_sizes[
-    GTAP_MAX_THREADS_PER_BLOCK / GTAP_WARP_SIZE + 1];
+    GTAP_MAX_THREADS_PER_BLOCK / gtap::detail::warp_size + 1];
 
 namespace gtap::detail::block {
 
@@ -18,7 +18,7 @@ struct TaskContext;
 inline size_t host_task_data_stride() {
     return align_up(
         __gtap_auto_block_task_data_sizes[
-            stored_launch_config().block_size / GTAP_WARP_SIZE],
+            stored_launch_config().block_size / warp_size],
         16);
 }
 
