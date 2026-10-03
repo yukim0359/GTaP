@@ -64,9 +64,6 @@ __device__ int d_all_tasks_finished;
 __device__ int d_active_warp_count;
 
 #ifdef GTAP_ENABLE_PROFILING
-#ifdef GTAP_EXPERIMENTAL_PROFILE_LEGACY
-__constant__ long long* having_task_time;
-#endif
 __constant__ long long* working_time;
 __constant__ int* tasks_processed_count;
 __constant__ unsigned long long* profile_dropped_events;

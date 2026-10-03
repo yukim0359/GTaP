@@ -48,8 +48,8 @@ static size_t runtime_device_allocation_bytes() {
         header_bytes + task_data_bytes + entry_result_bytes +
         task_id_generated_bytes + task_id_pool_bytes;
 #ifdef GTAP_ENABLE_PROFILING
-    total += 2 * sizeof(long long) * c.total_workers *
-             (2 * c.profile_interval_capacity);
+    total += sizeof(long long) * c.total_workers * profile_capacity();
+    total += sizeof(unsigned long long) * c.total_workers;
 #endif
     return total;
 }
@@ -137,18 +137,22 @@ cudaError_t initialize_runtime() {
 #ifdef GTAP_ENABLE_PROFILING
     const size_t profile_bytes = sizeof(long long) *
         runtime_config.total_workers * profile_capacity();
-    long long* having_task_time_ptr = nullptr;
     long long* working_time_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&having_task_time_ptr), profile_bytes));
+    unsigned long long* profile_dropped_events_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&working_time_ptr), profile_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        having_task_time, &having_task_time_ptr, sizeof(having_task_time_ptr)));
+    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&profile_dropped_events_ptr),
+        sizeof(unsigned long long) * runtime_config.total_workers));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         working_time, &working_time_ptr, sizeof(working_time_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(having_task_time_ptr, 0, profile_bytes, streams[0]));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
+        profile_dropped_events, &profile_dropped_events_ptr,
+        sizeof(profile_dropped_events_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(working_time_ptr, 0, profile_bytes, streams[1]));
+    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
+        profile_dropped_events_ptr, 0,
+        sizeof(unsigned long long) * runtime_config.total_workers, streams[0]));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[0]));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[1]));
 #endif
@@ -200,12 +204,13 @@ cudaError_t finalize_runtime() {
     int* d_task_id_generated_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_generated_ptr, d_task_id_generated, sizeof(int*)));
 #ifdef GTAP_ENABLE_PROFILING
-    long long* having_task_time_ptr = nullptr;
     long long* working_time_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &having_task_time_ptr, having_task_time, sizeof(having_task_time_ptr)));
+    unsigned long long* profile_dropped_events_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &working_time_ptr, working_time, sizeof(working_time_ptr)));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        &profile_dropped_events_ptr, profile_dropped_events,
+        sizeof(profile_dropped_events_ptr)));
 #endif
 
     
@@ -236,8 +241,10 @@ cudaError_t finalize_runtime() {
         GTAP_DETAIL_CUDA_TRY(cudaFree(d_task_id_storage_ptr));
     }
 #ifdef GTAP_ENABLE_PROFILING
-    if (having_task_time_ptr != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(having_task_time_ptr));
     if (working_time_ptr != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(working_time_ptr));
+    if (profile_dropped_events_ptr != nullptr) {
+        GTAP_DETAIL_CUDA_TRY(cudaFree(profile_dropped_events_ptr));
+    }
 #endif
     
     GTAP_DETAIL_CUDA_TRY(finalize_runtime_error_record());
@@ -320,14 +327,18 @@ cudaError_t reset_runtime() {
 
     // Reset profile data if enabled
 #ifdef GTAP_ENABLE_PROFILING
-    long long* having_ptr = nullptr;
     long long* working_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&having_ptr, having_task_time, sizeof(having_ptr)));
+    unsigned long long* dropped_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&working_ptr, working_time, sizeof(working_ptr)));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        &dropped_ptr, profile_dropped_events, sizeof(dropped_ptr)));
     const size_t profile_bytes = sizeof(long long) *
         stored_launch_config().total_workers * profile_capacity();
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(having_ptr, 0, profile_bytes, streams[0]));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(working_ptr, 0, profile_bytes, streams[1]));
+    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
+        dropped_ptr, 0,
+        sizeof(unsigned long long) * stored_launch_config().total_workers,
+        streams[0]));
 #endif
     
     // Synchronize all streams

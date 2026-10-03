@@ -3,10 +3,9 @@
 #include <cuda_runtime.h>
 #include <climits>
 #include "../common/gtap_runtime_common.cuh"
+#include "gtap_thread_core.cuh"
 
 #define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
-
-#include "gtap_thread_core.cuh"
 
 namespace gtap::detail::thread {
 using namespace gtap::detail;

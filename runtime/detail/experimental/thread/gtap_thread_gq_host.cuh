@@ -45,7 +45,7 @@ inline size_t dynamic_shared_bytes(
         bytes += sizeof(int) * warps * num_queues;
     }
 #ifdef GTAP_ENABLE_PROFILING
-    bytes += 2 * sizeof(int) * warps;
+    bytes += sizeof(int) * warps;
 #endif
     return bytes;
 }
@@ -66,8 +66,9 @@ static size_t runtime_device_allocation_bytes() {
         task_id_free_position_bytes + task_id_pool_bytes + task_id_generated_bytes +
         queue_metadata_bytes;
 #ifdef GTAP_ENABLE_PROFILING
-    total += workers * (2 * c.profile_interval_capacity) *
-        (2 * sizeof(long long) + sizeof(int));
+    total += workers * profile_capacity() *
+             (sizeof(long long) + sizeof(int));
+    total += workers * sizeof(unsigned long long);
 #endif
     return total;
 }
@@ -308,25 +309,29 @@ cudaError_t initialize_runtime() {
         profile_capacity();
     const size_t profile_int_bytes = sizeof(int) * profile_workers *
         profile_capacity();
-    long long* having_task_time_ptr = nullptr;
     long long* working_time_ptr = nullptr;
     int* tasks_processed_count_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&having_task_time_ptr), profile_long_bytes));
+    unsigned long long* profile_dropped_events_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&working_time_ptr), profile_long_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&tasks_processed_count_ptr), profile_int_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        having_task_time, &having_task_time_ptr, sizeof(having_task_time_ptr)));
+    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
+        reinterpret_cast<void**>(&profile_dropped_events_ptr),
+        sizeof(unsigned long long) * profile_workers));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         working_time, &working_time_ptr, sizeof(working_time_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         tasks_processed_count, &tasks_processed_count_ptr,
         sizeof(tasks_processed_count_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemset(having_task_time_ptr, 0, profile_long_bytes));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
+        profile_dropped_events, &profile_dropped_events_ptr,
+        sizeof(profile_dropped_events_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemset(working_time_ptr, 0, profile_long_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemset(tasks_processed_count_ptr, 0, profile_int_bytes));
+    GTAP_DETAIL_CUDA_TRY(cudaMemset(
+        profile_dropped_events_ptr, 0,
+        sizeof(unsigned long long) * profile_workers));
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -389,16 +394,17 @@ cudaError_t finalize_runtime() {
     int* d_task_id_generated_by_queue_idx_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&d_task_id_generated_by_queue_idx_ptr, d_task_id_generated_by_queue_idx, sizeof(int*)));
 #ifdef GTAP_ENABLE_PROFILING
-    long long* having_task_time_ptr = nullptr;
     long long* working_time_ptr = nullptr;
     int* tasks_processed_count_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &having_task_time_ptr, having_task_time, sizeof(having_task_time_ptr)));
+    unsigned long long* profile_dropped_events_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &working_time_ptr, working_time, sizeof(working_time_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &tasks_processed_count_ptr, tasks_processed_count,
         sizeof(tasks_processed_count_ptr)));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        &profile_dropped_events_ptr, profile_dropped_events,
+        sizeof(profile_dropped_events_ptr)));
 #endif
 
     
@@ -433,10 +439,12 @@ cudaError_t finalize_runtime() {
         GTAP_DETAIL_CUDA_TRY(cudaFree(d_task_id_valid_ptr));
     }
 #ifdef GTAP_ENABLE_PROFILING
-    if (having_task_time_ptr != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(having_task_time_ptr));
     if (working_time_ptr != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(working_time_ptr));
     if (tasks_processed_count_ptr != nullptr)
         GTAP_DETAIL_CUDA_TRY(cudaFree(tasks_processed_count_ptr));
+    if (profile_dropped_events_ptr != nullptr) {
+        GTAP_DETAIL_CUDA_TRY(cudaFree(profile_dropped_events_ptr));
+    }
 #endif
     
     GTAP_DETAIL_CUDA_TRY(finalize_runtime_error_record());
@@ -528,16 +536,18 @@ cudaError_t reset_runtime() {
 
     // Reset profile data if enabled
     #ifdef GTAP_ENABLE_PROFILING
-    long long* having_ptr = nullptr;
     long long* working_ptr = nullptr;
     int* counts_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&having_ptr, having_task_time, sizeof(having_ptr)));
+    unsigned long long* dropped_ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&working_ptr, working_time, sizeof(working_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&counts_ptr, tasks_processed_count, sizeof(counts_ptr)));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        &dropped_ptr, profile_dropped_events, sizeof(dropped_ptr)));
     const size_t profile_workers = stored_launch_config().total_workers;
-    GTAP_DETAIL_CUDA_TRY(cudaMemset(having_ptr, 0, sizeof(long long) * profile_workers * profile_capacity()));
     GTAP_DETAIL_CUDA_TRY(cudaMemset(working_ptr, 0, sizeof(long long) * profile_workers * profile_capacity()));
     GTAP_DETAIL_CUDA_TRY(cudaMemset(counts_ptr, 0, sizeof(int) * profile_workers * profile_capacity()));
+    GTAP_DETAIL_CUDA_TRY(cudaMemset(
+        dropped_ptr, 0, sizeof(unsigned long long) * profile_workers));
     #endif
     
     // Reinitialize warp ID pools metadata

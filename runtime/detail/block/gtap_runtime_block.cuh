@@ -3,10 +3,9 @@
 #include <cuda_runtime.h>
 #include <climits>
 #include "../common/gtap_runtime_common.cuh"
+#include "gtap_block_core.cuh"
 
 #define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
-
-#include "gtap_block_core.cuh"
 
 extern const size_t __gtap_auto_entry_result_size;
 

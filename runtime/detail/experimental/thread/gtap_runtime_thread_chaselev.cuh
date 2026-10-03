@@ -3,10 +3,9 @@
 #include <cuda_runtime.h>
 #include <climits>
 #include "../../common/gtap_runtime_common.cuh"
-
-#define GTAP_EXPERIMENTAL_PROFILE_LEGACY 1
-
 #include "../../thread/gtap_thread_core.cuh"
+
+#define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
 
 namespace gtap::detail::thread {
 using namespace gtap::detail;
@@ -45,16 +44,6 @@ __device__ __forceinline__ int* chaselev_queue_slot(
     (GTAP_RUNTIME_TOTAL_WORKERS * GTAP_RUNTIME_TASKS_PER_WORKER)
 
 #ifdef GTAP_ENABLE_PROFILING
-cudaError_t get_warp_having_task_time_data(long long* host_having_task_time) {
-    long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, having_task_time, sizeof(ptr)));
-    return cudaMemcpy(
-        host_having_task_time, ptr,
-        sizeof(long long) * stored_launch_config().total_workers *
-            profile_capacity(),
-        cudaMemcpyDeviceToHost);
-}
-
 cudaError_t get_warp_working_time_data(long long* host_working_time) {
     long long* ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
@@ -76,15 +65,17 @@ cudaError_t get_warp_tasks_processed_count_data(int* host_counts) {
         cudaMemcpyDeviceToHost);
 }
 
-__global__ void get_final_warp_having_task_time_indices(int* indices) {
-    if (threadIdx.x == 0) {
-        int wid = blockIdx.x;
-        int count = 0;
-        for (int i = 0; i < profile_capacity(); i++) {
-            if (having_task_time[wid * profile_capacity() + i] > 0) count++;
-        }
-        indices[wid] = count;
-    }
+cudaError_t get_warp_profile_dropped_events_data(
+    unsigned long long* host_counts
+) {
+    unsigned long long* ptr = nullptr;
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        &ptr, profile_dropped_events, sizeof(ptr)));
+    return cudaMemcpy(
+        host_counts, ptr,
+        sizeof(unsigned long long) *
+            stored_launch_config().total_workers,
+        cudaMemcpyDeviceToHost);
 }
 
 __global__ void get_warp_working_time_counts(int* counts) {
@@ -516,12 +507,8 @@ __device__ __forceinline__ void execute_task_loop() {
             d_launch_config.warps_per_block *
             d_launch_config.num_queues;
     }
-    int* having_time_idx = reinterpret_cast<int*>(shared_cursor);
-    int* working_time_idx =
-        having_time_idx + d_launch_config.warps_per_block;
+    int* working_time_idx = reinterpret_cast<int*>(shared_cursor);
     if (lane == 0) {
-        if (warp_id_global == 0) having_time_idx[warp_id_in_block] = 1;
-        else having_time_idx[warp_id_in_block] = 0;
         working_time_idx[warp_id_in_block] = 0;
     }
 #endif
@@ -545,9 +532,6 @@ __device__ __forceinline__ void execute_task_loop() {
             warp_tails[k] = 0;
         }
         if (warp_id_global == 0) {
-#ifdef GTAP_ENABLE_PROFILING
-            having_task_time[warp_id_global * profile_capacity()] = get_global_time();
-#endif
             warp_contexts[0].id_list_alloc_pos = 1;
             // Chase-Lev: set bottom = 1 (initial task at position 0)
             WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[0][0];
@@ -628,15 +612,6 @@ __device__ __forceinline__ void execute_task_loop() {
                 }
                 __syncwarp();
             }
-#ifdef GTAP_ENABLE_PROFILING
-            if (lane == 0) {
-                if (prev_get_task && having_time_idx[warp_id_in_block] < profile_capacity()) {
-                    having_task_time[warp_id_global * profile_capacity() + having_time_idx[warp_id_in_block]] = get_global_time();
-                    having_time_idx[warp_id_in_block]++;
-                }
-            }
-            __syncwarp();
-#endif
             prev_get_task = false;
             if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
                 if (lane == 0) should_continue = (load_L2(&d_all_tasks_finished) == 0);
@@ -647,15 +622,6 @@ __device__ __forceinline__ void execute_task_loop() {
             }
             continue;
         } else {
-#ifdef GTAP_ENABLE_PROFILING
-            if (lane == 0) {
-                if (!prev_get_task && having_time_idx[warp_id_in_block] < profile_capacity()) {
-                    having_task_time[warp_id_global * profile_capacity() + having_time_idx[warp_id_in_block]] = get_global_time();
-                    having_time_idx[warp_id_in_block]++;
-                }
-            }
-            __syncwarp();
-#endif
             prev_get_task = true;
             if (lane == 0) {
                 for (int k = 0; k < d_launch_config.num_queues; ++k) {
@@ -690,10 +656,15 @@ __device__ __forceinline__ void execute_task_loop() {
 
 #ifdef GTAP_ENABLE_PROFILING
             if (lane == 0) {
-                if (working_time_idx[warp_id_in_block] < profile_capacity()) {
-                    working_time[warp_id_global * profile_capacity() + working_time_idx[warp_id_in_block]] = get_global_time();
-                    tasks_processed_count[warp_id_global * profile_capacity() + working_time_idx[warp_id_in_block]] = execute_task_count;
+                if (working_time_idx[warp_id_in_block] + 1 < profile_capacity()) {
+                    const int profile_idx =
+                        warp_id_global * profile_capacity() +
+                        working_time_idx[warp_id_in_block];
+                    working_time[profile_idx] = get_global_time();
+                    tasks_processed_count[profile_idx] = execute_task_count;
                     working_time_idx[warp_id_in_block]++;
+                } else {
+                    atomicAdd(&profile_dropped_events[warp_id_global], 1ULL);
                 }
             }
 #endif
