@@ -6,6 +6,8 @@
 #include <algorithm>
 #include "gtap_thread.cuh"
 
+using gtap::detail::load_L2;
+
 // Device-side graph state
 __device__ int* g_row_offsets;   // size: num_vertices + 1
 __device__ int* g_col_indices;   // size: num_edges

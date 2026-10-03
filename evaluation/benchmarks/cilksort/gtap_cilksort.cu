@@ -9,6 +9,8 @@
 #include "gtap_thread.cuh"
 #include "cilksort_options.hpp"
 
+using gtap::detail::load_L2;
+
 #define TASK_SPAWN_CUTOFF_SORT 64
 #define TASK_SPAWN_CUTOFF_MERGE 256
 

@@ -7,6 +7,8 @@
 #include <cuda_runtime.h>
 #include "gtap_thread.cuh"
 
+using gtap::detail::load_L2;
+
 #define TASK_SPAWN_CUTOFF_SORT 64
 #define TASK_SPAWN_CUTOFF_MERGE 256
 
