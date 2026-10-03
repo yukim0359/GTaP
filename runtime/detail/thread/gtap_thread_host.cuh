@@ -40,27 +40,8 @@ using namespace gtap::detail;
 inline size_t dynamic_shared_bytes(
     int block_size, int num_queues
 ) {
-    const size_t warps = block_size / GTAP_WARP_SIZE;
-
-    // Per-warp runtime context.
-    size_t bytes = sizeof(TaskContext) * warps;
-    // Align the following int arrays.
-    bytes = align_up(bytes, alignof(int));
-    // Per-warp, per-queue generated-task counters.
-    bytes += sizeof(int) * warps * num_queues;
-    // Per-warp, per-queue local queue tails.
-    bytes += sizeof(int) * warps * num_queues;
-    // Per-warp, per-queue staging slots, one slot per warp lane.
-    bytes += sizeof(int) * warps * num_queues * GTAP_WARP_SIZE;
-    // Per-warp, per-queue temporary counts used only by multi-queue DAQ.
-    if (num_queues > 1) {
-        bytes += sizeof(int) * warps * num_queues;
-    }
-#ifdef GTAP_ENABLE_PROFILING
-    // Per-warp index for the task-execution profile buffer.
-    bytes += sizeof(int) * warps;
-#endif
-    return bytes;
+    return shared_layout_for(
+        block_size / GTAP_WARP_SIZE, num_queues, true).bytes;
 }
 
 static size_t runtime_device_allocation_bytes() {

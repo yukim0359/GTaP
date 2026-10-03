@@ -26,9 +26,9 @@ inline cudaError_t init_device_task_data_stride() {
 
 struct TaskContext {
     int queue_idx;
-    int* task_id_generated_count_by_queue_idx;
-    int* tail_by_queue_idx;
-    int* staged_task_ids;
+    int* generated_task_count_by_queue_idx;    // int[num_queues] for each warp
+    int* tail_by_queue_idx;                    // int[num_queues] for each warp
+    int* staged_task_ids;                      // int[num_queues * GTAP_WARP_SIZE] for each warp
     int id_list_alloc_pos;
     int id_list_free_pos_stale;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
@@ -36,6 +36,49 @@ struct TaskContext {
     uint32_t task_generations[GTAP_WARP_SIZE];
 #endif
 };
+
+// Offsets into the dynamic shared memory of one CUDA block.
+struct shared_layout {
+    // Arrays referenced by TaskContext fields.
+    size_t generated_task_counts;
+    size_t queue_tails;
+    size_t staged_task_ids;
+    // Cached lengths used to choose which queue DAQ pops.
+    size_t queue_lengths;
+    // Index used by profiling.
+    size_t working_time_idx;
+    // Total shared memory bytes for the block.
+    size_t bytes;
+};
+
+__host__ __device__ inline shared_layout shared_layout_for(
+    int warps_per_block, int num_queues, bool include_queue_tails
+) {
+    shared_layout layout{};
+    size_t cursor = sizeof(TaskContext) * static_cast<size_t>(warps_per_block);
+    cursor = align_up(cursor, alignof(int));
+    const size_t block_queue_int_bytes =
+        sizeof(int) * static_cast<size_t>(warps_per_block) *
+        static_cast<size_t>(num_queues);
+    layout.generated_task_counts = cursor;
+    cursor += block_queue_int_bytes;
+    layout.queue_tails = cursor;
+    if (include_queue_tails) {
+        cursor += block_queue_int_bytes;
+    }
+    layout.staged_task_ids = cursor;
+    cursor += block_queue_int_bytes * GTAP_WARP_SIZE;
+    layout.queue_lengths = cursor;
+    if (num_queues > 1) {
+        cursor += block_queue_int_bytes;
+    }
+#ifdef GTAP_ENABLE_PROFILING
+    layout.working_time_idx = cursor;
+    cursor += sizeof(int) * static_cast<size_t>(warps_per_block);
+#endif
+    layout.bytes = cursor;
+    return layout;
+}
 
 struct TaskHeader {
     void (*func)(void* task, int tid, TaskContext* __ctx);
@@ -131,17 +174,17 @@ __device__ __forceinline__ void* get_task_data(int tid) {
 }
 
 __device__ __forceinline__ int select_next_fullest_queue_idx(
-    int* queue_counts, int num_queues
+    int* queue_lengths, int num_queues
 ) {
     int max_k = 0;
     int max_count = -1;
     for (int k = 0; k < num_queues; ++k) {
-        if (queue_counts[k] > max_count) {
-            max_count = queue_counts[k];
+        if (queue_lengths[k] > max_count) {
+            max_count = queue_lengths[k];
             max_k = k;
         }
     }
-    queue_counts[max_k] = -1;
+    queue_lengths[max_k] = -1;
     return max_k;
 }
 

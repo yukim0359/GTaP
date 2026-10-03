@@ -30,7 +30,7 @@ __device__ __forceinline__ int* warp_queue_slot(
 }
 
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int queue_idx, int task_id) {
-    int gen_idx = atomicAdd(&ctx->task_id_generated_count_by_queue_idx[queue_idx], 1);
+    int gen_idx = atomicAdd(&ctx->generated_task_count_by_queue_idx[queue_idx], 1);
     if (gen_idx < GTAP_WARP_SIZE) {
         ctx->staged_task_ids[queue_idx * GTAP_WARP_SIZE + gen_idx] = task_id;
         return;
@@ -198,7 +198,7 @@ __device__ __forceinline__ void push_batch (
     int all_generated_count = 0;
     if (lane == 0) {
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
-            int cnt = ctx->task_id_generated_count_by_queue_idx[k];
+            int cnt = ctx->generated_task_count_by_queue_idx[k];
             all_generated_count += cnt;
             if (cnt > max_gen) {
                 max_gen = cnt;
@@ -225,14 +225,14 @@ __device__ __forceinline__ void push_batch (
     __syncwarp();
 
     for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
-        int push_cnt = ctx->task_id_generated_count_by_queue_idx[kind];
+        int push_cnt = ctx->generated_task_count_by_queue_idx[kind];
         if (kind == k_max) {
             push_cnt -= *execute_task_count;
         }
         if (push_cnt <= 0) continue;
 
         WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[kind][warp_id_global];
-        int total = ctx->task_id_generated_count_by_queue_idx[kind];
+        int total = ctx->generated_task_count_by_queue_idx[kind];
         int staged_n = min(total, GTAP_WARP_SIZE);
         if (kind != k_max) {
             for (int j = lane; j < staged_n; j += GTAP_WARP_SIZE) {
@@ -254,7 +254,7 @@ __device__ __forceinline__ void push_batch (
     }
     if (lane == 0) {
         for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
-            ctx->task_id_generated_count_by_queue_idx[kind] = 0;
+            ctx->generated_task_count_by_queue_idx[kind] = 0;
         }
     }
 }
@@ -413,28 +413,20 @@ __device__ __forceinline__ void execute_task_loop() {
     bool should_continue = true;
 
     const int warps_per_block = d_launch_config.warps_per_block;
+    const int num_queues = d_launch_config.num_queues;
+    const shared_layout layout = shared_layout_for(
+        warps_per_block, num_queues, true);
     TaskContext* warp_contexts =
         reinterpret_cast<TaskContext*>(dynamic_shared);
-    unsigned char* shared_cursor = dynamic_shared +
-        sizeof(TaskContext) * warps_per_block;
-    shared_cursor = reinterpret_cast<unsigned char*>(
-        align_up(
-            reinterpret_cast<size_t>(shared_cursor), alignof(int)));
-    const int num_queues = d_launch_config.num_queues;
-    int* generated_counts = reinterpret_cast<int*>(shared_cursor);
-    shared_cursor +=
-        sizeof(int) * warps_per_block * num_queues;
-    int* tail_by_queue_idx = reinterpret_cast<int*>(shared_cursor);
-    shared_cursor +=
-        sizeof(int) * warps_per_block * num_queues;
-    int* staged_task_ids = reinterpret_cast<int*>(shared_cursor);
-    shared_cursor += sizeof(int) * warps_per_block *
-        num_queues * GTAP_WARP_SIZE;
-    int* queue_counts = nullptr;
-    if (num_queues > 1) {
-        queue_counts = reinterpret_cast<int*>(shared_cursor);
-        shared_cursor += sizeof(int) * warps_per_block * num_queues;
-    }
+    int* generated_counts = reinterpret_cast<int*>(
+        dynamic_shared + layout.generated_task_counts);
+    int* tail_by_queue_idx = reinterpret_cast<int*>(
+        dynamic_shared + layout.queue_tails);
+    int* staged_task_ids = reinterpret_cast<int*>(
+        dynamic_shared + layout.staged_task_ids);
+    int* queue_lengths = num_queues > 1
+        ? reinterpret_cast<int*>(dynamic_shared + layout.queue_lengths)
+        : nullptr;
 
     int* warp_generated_counts =
         generated_counts + warp_id_in_block * num_queues;
@@ -442,12 +434,13 @@ __device__ __forceinline__ void execute_task_loop() {
         tail_by_queue_idx + warp_id_in_block * num_queues;
     int* warp_staged =
         staged_task_ids + warp_id_in_block * num_queues * GTAP_WARP_SIZE;
-    int* warp_queue_counts = num_queues > 1
-        ? queue_counts + warp_id_in_block * num_queues
+    int* warp_queue_lengths = num_queues > 1
+        ? queue_lengths + warp_id_in_block * num_queues
         : nullptr;
 
 #ifdef GTAP_ENABLE_PROFILING
-    int* working_time_idx = reinterpret_cast<int*>(shared_cursor);
+    int* working_time_idx = reinterpret_cast<int*>(
+        dynamic_shared + layout.working_time_idx);
     if (lane == 0) {
         working_time_idx[warp_id_in_block] = 0;
     }
@@ -455,7 +448,7 @@ __device__ __forceinline__ void execute_task_loop() {
 
     if (lane == 0) {
         warp_contexts[warp_id_in_block].queue_idx = 0;
-        warp_contexts[warp_id_in_block].task_id_generated_count_by_queue_idx =
+        warp_contexts[warp_id_in_block].generated_task_count_by_queue_idx =
             warp_generated_counts;
         warp_contexts[warp_id_in_block].tail_by_queue_idx = warp_tails;
         warp_contexts[warp_id_in_block].staged_task_ids = warp_staged;
@@ -501,7 +494,7 @@ __device__ __forceinline__ void execute_task_loop() {
                 if (execute_task_count == 0) {
                     if (lane == 0) {
                         for (int k = 0; k < num_queues; ++k) {
-                            warp_queue_counts[k] = load_L2(
+                            warp_queue_lengths[k] = load_L2(
                                 &d_warp_task_queue_metadata[k][warp_id_global].count);
                         }
                     }
@@ -509,7 +502,7 @@ __device__ __forceinline__ void execute_task_loop() {
                         int queue_idx;
                         if (lane == 0) {
                             queue_idx = select_next_fullest_queue_idx(
-                                warp_queue_counts, num_queues);
+                                warp_queue_lengths, num_queues);
                             warp_contexts[warp_id_in_block].queue_idx = queue_idx;
                         }
                         queue_idx = __shfl_sync(

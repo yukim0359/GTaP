@@ -36,19 +36,8 @@ using namespace gtap::detail;
 inline size_t dynamic_shared_bytes(
     int block_size, int num_queues
 ) {
-    const size_t warps = block_size / GTAP_WARP_SIZE;
-    size_t bytes = sizeof(TaskContext) * warps;
-    bytes = align_up(bytes, alignof(int));
-    bytes += sizeof(int) * warps * num_queues;
-    bytes += sizeof(int) * warps * num_queues;
-    bytes += sizeof(int) * warps * num_queues * GTAP_WARP_SIZE;
-    if (num_queues > 1) {
-        bytes += sizeof(int) * warps * num_queues;
-    }
-#ifdef GTAP_ENABLE_PROFILING
-    bytes += sizeof(int) * warps;
-#endif
-    return bytes;
+    return shared_layout_for(
+        block_size / GTAP_WARP_SIZE, num_queues, true).bytes;
 }
 
 static size_t runtime_device_allocation_bytes() {
