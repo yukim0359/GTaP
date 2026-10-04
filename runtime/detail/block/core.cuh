@@ -53,6 +53,8 @@ struct TaskContext {
     bool have_task_id_resumable;
     int task_id_resumable;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
+    // TODO: Only generation, parent_tid, and parent_generation are read.
+    // Store those fields, as thread mode does, instead of the whole TaskHeader.
     TaskHeader cached_task_header;
 #endif
 };
