@@ -4,6 +4,10 @@
 #define __GTAP_IS_BLOCK_MODE
 #endif
 
+#ifdef GTAP_DETAIL_BLOCK_BACKEND_DEFAULT
+#error "A different block backend is already selected"
+#endif
+
 #define GTAP_DETAIL_BLOCK_BACKEND_EXPERIMENTAL_GLOBAL_QUEUE
 
 #include "../detail/block/scheduler.cuh"

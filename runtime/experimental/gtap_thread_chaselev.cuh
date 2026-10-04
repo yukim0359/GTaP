@@ -4,6 +4,11 @@
 #define __GTAP_IS_THREAD_MODE
 #endif
 
+#if defined(GTAP_DETAIL_THREAD_BACKEND_DEFAULT) || \
+    defined(GTAP_DETAIL_THREAD_BACKEND_EXPERIMENTAL_GLOBAL_QUEUE)
+#error "A different thread backend is already selected"
+#endif
+
 #define GTAP_DETAIL_THREAD_BACKEND_EXPERIMENTAL_CHASE_LEV
 
 #include "../detail/thread/scheduler.cuh"
