@@ -2,13 +2,14 @@
 
 #include <cuda_runtime.h>
 #include <climits>
-#include "../../common/runtime.cuh"
-#include "../../thread/task_types.cuh"
-#include "../../thread/task_pool.cuh"
-#include "../../thread/shared_layout.cuh"
-#include "../../thread/termination.cuh"
-#include "../../thread/profile_buffer.cuh"
-#include "../../thread/queue_select.cuh"
+#include "../../../../common/runtime.cuh"
+#include "../../../task_types.cuh"
+#include "../../../task_pool.cuh"
+#include "../../../shared_layout.cuh"
+#include "../../../termination.cuh"
+#include "../../../profile_buffer.cuh"
+#include "../../../queue_select.cuh"
+#include "queue_storage.cuh"
 
 #define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
 
@@ -18,26 +19,7 @@ using namespace gtap::detail;
 // Whether shared_layout_for reserves per-queue tails. gtap_initialize and the execute loop both pass this.
 inline constexpr bool include_queue_tails = true;
 
-struct WarpTaskQueueMetadata {
-    int top;           // Chase-Lev top (steal from here)
-    int bottom;        // Chase-Lev bottom (push/pop here)
-};
-
-__constant__ WarpTaskQueueMetadata** d_warp_task_queue_metadata;
-__constant__ int* d_warp_task_queue_storage;
 extern __shared__ unsigned char dynamic_shared[];
-
-__device__ __forceinline__ int* chaselev_queue_slot(
-    int queue_idx, int worker_idx, int slot
-) {
-    const size_t index =
-        (static_cast<size_t>(queue_idx) *
-             d_launch_config.total_workers +
-         worker_idx) *
-            d_launch_config.queue_capacity +
-        slot;
-    return &d_warp_task_queue_storage[index];
-}
 
 #define GTAP_RUNTIME_GRID_SIZE (stored_launch_config().grid_size)
 #define GTAP_RUNTIME_BLOCK_SIZE (stored_launch_config().block_size)
@@ -533,4 +515,4 @@ __device__ __forceinline__ void execute_task_loop() {
 
 }  // namespace gtap::detail::thread
 
-#include "../../thread/task_ops.cuh"
+#include "../../../task_ops.cuh"

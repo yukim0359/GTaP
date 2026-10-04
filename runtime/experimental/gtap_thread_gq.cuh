@@ -4,7 +4,8 @@
 #define __GTAP_IS_THREAD_MODE
 #endif
 
-#include "../detail/experimental/thread/host_gq.cuh"
+#include "../detail/thread/backends/experimental/global_queue/scheduler.cuh"
+#include "../detail/thread/lifecycle.cuh"
 #include "../detail/thread/host_api.cuh"
 #include "../detail/thread/compiler_api.cuh"
-#include "../detail/thread/profile.cuh"
+#include "../detail/thread/profile_export.cuh"

@@ -2,13 +2,13 @@
 
 #include <cuda_runtime.h>
 #include <climits>
-#include "../../common/runtime.cuh"
-#include "../../thread/task_types.cuh"
-#include "../../thread/task_pool.cuh"
-#include "../../thread/shared_layout.cuh"
-#include "../../thread/termination.cuh"
-#include "../../thread/profile_buffer.cuh"
-#include "../../thread/queue_select.cuh"
+#include "../../../../common/runtime.cuh"
+#include "../../../task_types.cuh"
+#include "../../../task_pool.cuh"
+#include "../../../shared_layout.cuh"
+#include "../../../termination.cuh"
+#include "../../../profile_buffer.cuh"
+#include "../../../queue_select.cuh"
 
 #define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
 
@@ -21,17 +21,14 @@ static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negat
 constexpr int GTAP_TASK_ID_GEN_QUEUE_STRIDE =
     GTAP_MAX_CHILD_TASKS * gtap::detail::warp_size;
 
+#include "queue_storage.cuh"
+
 namespace gtap::detail::thread {
 using namespace gtap::detail;
 
 // Whether shared_layout_for reserves per-queue tails. gtap_initialize and the execute loop both pass this.
 inline constexpr bool include_queue_tails = false;
 
-__constant__ int* d_global_task_queue;
-__constant__ int* d_queue_head;
-__constant__ int* d_queue_tail;
-__constant__ int* d_queue_alloc;
-__constant__ int* d_task_id_generated_by_queue_idx;
 extern __shared__ unsigned char dynamic_shared[];
 
 #ifdef __CUDA_ARCH__
@@ -55,40 +52,6 @@ extern __shared__ unsigned char dynamic_shared[];
     (GTAP_RUNTIME_TOTAL_WORKERS * GTAP_RUNTIME_TASKS_PER_WORKER)
 #define GTAP_RUNTIME_GLOBAL_QUEUE_CAPACITY \
     (GTAP_RUNTIME_TOTAL_WORKERS * GTAP_RUNTIME_QUEUE_CAPACITY)
-
-__device__ __forceinline__ int* global_queue_slot(
-    int queue_idx, int position
-) {
-    const size_t capacity =
-        static_cast<size_t>(d_launch_config.total_workers) *
-        d_launch_config.queue_capacity;
-    return &d_global_task_queue[
-        static_cast<size_t>(queue_idx) * capacity + position];
-}
-
-__device__ __forceinline__ int get_task_id_generated(
-    int warp_id_global, int queue_idx, int idx
-) {
-    int offset =
-        (warp_id_global * d_launch_config.num_queues + queue_idx) *
-            GTAP_TASK_ID_GEN_QUEUE_STRIDE +
-        idx;
-    return d_task_id_generated_by_queue_idx[offset];
-}
-
-__device__ __forceinline__ void set_task_id_generated(
-    int warp_id_global, int queue_idx, int idx, int task_id
-) {
-    if (idx >= GTAP_TASK_ID_GEN_QUEUE_STRIDE) {
-        GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
-            task_id, queue_idx, idx, GTAP_TASK_ID_GEN_QUEUE_STRIDE);
-    }
-    int offset =
-        (warp_id_global * d_launch_config.num_queues + queue_idx) *
-            GTAP_TASK_ID_GEN_QUEUE_STRIDE +
-        idx;
-    d_task_id_generated_by_queue_idx[offset] = task_id;
-}
 
 // ============================================================================
 // Global Queue Operations (no steal needed - all workers pop from global queue)
@@ -474,4 +437,4 @@ __device__ __forceinline__ void execute_task_loop() {
 
 }  // namespace gtap::detail::thread
 
-#include "../../thread/task_ops.cuh"
+#include "../../../task_ops.cuh"
