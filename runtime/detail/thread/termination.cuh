@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/runtime.cuh"
+#include <cuda_runtime.h>
 
 namespace gtap::detail::thread {
 

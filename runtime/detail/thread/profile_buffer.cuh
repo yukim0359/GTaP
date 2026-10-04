@@ -1,6 +1,8 @@
 #pragma once
 
-#include "../common/runtime.cuh"
+#include "../common/profile_buffer.cuh"
+#include "../common/runtime_config.cuh"
+#include "../common/runtime_error.cuh"
 
 namespace gtap::detail::thread {
 
@@ -16,7 +18,7 @@ cudaError_t get_warp_working_time_data(long long* host_working_time) {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
     return cudaMemcpy(
         host_working_time, ptr,
-        sizeof(long long) * stored_launch_config().total_workers * profile_capacity(),
+        sizeof(long long) * stored_launch_config().total_workers * profile_timestamp_capacity(),
         cudaMemcpyDeviceToHost);
 }
 
@@ -25,7 +27,7 @@ cudaError_t get_warp_tasks_processed_count_data(int* host_counts) {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, tasks_processed_count, sizeof(ptr)));
     return cudaMemcpy(
         host_counts, ptr,
-        sizeof(int) * stored_launch_config().total_workers * profile_capacity(),
+        sizeof(int) * stored_launch_config().total_workers * profile_timestamp_capacity(),
         cudaMemcpyDeviceToHost);
 }
 
@@ -46,8 +48,8 @@ __global__ void get_warp_working_time_counts(int* counts) {
     if (threadIdx.x == 0) {
         int wid = blockIdx.x;
         int count = 0;
-        for (int i = 0; i < profile_capacity(); i++) {
-            if (working_time[wid * profile_capacity() + i] > 0) count++;
+        for (int i = 0; i < profile_timestamp_capacity(); i++) {
+            if (working_time[wid * profile_timestamp_capacity() + i] > 0) count++;
         }
         counts[wid] = count;
     }
@@ -56,7 +58,7 @@ __global__ void get_warp_working_time_counts(int* counts) {
 
 inline size_t profile_buffer_allocation_bytes(size_t workers) {
 #ifdef GTAP_ENABLE_PROFILING
-    return workers * static_cast<size_t>(profile_capacity()) *
+    return workers * static_cast<size_t>(profile_timestamp_capacity()) *
             (sizeof(long long) + sizeof(int))
         + workers * sizeof(unsigned long long);
 #else
@@ -76,9 +78,9 @@ inline cudaError_t allocate_profile_buffers(
     int* tasks_processed_count_ptr = nullptr;
     unsigned long long* profile_dropped_events_ptr = nullptr;
     const size_t profile_long_bytes =
-        sizeof(long long) * workers * profile_capacity();
+        sizeof(long long) * workers * profile_timestamp_capacity();
     const size_t profile_int_bytes =
-        sizeof(int) * workers * profile_capacity();
+        sizeof(int) * workers * profile_timestamp_capacity();
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&working_time_ptr), profile_long_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
@@ -133,11 +135,11 @@ inline cudaError_t clear_profile_buffers(
         sizeof(profile_dropped_events_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         working_time_ptr, 0,
-        sizeof(long long) * workers * profile_capacity(),
+        sizeof(long long) * workers * profile_timestamp_capacity(),
         working_time_stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         tasks_processed_count_ptr, 0,
-        sizeof(int) * workers * profile_capacity(),
+        sizeof(int) * workers * profile_timestamp_capacity(),
         task_count_stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         profile_dropped_events_ptr, 0,

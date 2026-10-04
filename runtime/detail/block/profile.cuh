@@ -5,8 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../common/profile_buffer.cuh"
 #include "../common/profile_export.cuh"
-#include "../common/runtime.cuh"
+#include "../common/runtime_config.cuh"
+#include "../common/runtime_error.cuh"
+
 #include "core.cuh"
 
 #ifdef GTAP_ENABLE_PROFILING
@@ -19,7 +22,7 @@ cudaError_t get_working_time_data(long long* host_working_time) {
     return cudaMemcpy(
         host_working_time, ptr,
         sizeof(long long) * stored_launch_config().grid_size *
-            profile_capacity(),
+            profile_timestamp_capacity(),
         cudaMemcpyDeviceToHost);
 }
 
@@ -40,18 +43,18 @@ cudaError_t get_block_working_time_data(
 ) {
     long long* ptr = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    const int count = max_samples < profile_capacity() ? max_samples : profile_capacity();
+    const int count = max_samples < profile_timestamp_capacity() ? max_samples : profile_timestamp_capacity();
     return cudaMemcpy(
         host_working_time,
-        ptr + static_cast<size_t>(block_id) * profile_capacity(),
+        ptr + static_cast<size_t>(block_id) * profile_timestamp_capacity(),
         sizeof(long long) * count, cudaMemcpyDeviceToHost);
 }
 
 __global__ void get_block_working_time_counts(int* counts) {
     if (threadIdx.x == 0) {
         int count = 0;
-        for (int i = 0; i < profile_capacity(); i++) {
-            if (working_time[blockIdx.x * profile_capacity() + i] > 0) {
+        for (int i = 0; i < profile_timestamp_capacity(); i++) {
+            if (working_time[blockIdx.x * profile_timestamp_capacity() + i] > 0) {
                 count++;
             }
         }
@@ -76,7 +79,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     unsigned long long* dropped = static_cast<unsigned long long*>(
         malloc(sizeof(unsigned long long) * blocks));
     long long* times = static_cast<long long*>(malloc(
-        sizeof(long long) * blocks * gtap::detail::profile_capacity()));
+        sizeof(long long) * blocks * gtap::detail::profile_timestamp_capacity()));
     if (!indices || !dropped || !times) {
         free(indices); free(dropped); free(times);
         result.status = gtap_profile_export_status::out_of_memory;
@@ -115,7 +118,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         result.recorded_intervals += static_cast<size_t>(indices[block] / 2);
         result.dropped_intervals += static_cast<size_t>(dropped[block]);
         for (int i = 0; i < indices[block]; ++i) {
-            const long long value = times[block * gtap::detail::profile_capacity() + i];
+            const long long value = times[block * gtap::detail::profile_timestamp_capacity() + i];
             if (value > 0 && (!origin || value < origin)) origin = value;
             if (value > profile_end) profile_end = value;
         }
@@ -148,7 +151,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         long long execution_ns = 0;
         for (int i = 0; i < indices[block]; i += 2) {
             const size_t offset =
-                static_cast<size_t>(block) * gtap::detail::profile_capacity() + i;
+                static_cast<size_t>(block) * gtap::detail::profile_timestamp_capacity() + i;
             const long long duration = times[offset + 1] - times[offset];
             durations[task_index++] = static_cast<double>(duration);
             execution_ns += duration;
@@ -181,7 +184,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     for (int block = 0; block < blocks; ++block) {
         for (int i = 0; i < indices[block]; i += 2) {
             const size_t offset =
-                static_cast<size_t>(block) * gtap::detail::profile_capacity() + i;
+                static_cast<size_t>(block) * gtap::detail::profile_timestamp_capacity() + i;
             fprintf(timeline, "%d,%lld,%lld\n", block,
                     times[offset] - origin, times[offset + 1] - origin);
         }
@@ -199,7 +202,7 @@ static inline gtap_profile_export_result gtap_export_profile(
             long long last_execution_ns = 0;
             for (int i = 0; i < indices[block]; i += 2) {
                 const size_t offset =
-                    static_cast<size_t>(block) * gtap::detail::profile_capacity() + i;
+                    static_cast<size_t>(block) * gtap::detail::profile_timestamp_capacity() + i;
                 const long long start_ns = times[offset] - origin;
                 const long long end_ns = times[offset + 1] - origin;
                 recorded_task_execution_ns += end_ns - start_ns;

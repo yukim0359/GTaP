@@ -22,7 +22,7 @@ static size_t runtime_device_allocation_bytes() {
         task_id_storage_bytes + header_bytes + task_data_bytes +
         entry_result_bytes;
 #ifdef GTAP_ENABLE_PROFILING
-    total += sizeof(long long) * workers * profile_capacity();
+    total += sizeof(long long) * workers * profile_timestamp_capacity();
     total += sizeof(unsigned long long) * workers;
 #endif
     return total;
@@ -107,7 +107,7 @@ cudaError_t initialize_runtime() {
     long long* working_time_ptr = nullptr;
     unsigned long long* profile_dropped_events_ptr = nullptr;
     const size_t profile_bytes =
-        sizeof(long long) * total_workers * profile_capacity();
+        sizeof(long long) * total_workers * profile_timestamp_capacity();
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&working_time_ptr), profile_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(reinterpret_cast<void**>(
@@ -298,7 +298,7 @@ cudaError_t reset_runtime() {
         &profile_dropped_events_ptr, profile_dropped_events,
         sizeof(profile_dropped_events_ptr)));
     const size_t profile_bytes =
-        sizeof(long long) * total_workers * profile_capacity();
+        sizeof(long long) * total_workers * profile_timestamp_capacity();
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         working_time_ptr, 0, profile_bytes, streams[1]));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(

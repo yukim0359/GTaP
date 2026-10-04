@@ -1,13 +1,19 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include "../../../../common/runtime.cuh"
-#include "../../../task_types.cuh"
-#include "../../../task_pool.cuh"
-#include "../../../shared_layout.cuh"
-#include "../../../termination.cuh"
+
+#include "../../../../common/cuda_primitives.cuh"
+#include "../../../../common/host_api.cuh"
+#include "../../../../common/runtime_error.cuh"
+#include "../../../../common/termination.cuh"
+#include "../../../../common/worker_index.cuh"
+
 #include "../../../profile_buffer.cuh"
 #include "../../../queue_select.cuh"
+#include "../../../shared_layout.cuh"
+#include "../../../task_pool.cuh"
+#include "../../../task_types.cuh"
+#include "../../../termination.cuh"
 #include "queue_storage.cuh"
 
 namespace gtap::detail::thread {
@@ -356,9 +362,9 @@ __device__ __forceinline__ void execute_task_loop() {
 
 #ifdef GTAP_ENABLE_PROFILING
             if (lane == 0) {
-                if (working_time_idx[warp_id_in_block] + 1 < profile_capacity()) {
+                if (working_time_idx[warp_id_in_block] + 1 < profile_timestamp_capacity()) {
                     const int profile_idx =
-                        warp_id_global * profile_capacity() +
+                        warp_id_global * profile_timestamp_capacity() +
                         working_time_idx[warp_id_in_block];
                     working_time[profile_idx] = get_global_time();
                     tasks_processed_count[profile_idx] = execute_task_count;
@@ -381,9 +387,9 @@ __device__ __forceinline__ void execute_task_loop() {
         __syncwarp();
 #ifdef GTAP_ENABLE_PROFILING
         if (lane == 0) {
-            if (working_time_idx[warp_id_in_block] < profile_capacity()) {
-                working_time[warp_id_global * profile_capacity() + working_time_idx[warp_id_in_block]] = get_global_time();
-                tasks_processed_count[warp_id_global * profile_capacity() + working_time_idx[warp_id_in_block]] = execute_task_count;
+            if (working_time_idx[warp_id_in_block] < profile_timestamp_capacity()) {
+                working_time[warp_id_global * profile_timestamp_capacity() + working_time_idx[warp_id_in_block]] = get_global_time();
+                tasks_processed_count[warp_id_global * profile_timestamp_capacity() + working_time_idx[warp_id_in_block]] = execute_task_count;
                 working_time_idx[warp_id_in_block]++;
             }
         }

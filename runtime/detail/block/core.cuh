@@ -1,6 +1,8 @@
 #pragma once
 
-#include "../common/runtime.cuh"
+#include "../common/cuda_primitives.cuh"
+#include "../common/runtime_config.cuh"
+#include "../common/runtime_error.cuh"
 
 #ifndef __GTAP_IS_BLOCK_MODE
 #define __GTAP_IS_BLOCK_MODE
@@ -14,6 +16,8 @@ namespace gtap::detail::block {
 using namespace gtap::detail;
 
 struct TaskContext;
+
+__constant__ size_t d_task_data_stride;
 
 inline size_t host_task_data_stride() {
     return align_up(

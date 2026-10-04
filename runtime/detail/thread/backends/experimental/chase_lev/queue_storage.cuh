@@ -1,6 +1,8 @@
 #pragma once
 
-#include "../../../../common/runtime.cuh"
+#include "../../../../common/cuda_primitives.cuh"
+#include "../../../../common/runtime_config.cuh"
+#include "../../../../common/runtime_error.cuh"
 
 namespace gtap::detail::thread {
 

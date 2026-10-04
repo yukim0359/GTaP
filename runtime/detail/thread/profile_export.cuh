@@ -5,7 +5,8 @@
 #include <stdlib.h>
 
 #include "../common/profile_export.cuh"
-#include "../common/runtime.cuh"
+#include "../common/runtime_config.cuh"
+
 #include "profile_buffer.cuh"
 
 #ifdef GTAP_ENABLE_PROFILING
@@ -25,9 +26,9 @@ static inline gtap_profile_export_result gtap_export_profile(
     unsigned long long* dropped = static_cast<unsigned long long*>(
         malloc(sizeof(unsigned long long) * warps));
     long long* times = static_cast<long long*>(malloc(
-        sizeof(long long) * warps * gtap::detail::profile_capacity()));
+        sizeof(long long) * warps * gtap::detail::profile_timestamp_capacity()));
     int* task_counts = static_cast<int*>(malloc(
-        sizeof(int) * warps * gtap::detail::profile_capacity()));
+        sizeof(int) * warps * gtap::detail::profile_timestamp_capacity()));
     if (!indices || !dropped || !times || !task_counts) {
         free(indices); free(dropped); free(times); free(task_counts);
         result.status = gtap_profile_export_status::out_of_memory;
@@ -69,7 +70,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         result.dropped_intervals += static_cast<size_t>(dropped[warp]);
         for (int i = 0; i < indices[warp]; ++i) {
             const long long value =
-                times[warp * gtap::detail::profile_capacity() + i];
+                times[warp * gtap::detail::profile_timestamp_capacity() + i];
             if (value > 0 && (origin == 0 || value < origin)) origin = value;
             if (value > profile_end) profile_end = value;
         }
@@ -107,7 +108,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         long long execution_ns = 0;
         for (int i = 0; i < indices[warp]; i += 2) {
             const size_t offset =
-                static_cast<size_t>(warp) * gtap::detail::profile_capacity() + i;
+                static_cast<size_t>(warp) * gtap::detail::profile_timestamp_capacity() + i;
             const long long duration = times[offset + 1] - times[offset];
             durations[batch_index] = static_cast<double>(duration);
             batch_sizes[batch_index] = static_cast<double>(task_counts[offset]);
@@ -145,7 +146,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     for (int warp = 0; warp < warps; ++warp) {
         for (int i = 0; i < indices[warp]; i += 2) {
             const size_t offset =
-                static_cast<size_t>(warp) * gtap::detail::profile_capacity() + i;
+                static_cast<size_t>(warp) * gtap::detail::profile_timestamp_capacity() + i;
             fprintf(timeline, "%d,%lld,%lld,%d\n", warp,
                     times[offset] - origin, times[offset + 1] - origin,
                     task_counts[offset]);
@@ -165,7 +166,7 @@ static inline gtap_profile_export_result gtap_export_profile(
             long long last_execution_ns = 0;
             for (int i = 0; i < indices[warp]; i += 2) {
                 const size_t offset =
-                    static_cast<size_t>(warp) * gtap::detail::profile_capacity() + i;
+                    static_cast<size_t>(warp) * gtap::detail::profile_timestamp_capacity() + i;
                 const long long start_ns = times[offset] - origin;
                 const long long end_ns = times[offset + 1] - origin;
                 recorded_task_execution_ns += end_ns - start_ns;

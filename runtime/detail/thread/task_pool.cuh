@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../common/worker_index.cuh"
+
 #include "task_types.cuh"
 
 extern const size_t __gtap_auto_task_data_size;
@@ -7,6 +9,8 @@ extern const size_t __gtap_auto_task_data_size;
 namespace gtap::detail::thread {
 
 using namespace gtap::detail;
+
+__constant__ size_t d_task_data_stride;
 
 inline size_t host_task_data_stride() {
     return align_up(__gtap_auto_task_data_size, 16);

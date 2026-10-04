@@ -1,8 +1,15 @@
 #pragma once
 
-#include <cuda_runtime.h>
 #include <climits>
-#include "../common/runtime.cuh"
+#include <cuda_runtime.h>
+
+#include "../common/cuda_primitives.cuh"
+#include "../common/host_api.cuh"
+#include "../common/profile_buffer.cuh"
+#include "../common/runtime_error.cuh"
+#include "../common/termination.cuh"
+#include "../common/victim_select.cuh"
+
 #include "core.cuh"
 
 #define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
@@ -403,9 +410,9 @@ __device__ __forceinline__ void execute_task_loop() {
 
 #ifdef GTAP_ENABLE_PROFILING
             if (threadIdx.x == 0) {
-                if (working_time_idx + 1 < profile_capacity()) {
+                if (working_time_idx + 1 < profile_timestamp_capacity()) {
                     working_time[
-                        blockIdx.x * profile_capacity() +
+                        blockIdx.x * profile_timestamp_capacity() +
                         working_time_idx] = get_global_time();
                     working_time_idx++;
                 } else {
@@ -424,9 +431,9 @@ __device__ __forceinline__ void execute_task_loop() {
         __threadfence();
 #ifdef GTAP_ENABLE_PROFILING
         if (threadIdx.x == 0) {
-            if (working_time_idx < profile_capacity()) {
+            if (working_time_idx < profile_timestamp_capacity()) {
                 working_time[
-                    blockIdx.x * profile_capacity() +
+                    blockIdx.x * profile_timestamp_capacity() +
                     working_time_idx] = get_global_time();
                 working_time_idx++;
             }
