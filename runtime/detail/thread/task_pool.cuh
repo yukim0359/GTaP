@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../common/runtime_error.cuh"
 #include "../common/worker_index.cuh"
 
 #include "task_types.cuh"
