@@ -3,6 +3,7 @@
 // Call order for every thread backend. Include after that backend's scheduler.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
 // All clears use stored_stream().
+// TODO: initialize and reset are faster when those clears overlap on several streams.
 
 namespace gtap::detail::thread {
 

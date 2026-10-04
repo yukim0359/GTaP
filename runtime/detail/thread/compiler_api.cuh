@@ -1,6 +1,6 @@
 #pragma once
 
-// Compiler entry points for thread mode. Include after the runtime header.
+// Compiler entry points for thread mode. Include after the backend scheduler.
 
 __device__ __forceinline__ void __gtap_execute_task_loop() {
 #ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH

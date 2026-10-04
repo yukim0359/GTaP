@@ -1,7 +1,5 @@
 #pragma once
 
-// Standard thread scheduler. Each warp keeps a batch queue; the tail lives in shared memory.
-
 #include <cuda_runtime.h>
 #include <climits>
 #include "../../../common/runtime.cuh"
