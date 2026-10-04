@@ -4,6 +4,8 @@
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
 // All clears use h_stream.
 // TODO: initialize and reset are faster when those clears overlap on several streams.
+// Do that together with block mode: lifecycle creates the streams and passes
+// each stage and clear the ones it uses.
 
 namespace gtap::detail::thread {
 

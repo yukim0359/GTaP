@@ -110,6 +110,7 @@ inline size_t task_pool_allocation_bytes(
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
+// TODO: Take each stream as its own argument. See lifecycle.cuh.
 inline cudaError_t stage_task_pool(
     size_t workers, size_t tasks, int block_size,
     cudaStream_t streams[],

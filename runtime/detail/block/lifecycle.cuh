@@ -2,7 +2,13 @@
 
 // Call order for every block backend. Include after that backend's scheduler.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
-// Each backend chooses how many private streams those clears use.
+// TODO: Create and assign the init/reset streams here, and pass each stage and
+// clear the streams it uses. runtime_init_stream_count and
+// task_id_free_position_fill currently come from queue_storage, and task_pool
+// uses streams[1], [2], and [3] by index. Do this together with thread mode,
+// which still runs every clear on h_stream. init_block_id_pools_metadata
+// overwrites the free-position fill with tasks_per_worker, so the 0 / 0xFF
+// backend difference can go.
 
 namespace gtap::detail::block {
 

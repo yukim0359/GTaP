@@ -13,6 +13,7 @@ namespace gtap::detail::block {
 
 using namespace gtap::detail;
 
+// TODO: Init policy, not queue storage. See lifecycle.cuh.
 inline constexpr int runtime_init_stream_count = 5;
 inline constexpr int task_id_free_position_fill = 0xFF;
 
