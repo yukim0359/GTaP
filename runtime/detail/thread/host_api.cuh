@@ -1,10 +1,11 @@
 #pragma once
 
-// Public thread host API. Include after the backend scheduler and lifecycle.
-
 #include <climits>
 
+#include "../common/cuda_primitives.cuh"
 #include "../common/host_api.cuh"
+
+#include "lifecycle.cuh"
 
 struct gtap_thread_config {
     int grid_size = 4096;

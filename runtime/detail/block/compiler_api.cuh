@@ -1,6 +1,6 @@
 #pragma once
 
-// Compiler entry points for block mode. Include after the backend scheduler.
+#include "task_ops.cuh"
 
 __device__ inline void __gtap_execute_task_loop() {
 #ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH

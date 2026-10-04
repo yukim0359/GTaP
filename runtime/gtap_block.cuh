@@ -4,7 +4,7 @@
 #define __GTAP_IS_BLOCK_MODE
 #endif
 
-#include "detail/block/backends/default/scheduler.cuh"
+#include "detail/block/scheduler.cuh"
 #include "detail/block/lifecycle.cuh"
 #include "detail/block/host_api.cuh"
 #include "detail/block/compiler_api.cuh"

@@ -1,9 +1,6 @@
 #pragma once
 
-// Shared block task operations, matching the standard scheduler.
-// Include after the backend defines reserve_unpublished_task_id.
-// The initial push stays in each scheduler.
-
+#include "scheduler.cuh"
 #include "task_pool.cuh"
 #include "termination.cuh"
 

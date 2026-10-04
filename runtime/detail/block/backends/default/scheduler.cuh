@@ -322,5 +322,3 @@ __device__ __forceinline__ void execute_task_loop() {
 }
 
 }  // namespace gtap::detail::block
-
-#include "../../task_ops.cuh"

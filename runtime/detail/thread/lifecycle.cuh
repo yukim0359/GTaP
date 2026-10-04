@@ -1,11 +1,19 @@
 #pragma once
 
-// Call order for every thread backend. Include after that backend's scheduler.
+// Call order for every thread backend.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
 // All clears use h_stream.
 // TODO: initialize and reset are faster when those clears overlap on several streams.
 // Do that together with block mode: lifecycle creates the streams and passes
 // each stage and clear the ones it uses.
+
+#include "../common/runtime_config.cuh"
+#include "../common/runtime_error.cuh"
+
+#include "profile_buffer.cuh"
+#include "scheduler.cuh"
+#include "task_pool.cuh"
+#include "termination.cuh"
 
 namespace gtap::detail::thread {
 

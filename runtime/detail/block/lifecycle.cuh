@@ -1,6 +1,6 @@
 #pragma once
 
-// Call order for every block backend. Include after that backend's scheduler.
+// Call order for every block backend.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
 // TODO: Create and assign the init/reset streams here, and pass each stage and
 // clear the streams it uses. runtime_init_stream_count and
@@ -9,6 +9,14 @@
 // which still runs every clear on h_stream. init_block_id_pools_metadata
 // overwrites the free-position fill with tasks_per_worker, so the 0 / 0xFF
 // backend difference can go.
+
+#include "../common/runtime_config.cuh"
+#include "../common/runtime_error.cuh"
+
+#include "profile_buffer.cuh"
+#include "scheduler.cuh"
+#include "task_pool.cuh"
+#include "termination.cuh"
 
 namespace gtap::detail::block {
 

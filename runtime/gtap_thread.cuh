@@ -4,7 +4,7 @@
 #define __GTAP_IS_THREAD_MODE
 #endif
 
-#include "detail/thread/backends/default/scheduler.cuh"
+#include "detail/thread/scheduler.cuh"
 #include "detail/thread/lifecycle.cuh"
 #include "detail/thread/host_api.cuh"
 #include "detail/thread/compiler_api.cuh"

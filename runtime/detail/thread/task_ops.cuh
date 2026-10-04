@@ -1,7 +1,6 @@
 #pragma once
 
-// Include after the backend defines reserve_unpublished_task_id.
-
+#include "scheduler.cuh"
 #include "task_pool.cuh"
 #include "termination.cuh"
 

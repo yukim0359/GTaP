@@ -4,7 +4,9 @@
 #define __GTAP_IS_THREAD_MODE
 #endif
 
-#include "../detail/thread/backends/experimental/global_queue/scheduler.cuh"
+#define GTAP_DETAIL_THREAD_BACKEND_EXPERIMENTAL_GLOBAL_QUEUE
+
+#include "../detail/thread/scheduler.cuh"
 #include "../detail/thread/lifecycle.cuh"
 #include "../detail/thread/host_api.cuh"
 #include "../detail/thread/compiler_api.cuh"

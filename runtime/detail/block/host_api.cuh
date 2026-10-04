@@ -1,10 +1,11 @@
 #pragma once
 
-// Public block host API. Include after the backend scheduler and lifecycle.
-
 #include <climits>
 
+#include "../common/cuda_primitives.cuh"
 #include "../common/host_api.cuh"
+
+#include "lifecycle.cuh"
 
 struct gtap_block_config {
     int grid_size = 1024;
