@@ -6,7 +6,7 @@ namespace gtap::detail::block {
 using namespace gtap::detail;
 
 static size_t runtime_device_allocation_bytes() {
-    const launch_config& c = stored_launch_config();
+    const launch_config& c = h_launch_config;
     const size_t tasks =
         static_cast<size_t>(c.total_workers) * c.tasks_per_worker;
     const size_t global_queue_bytes = sizeof(int) * tasks;
@@ -31,7 +31,7 @@ static size_t runtime_device_allocation_bytes() {
 
 cudaError_t initialize_runtime() {
     GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
-    const launch_config& runtime_config = stored_launch_config();
+    const launch_config& runtime_config = h_launch_config;
     const size_t total_tasks =
         static_cast<size_t>(runtime_config.total_workers) *
         runtime_config.tasks_per_worker;
@@ -148,7 +148,7 @@ cudaError_t initialize_runtime() {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int)));
     
     init_block_id_pools_metadata<<<
-        runtime_config.grid_size, 1, 0, stored_stream()>>>();
+        runtime_config.grid_size, 1, 0, h_stream>>>();
     return cudaDeviceSynchronize();
 }
 
@@ -289,7 +289,7 @@ cudaError_t reset_runtime() {
     if (d_entry_result_bytes_ptr != nullptr) {
         const size_t entry_result_size =
             __gtap_auto_entry_result_size *
-            static_cast<size_t>(stored_launch_config().block_size);
+            static_cast<size_t>(h_launch_config.block_size);
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
             d_entry_result_bytes_ptr, 0, entry_result_size, streams[3]));
     }
@@ -308,11 +308,11 @@ cudaError_t reset_runtime() {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &dropped_ptr, profile_dropped_events, sizeof(dropped_ptr)));
     const size_t profile_bytes = sizeof(long long) *
-        stored_launch_config().total_workers * profile_timestamp_capacity();
+        h_launch_config.total_workers * profile_timestamp_capacity();
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(working_ptr, 0, profile_bytes, streams[1]));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         dropped_ptr, 0,
-        sizeof(unsigned long long) * stored_launch_config().total_workers,
+        sizeof(unsigned long long) * h_launch_config.total_workers,
         streams[0]));
 #endif
     

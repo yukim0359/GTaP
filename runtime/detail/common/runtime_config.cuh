@@ -25,17 +25,10 @@ struct launch_config {
     size_t dynamic_shared_bytes;
 };
 
+inline launch_config h_launch_config{};
 __constant__ launch_config d_launch_config;
 
-inline launch_config& stored_launch_config() {
-    static launch_config config{};
-    return config;
-}
-
-inline cudaStream_t& stored_stream() {
-    static cudaStream_t stream = nullptr;
-    return stream;
-}
+inline cudaStream_t h_stream = nullptr;
 
 inline bool& initialized_flag() {
     static bool initialized = false;
@@ -43,8 +36,12 @@ inline bool& initialized_flag() {
 }
 
 inline cudaError_t publish_launch_config(const launch_config& config) {
-    stored_launch_config() = config;
-    return cudaMemcpyToSymbol(d_launch_config, &config, sizeof(config));
+    cudaError_t status =
+        cudaMemcpyToSymbol(d_launch_config, &config, sizeof(config));
+    if (status == cudaSuccess) {
+        h_launch_config = config;
+    }
+    return status;
 }
 
 }  // namespace gtap::detail

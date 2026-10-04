@@ -43,12 +43,12 @@ __device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int
     d_task_id_generated[offset] = task_id;
 }
 
-#define GTAP_RUNTIME_GRID_SIZE (stored_launch_config().grid_size)
+#define GTAP_RUNTIME_GRID_SIZE (h_launch_config.grid_size)
 #define GTAP_RUNTIME_TOTAL_TASKS \
-    (stored_launch_config().total_workers * \
-     stored_launch_config().tasks_per_worker)
+    (h_launch_config.total_workers * \
+     h_launch_config.tasks_per_worker)
 #define GTAP_RUNTIME_TASKS_PER_BLOCK \
-    (stored_launch_config().tasks_per_worker)
+    (h_launch_config.tasks_per_worker)
 
 // ============================================================================
 // Global Queue Operations (no steal needed - all workers pop from global queue)

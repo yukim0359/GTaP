@@ -158,7 +158,7 @@ inline cudaError_t clear_queue_storage(
 }
 
 inline cudaError_t free_queue_storage() {
-    const int num_queues = stored_launch_config().num_queues;
+    const int num_queues = h_launch_config.num_queues;
     WarpTaskQueueMetadata** metadata = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &metadata, d_warp_task_queue_metadata, sizeof(WarpTaskQueueMetadata**)));

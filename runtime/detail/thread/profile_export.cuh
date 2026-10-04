@@ -20,7 +20,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         return result;
     }
 
-    const int warps = gtap::detail::stored_launch_config().total_workers;
+    const int warps = gtap::detail::h_launch_config.total_workers;
     int* device_indices = nullptr;
     int* indices = static_cast<int*>(malloc(sizeof(int) * warps));
     unsigned long long* dropped = static_cast<unsigned long long*>(
@@ -231,10 +231,10 @@ static inline gtap_profile_export_result gtap_export_profile(
             "    }\n"
             "  }\n"
             "}\n",
-            gtap::detail::stored_launch_config().grid_size,
-            gtap::detail::stored_launch_config().block_size,
+            gtap::detail::h_launch_config.grid_size,
+            gtap::detail::h_launch_config.block_size,
             warps, warps_with_executed_tasks,
-            gtap::detail::stored_launch_config().profile_interval_capacity,
+            gtap::detail::h_launch_config.profile_interval_capacity,
             result.recorded_intervals, result.dropped_intervals,
             duration_stats.mean, duration_stats.stddev,
             duration_stats.min, duration_stats.p50, duration_stats.p95,

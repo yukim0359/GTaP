@@ -6,7 +6,7 @@ namespace gtap::detail::block {
 using namespace gtap::detail;
 
 static size_t runtime_device_allocation_bytes() {
-    const launch_config& c = stored_launch_config();
+    const launch_config& c = h_launch_config;
     const size_t workers = c.total_workers;
     const size_t tasks = workers * c.tasks_per_worker;
     const size_t queue_metadata_bytes = sizeof(BlockTaskQueueMetadata) * workers;
@@ -30,7 +30,7 @@ static size_t runtime_device_allocation_bytes() {
 
 cudaError_t initialize_runtime() {
     GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
-    const launch_config& runtime_config = stored_launch_config();
+    const launch_config& runtime_config = h_launch_config;
     const size_t total_workers = runtime_config.total_workers;
     const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;
 
@@ -218,7 +218,7 @@ cudaError_t finalize_runtime() {
 // Call this before each execution after the initial init_task_runtime call
 cudaError_t reset_runtime() {
     reset_runtime_error_record_host();
-    const launch_config& runtime_config = stored_launch_config();
+    const launch_config& runtime_config = h_launch_config;
     const size_t total_workers = runtime_config.total_workers;
     const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;
 

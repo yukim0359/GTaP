@@ -10,7 +10,7 @@ inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
     if (!gtap::detail::initialized_flag()) {
         return cudaErrorInitializationError;
     }
-    const gtap::detail::launch_config& config = gtap::detail::stored_launch_config();
+    const gtap::detail::launch_config& config = gtap::detail::h_launch_config;
     if constexpr (sizeof...(Args) == 0) {
         return cudaLaunchKernel(
             reinterpret_cast<const void*>(kernel),
@@ -18,7 +18,7 @@ inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
             dim3(static_cast<unsigned int>(config.block_size)),
             nullptr,
             config.dynamic_shared_bytes,
-            gtap::detail::stored_stream()
+            gtap::detail::h_stream
         );
     } else {
         void* packed_arguments[] = {
@@ -32,7 +32,7 @@ inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
             dim3(static_cast<unsigned int>(config.block_size)),
             packed_arguments,
             config.dynamic_shared_bytes,
-            gtap::detail::stored_stream()
+            gtap::detail::h_stream
         );
     }
 }

@@ -22,7 +22,7 @@ __constant__ size_t d_task_data_stride;
 inline size_t host_task_data_stride() {
     return align_up(
         __gtap_auto_block_task_data_sizes[
-            stored_launch_config().block_size / warp_size],
+            h_launch_config.block_size / warp_size],
         16);
 }
 

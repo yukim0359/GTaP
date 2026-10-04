@@ -64,7 +64,7 @@ inline cudaError_t gtap_initialize(
         config.dynamic_shared_bytes
     };
     GTAP_DETAIL_CUDA_TRY(gtap::detail::publish_launch_config(launch_config));
-    gtap::detail::stored_stream() = config.stream;
+    gtap::detail::h_stream = config.stream;
     cudaError_t err = gtap::detail::block::initialize_runtime();
     if (err == cudaSuccess) {
         gtap::detail::initialized_flag() = true;
@@ -80,7 +80,7 @@ inline cudaError_t gtap_finalize() {
     cudaError_t err = gtap::detail::block::finalize_runtime();
     if (err == cudaSuccess) {
         gtap::detail::initialized_flag() = false;
-        gtap::detail::stored_stream() = nullptr;
+        gtap::detail::h_stream = nullptr;
     }
     return err;
 }

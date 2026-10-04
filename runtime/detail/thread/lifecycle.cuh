@@ -2,7 +2,7 @@
 
 // Call order for every thread backend. Include after that backend's scheduler.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
-// All clears use stored_stream().
+// All clears use h_stream.
 // TODO: initialize and reset are faster when those clears overlap on several streams.
 
 namespace gtap::detail::thread {
@@ -10,7 +10,7 @@ namespace gtap::detail::thread {
 using namespace gtap::detail;
 
 static size_t runtime_device_allocation_bytes() {
-    const launch_config& c = stored_launch_config();
+    const launch_config& c = h_launch_config;
     const size_t workers = static_cast<size_t>(c.total_workers);
     const size_t tasks = workers * c.tasks_per_worker;
     return queue_storage_allocation_bytes(workers, tasks, c.num_queues) +
@@ -20,10 +20,10 @@ static size_t runtime_device_allocation_bytes() {
 
 cudaError_t initialize_runtime() {
     GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
-    const launch_config& runtime_config = stored_launch_config();
+    const launch_config& runtime_config = h_launch_config;
     const size_t total_workers = runtime_config.total_workers;
     const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;
-    cudaStream_t stream = stored_stream();
+    cudaStream_t stream = h_stream;
 
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     printf("\n=== init_task_runtime detailed profiling ===\n");
@@ -111,10 +111,10 @@ cudaError_t finalize_runtime() {
 
 cudaError_t reset_runtime() {
     reset_runtime_error_record_host();
-    const launch_config& runtime_config = stored_launch_config();
+    const launch_config& runtime_config = h_launch_config;
     const size_t total_workers = runtime_config.total_workers;
     const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;
-    cudaStream_t stream = stored_stream();
+    cudaStream_t stream = h_stream;
 
     GTAP_DETAIL_CUDA_TRY(clear_queue_storage(
         total_workers, total_tasks, runtime_config.num_queues, stream));

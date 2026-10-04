@@ -21,7 +21,7 @@ cudaError_t get_working_time_data(long long* host_working_time) {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
     return cudaMemcpy(
         host_working_time, ptr,
-        sizeof(long long) * stored_launch_config().grid_size *
+        sizeof(long long) * h_launch_config.grid_size *
             profile_timestamp_capacity(),
         cudaMemcpyDeviceToHost);
 }
@@ -34,7 +34,7 @@ cudaError_t get_block_profile_dropped_events_data(
         &ptr, profile_dropped_events, sizeof(ptr)));
     return cudaMemcpy(
         host_counts, ptr,
-        sizeof(unsigned long long) * stored_launch_config().grid_size,
+        sizeof(unsigned long long) * h_launch_config.grid_size,
         cudaMemcpyDeviceToHost);
 }
 
@@ -73,7 +73,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         return result;
     }
 
-    const int blocks = gtap::detail::stored_launch_config().grid_size;
+    const int blocks = gtap::detail::h_launch_config.grid_size;
     int* device_indices = nullptr;
     int* indices = static_cast<int*>(malloc(sizeof(int) * blocks));
     unsigned long long* dropped = static_cast<unsigned long long*>(
@@ -258,10 +258,10 @@ static inline gtap_profile_export_result gtap_export_profile(
             "    }\n"
             "  }\n"
             "}\n",
-            gtap::detail::stored_launch_config().grid_size,
-            gtap::detail::stored_launch_config().block_size,
+            gtap::detail::h_launch_config.grid_size,
+            gtap::detail::h_launch_config.block_size,
             blocks, blocks_with_executed_tasks,
-            gtap::detail::stored_launch_config().profile_interval_capacity,
+            gtap::detail::h_launch_config.profile_interval_capacity,
             result.recorded_intervals, result.dropped_intervals,
             duration_stats.mean, duration_stats.stddev,
             duration_stats.min, duration_stats.p50, duration_stats.p95,

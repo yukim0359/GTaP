@@ -9,7 +9,7 @@ __host__ __device__ __forceinline__ int profile_timestamp_capacity() {
 #ifdef __CUDA_ARCH__
     return 2 * d_launch_config.profile_interval_capacity;
 #else
-    return 2 * stored_launch_config().profile_interval_capacity;
+    return 2 * h_launch_config.profile_interval_capacity;
 #endif
 }
 
