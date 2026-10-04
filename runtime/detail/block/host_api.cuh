@@ -4,6 +4,8 @@
 
 #include <climits>
 
+#include "../common/host_api.cuh"
+
 struct gtap_block_config {
     int grid_size = 1024;
     int block_size = 256;

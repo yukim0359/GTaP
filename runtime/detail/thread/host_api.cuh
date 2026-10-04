@@ -4,6 +4,8 @@
 
 #include <climits>
 
+#include "../common/host_api.cuh"
+
 struct gtap_thread_config {
     int grid_size = 4096;
     int block_size = 32;

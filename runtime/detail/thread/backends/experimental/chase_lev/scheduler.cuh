@@ -3,7 +3,6 @@
 #include <cuda_runtime.h>
 
 #include "../../../../common/cuda_primitives.cuh"
-#include "../../../../common/host_api.cuh"
 #include "../../../../common/runtime_error.cuh"
 #include "../../../../common/termination.cuh"
 #include "../../../../common/victim_select.cuh"
