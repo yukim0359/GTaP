@@ -45,50 +45,6 @@ __device__ __forceinline__ void set_task_id_generated(int block_id, int idx, int
 #define GTAP_RUNTIME_TASKS_PER_BLOCK \
     (stored_launch_config().tasks_per_worker)
 
-#ifdef GTAP_ENABLE_PROFILING
-cudaError_t get_working_time_data(long long* host_working_time) {
-    long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    return cudaMemcpy(host_working_time, ptr, sizeof(long long) *
-        stored_launch_config().total_workers * profile_capacity(),
-        cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_block_profile_dropped_events_data(
-    unsigned long long* host_counts
-) {
-    unsigned long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, profile_dropped_events, sizeof(ptr)));
-    return cudaMemcpy(
-        host_counts, ptr,
-        sizeof(unsigned long long) * stored_launch_config().grid_size,
-        cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_block_working_time_data(int block_id, long long* host_working_time, int max_samples) {
-    long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    const int count = max_samples < profile_capacity() ? max_samples : profile_capacity();
-    return cudaMemcpy(host_working_time,
-        ptr + static_cast<size_t>(block_id) * profile_capacity(),
-        sizeof(long long) * count, cudaMemcpyDeviceToHost);
-}
-
-__global__ void get_block_working_time_counts(int* counts) {
-    if (threadIdx.x == 0) {
-        // Count actual recorded samples for this block
-        int count = 0;
-        for (int i = 0; i < profile_capacity(); i++) {
-            if (working_time[blockIdx.x * profile_capacity() + i] > 0) {
-                count++;
-            }
-        }
-        counts[blockIdx.x] = count;
-    }
-}
-#endif
-
 // ============================================================================
 // Global Queue Operations (no steal needed - all workers pop from global queue)
 // ============================================================================

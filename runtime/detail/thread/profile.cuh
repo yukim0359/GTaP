@@ -7,9 +7,55 @@
 
 #include "../common/profile_export.cuh"
 #include "../common/runtime.cuh"
-#include "profile_host_api.cuh"
+#include "core.cuh"
 
 #ifdef GTAP_ENABLE_PROFILING
+
+namespace gtap::detail::thread {
+
+cudaError_t get_warp_working_time_data(long long* host_working_time) {
+    long long* ptr = nullptr;
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
+    return cudaMemcpy(
+        host_working_time, ptr,
+        sizeof(long long) * stored_launch_config().total_workers * profile_capacity(),
+        cudaMemcpyDeviceToHost);
+}
+
+cudaError_t get_warp_tasks_processed_count_data(int* host_counts) {
+    int* ptr = nullptr;
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, tasks_processed_count, sizeof(ptr)));
+    return cudaMemcpy(
+        host_counts, ptr,
+        sizeof(int) * stored_launch_config().total_workers * profile_capacity(),
+        cudaMemcpyDeviceToHost);
+}
+
+cudaError_t get_warp_profile_dropped_events_data(
+    unsigned long long* host_counts
+) {
+    unsigned long long* ptr = nullptr;
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        &ptr, profile_dropped_events, sizeof(ptr)));
+    return cudaMemcpy(
+        host_counts, ptr,
+        sizeof(unsigned long long) *
+            stored_launch_config().total_workers,
+        cudaMemcpyDeviceToHost);
+}
+
+__global__ void get_warp_working_time_counts(int* counts) {
+    if (threadIdx.x == 0) {
+        int wid = blockIdx.x;
+        int count = 0;
+        for (int i = 0; i < profile_capacity(); i++) {
+            if (working_time[wid * profile_capacity() + i] > 0) count++;
+        }
+        counts[wid] = count;
+    }
+}
+
+}  // namespace gtap::detail::thread
 
 static inline gtap_profile_export_result gtap_export_profile(
     const gtap_profile_export_options& options = {}
