@@ -17,11 +17,11 @@ using namespace gtap::detail;
 inline constexpr int runtime_init_stream_count = 5;
 inline constexpr int task_id_free_position_fill = 0xFF;
 
-__constant__ int* d_global_task_queue;
+__constant__ int* d_global_task_queue; // int[num_blocks * tasks_per_block]
 __device__ unsigned int d_queue_head;
 __device__ unsigned int d_queue_tail;
 __device__ unsigned int d_queue_alloc;
-__constant__ int* d_task_id_generated;
+__constant__ int* d_task_id_generated; // int[num_blocks * GTAP_MAX_CHILD_TASKS]
 
 __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
     int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;

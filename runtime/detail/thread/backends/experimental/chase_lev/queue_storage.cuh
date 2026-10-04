@@ -13,8 +13,8 @@ struct WarpTaskQueueMetadata {
     int bottom;        // Chase-Lev bottom (push/pop here)
 };
 
-__constant__ WarpTaskQueueMetadata** d_warp_task_queue_metadata;
-__constant__ int* d_warp_task_queue_storage;
+__constant__ WarpTaskQueueMetadata** d_warp_task_queue_metadata; // WarpTaskQueueMetadata*[num_queues], each WarpTaskQueueMetadata[num_warps]
+__constant__ int* d_warp_task_queue_storage;                     // int[num_queues * num_warps * queue_capacity]
 
 __device__ __forceinline__ int* chaselev_queue_slot(
     int queue_idx, int worker_idx, int slot

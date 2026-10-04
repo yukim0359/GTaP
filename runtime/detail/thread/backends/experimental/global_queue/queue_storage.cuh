@@ -17,11 +17,11 @@ using namespace gtap::detail;
 constexpr int GTAP_TASK_ID_GEN_QUEUE_STRIDE =
     GTAP_MAX_CHILD_TASKS * warp_size;
 
-__constant__ int* d_global_task_queue;
-__constant__ int* d_queue_head;
-__constant__ int* d_queue_tail;
-__constant__ int* d_queue_alloc;
-__constant__ int* d_task_id_generated_by_queue_idx;
+__constant__ int* d_global_task_queue;              // int[num_queues * num_warps * queue_capacity]
+__constant__ int* d_queue_head;                     // int[num_queues]
+__constant__ int* d_queue_tail;                     // int[num_queues]
+__constant__ int* d_queue_alloc;                    // int[num_queues]
+__constant__ int* d_task_id_generated_by_queue_idx; // int[num_warps * num_queues * GTAP_TASK_ID_GEN_QUEUE_STRIDE]
 
 __device__ __forceinline__ int* global_queue_slot(
     int queue_idx, int position

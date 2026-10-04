@@ -9,9 +9,9 @@ namespace gtap::detail::thread {
 using namespace gtap::detail;
 
 #ifdef GTAP_ENABLE_PROFILING
-__constant__ long long* working_time;
-__constant__ int* tasks_processed_count;
-__constant__ unsigned long long* profile_dropped_events;
+__constant__ long long* working_time;                    // long long[num_warps * profile_timestamp_capacity]
+__constant__ int* tasks_processed_count;                 // int[num_warps * profile_timestamp_capacity]
+__constant__ unsigned long long* profile_dropped_events; // unsigned long long[num_warps]
 
 cudaError_t get_warp_working_time_data(long long* host_working_time) {
     long long* ptr = nullptr;

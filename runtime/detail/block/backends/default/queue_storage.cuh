@@ -16,8 +16,8 @@ struct BlockTaskQueueMetadata {
     int bottom;
 };
 
-__constant__ BlockTaskQueueMetadata* d_block_task_queue_metadata;
-__constant__ int* d_block_task_queue_storage;
+__constant__ BlockTaskQueueMetadata* d_block_task_queue_metadata; // BlockTaskQueueMetadata[num_blocks]
+__constant__ int* d_block_task_queue_storage;                     // int[num_blocks * queue_capacity]
 
 __device__ __forceinline__ int* block_queue_slot(
     int block_idx, int slot

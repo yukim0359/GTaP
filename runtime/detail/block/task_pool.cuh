@@ -28,11 +28,11 @@ inline cudaError_t init_device_task_data_stride() {
     return cudaMemcpyToSymbol(d_task_data_stride, &stride, sizeof(size_t));
 }
 
-__constant__ TaskHeader* d_task_headers;
-__constant__ char* d_task_data_bytes;
-__constant__ char* d_entry_result_bytes;
-__constant__ int* d_task_id_list_free_positions;
-__constant__ int* d_task_id_storage;
+__constant__ TaskHeader* d_task_headers;         // TaskHeader[num_blocks * tasks_per_block]
+__constant__ char* d_task_data_bytes;            // char[num_blocks * tasks_per_block * task_data_stride]
+__constant__ char* d_entry_result_bytes;         // char[block_size * __gtap_auto_entry_result_size]
+__constant__ int* d_task_id_list_free_positions; // int[num_blocks]
+__constant__ int* d_task_id_storage;             // int[num_blocks * tasks_per_block]
 
 __global__ void init_block_id_pools_metadata() {
     if (threadIdx.x == 0) {

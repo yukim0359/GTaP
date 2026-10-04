@@ -9,8 +9,8 @@ namespace gtap::detail::block {
 using namespace gtap::detail;
 
 #ifdef GTAP_ENABLE_PROFILING
-__constant__ long long* working_time;
-__constant__ unsigned long long* profile_dropped_events;
+__constant__ long long* working_time;                    // long long[num_blocks * profile_timestamp_capacity]
+__constant__ unsigned long long* profile_dropped_events; // unsigned long long[num_blocks]
 
 cudaError_t get_working_time_data(long long* host_working_time) {
     long long* ptr = nullptr;

@@ -22,11 +22,11 @@ inline cudaError_t init_device_task_data_stride() {
     return cudaMemcpyToSymbol(d_task_data_stride, &stride, sizeof(size_t));
 }
 
-__constant__ TaskHeader* d_task_headers;
-__constant__ char* d_task_data_bytes;
-__constant__ int* d_task_id_list_free_positions;
-__constant__ int* d_task_id_storage;
-__constant__ int* d_task_id_valid;
+__constant__ TaskHeader* d_task_headers;         // TaskHeader[num_warps * tasks_per_warp]
+__constant__ char* d_task_data_bytes;            // char[num_warps * tasks_per_warp * task_data_stride]
+__constant__ int* d_task_id_list_free_positions; // int[num_warps]
+__constant__ int* d_task_id_storage;             // int[num_warps * tasks_per_warp]
+__constant__ int* d_task_id_valid;               // int[num_warps * tasks_per_warp]
 
 __global__ void init_warp_id_pools_metadata() {
     int warp_id_in_block = get_warp_id_in_block();
