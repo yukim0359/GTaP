@@ -69,37 +69,48 @@ inline size_t profile_buffer_allocation_bytes(size_t workers) {
 #endif
 }
 
-inline cudaError_t allocate_profile_buffers(
+struct profile_buffers {
+    long long* working_time = nullptr;
+    unsigned long long* dropped_events = nullptr;
+};
+
+inline cudaError_t stage_profile_buffers(
     size_t workers,
     cudaStream_t working_time_stream,
-    cudaStream_t dropped_stream
+    cudaStream_t dropped_stream,
+    profile_buffers* buffers
 ) {
 #ifdef GTAP_ENABLE_PROFILING
-    long long* working_time_ptr = nullptr;
-    unsigned long long* profile_dropped_events_ptr = nullptr;
     const size_t profile_bytes =
         sizeof(long long) * workers * profile_timestamp_capacity();
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&working_time_ptr), profile_bytes));
+        reinterpret_cast<void**>(&buffers->working_time), profile_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&profile_dropped_events_ptr),
+        reinterpret_cast<void**>(&buffers->dropped_events),
         sizeof(unsigned long long) * workers));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        working_time, &working_time_ptr, sizeof(working_time_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        profile_dropped_events, &profile_dropped_events_ptr,
-        sizeof(profile_dropped_events_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        working_time_ptr, 0, profile_bytes, working_time_stream));
+        buffers->working_time, 0, profile_bytes, working_time_stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        profile_dropped_events_ptr, 0,
+        buffers->dropped_events, 0,
         sizeof(unsigned long long) * workers, dropped_stream));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(dropped_stream));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(working_time_stream));
 #else
     (void)workers;
     (void)working_time_stream;
     (void)dropped_stream;
+    (void)buffers;
+#endif
+    return cudaSuccess;
+}
+
+inline cudaError_t publish_profile_buffers(const profile_buffers& buffers) {
+#ifdef GTAP_ENABLE_PROFILING
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
+        working_time, &buffers.working_time, sizeof(buffers.working_time)));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
+        profile_dropped_events, &buffers.dropped_events,
+        sizeof(buffers.dropped_events)));
+#else
+    (void)buffers;
 #endif
     return cudaSuccess;
 }

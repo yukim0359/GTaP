@@ -70,8 +70,11 @@ cudaError_t initialize_runtime() {
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(start);
     #endif
-    GTAP_DETAIL_CUDA_TRY(allocate_profile_buffers(
-        total_workers, stream, stream, stream));
+    profile_buffers profile{};
+    GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
+        total_workers, stream, stream, stream, &profile));
+    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
+    GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);

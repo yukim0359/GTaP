@@ -43,8 +43,12 @@ cudaError_t initialize_runtime() {
 
     GTAP_DETAIL_CUDA_TRY(publish_queue_storage(queues));
     GTAP_DETAIL_CUDA_TRY(publish_task_pool(task_pool));
-    GTAP_DETAIL_CUDA_TRY(allocate_profile_buffers(
-        total_workers, streams[1], streams[0]));
+    profile_buffers profile{};
+    GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
+        total_workers, streams[1], streams[0], &profile));
+    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[0]));
+    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[1]));
+    GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
 
     for (int i = 0; i < runtime_init_stream_count; ++i) {
         GTAP_DETAIL_CUDA_TRY(cudaStreamDestroy(streams[i]));
