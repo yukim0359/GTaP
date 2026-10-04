@@ -3,7 +3,6 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "../common/profile_export.cuh"
 #include "../common/runtime.cuh"
@@ -51,11 +50,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         error = gtap::detail::thread::get_warp_tasks_processed_count_data(task_counts);
     }
     if (error == cudaSuccess) {
-#ifdef GTAP_PROFILE_HAS_DROPPED_COUNTER
         error = gtap::detail::thread::get_warp_profile_dropped_events_data(dropped);
-#else
-        memset(dropped, 0, sizeof(unsigned long long) * warps);
-#endif
     }
     cudaFree(device_indices);
     if (error != cudaSuccess) {

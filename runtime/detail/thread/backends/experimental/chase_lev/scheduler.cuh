@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <climits>
 #include "../../../../common/runtime.cuh"
 #include "../../../task_types.cuh"
 #include "../../../task_pool.cuh"
@@ -11,8 +10,6 @@
 #include "../../../queue_select.cuh"
 #include "queue_storage.cuh"
 
-#define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
-
 namespace gtap::detail::thread {
 using namespace gtap::detail;
 
@@ -20,18 +17,6 @@ using namespace gtap::detail;
 inline constexpr bool include_queue_tails = true;
 
 extern __shared__ unsigned char dynamic_shared[];
-
-#define GTAP_RUNTIME_GRID_SIZE (stored_launch_config().grid_size)
-#define GTAP_RUNTIME_BLOCK_SIZE (stored_launch_config().block_size)
-#define GTAP_RUNTIME_NUM_WARPS (stored_launch_config().warps_per_block)
-#define GTAP_RUNTIME_TOTAL_WORKERS (stored_launch_config().total_workers)
-#define GTAP_RUNTIME_TASKS_PER_WORKER \
-    (stored_launch_config().tasks_per_worker)
-#define GTAP_RUNTIME_NUM_QUEUES (stored_launch_config().num_queues)
-#define GTAP_RUNTIME_QUEUE_CAPACITY \
-    (stored_launch_config().queue_capacity)
-#define GTAP_RUNTIME_TOTAL_TASKS \
-    (GTAP_RUNTIME_TOTAL_WORKERS * GTAP_RUNTIME_TASKS_PER_WORKER)
 
 // Chase-Lev style sequential pop/steal operations
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <climits>
 #include "../../../common/runtime.cuh"
 #include "../../task_types.cuh"
 #include "../../task_pool.cuh"
@@ -10,8 +9,6 @@
 #include "../../profile_buffer.cuh"
 #include "../../queue_select.cuh"
 #include "queue_storage.cuh"
-
-#define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
 
 namespace gtap::detail::thread {
 using namespace gtap::detail;
