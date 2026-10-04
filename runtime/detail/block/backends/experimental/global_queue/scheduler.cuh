@@ -76,7 +76,12 @@ __device__ __forceinline__ void push_global_queue(
     __shared__ int first_idx_to_push;
     __shared__ int push_cnt;
 
-    int total_count = (ctx->have_task_id_resumable ? 1 : 0) + ctx->generated_task_count;
+    int total_count =
+#ifdef GTAP_ASSUME_NO_TASKWAIT
+        ctx->generated_task_count;
+#else
+        (ctx->have_task_id_resumable ? 1 : 0) + ctx->generated_task_count;
+#endif
 
     if (total_count == 0) {
         *have_execute_task = false;
@@ -86,6 +91,15 @@ __device__ __forceinline__ void push_global_queue(
     // Determine task to execute immediately vs push to queue
     if (threadIdx.x == 0) {
         first_idx_to_push = 0;
+#ifdef GTAP_ASSUME_NO_TASKWAIT
+        if (ctx->generated_task_count > 0) {
+            *execute_task_id = get_task_id_generated(blockIdx.x, 0);
+            *have_execute_task = true;
+            first_idx_to_push = 1;
+        } else {
+            *have_execute_task = false;
+        }
+#else
         if (ctx->have_task_id_resumable) {
             *execute_task_id = ctx->task_id_resumable;
             *have_execute_task = true;
@@ -99,6 +113,7 @@ __device__ __forceinline__ void push_global_queue(
         } else {
             *have_execute_task = false;
         }
+#endif
         push_cnt = ctx->generated_task_count - first_idx_to_push;
     }
     __syncthreads();
@@ -149,10 +164,10 @@ __device__ __forceinline__ void push_initial_task(
     (void)unused_value;
     TaskHeader* initial_hdr = &d_task_headers[0];
     initial_hdr->func = func;
+#ifndef GTAP_ASSUME_NO_TASKWAIT
     initial_hdr->state = 0;
     initial_hdr->parent_tid = 0;
     initial_hdr->parent_generation = 0;
-#ifndef GTAP_ASSUME_NO_TASKWAIT
     initial_hdr->waiting_child_count = 0;
 #endif
 
@@ -181,7 +196,9 @@ __device__ __forceinline__ void execute_task_loop() {
     if (threadIdx.x == 0) {
         should_continue = true;
         have_execute_task = false;
+#ifndef GTAP_ASSUME_NO_TASKWAIT
         block_ctx.have_task_id_resumable = false;
+#endif
         block_ctx.generated_task_count = 0;
         block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_worker;
 #ifdef GTAP_ENABLE_PROFILING
@@ -236,12 +253,15 @@ __device__ __forceinline__ void execute_task_loop() {
             if (threadIdx.x == 0) {
                 prev_get_task = true;
                 block_ctx.generated_task_count = 0;
+#ifndef GTAP_ASSUME_NO_TASKWAIT
                 block_ctx.have_task_id_resumable = false;
+#endif
             }
             __syncthreads();
         }
 
         if (have_execute_task) {
+#ifndef GTAP_ASSUME_NO_TASKWAIT
             // Copy task header to TaskContext for reuse in task function (using L2 load)
             if (threadIdx.x == 0) {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
@@ -251,6 +271,7 @@ __device__ __forceinline__ void execute_task_loop() {
                 dst_hdr->parent_generation = load_L2(&src_hdr->parent_generation);
             }
             __syncthreads();
+#endif
 
 #ifdef GTAP_ENABLE_PROFILING
             if (threadIdx.x == 0) {
