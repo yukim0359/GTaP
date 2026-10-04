@@ -1,16 +1,9 @@
 #pragma once
 
-#include "runtime_chaselev.cuh"
+#include "scheduler_chaselev.cuh"
 
 namespace gtap::detail::thread {
 using namespace gtap::detail;
-
-inline size_t dynamic_shared_bytes(
-    int block_size, int num_queues
-) {
-    return shared_layout_for(
-        block_size / warp_size, num_queues, true).bytes;
-}
 
 static size_t runtime_device_allocation_bytes() {
     const size_t queue_ptr_array_bytes = sizeof(WarpTaskQueueMetadata*) * GTAP_RUNTIME_NUM_QUEUES;

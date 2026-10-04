@@ -63,8 +63,10 @@ inline cudaError_t gtap_initialize(
         config.num_queues,
         config.max_tasks_per_warp / config.num_queues,
         config.profile_capacity_per_warp,
-        gtap::detail::thread::dynamic_shared_bytes(
-            config.block_size, config.num_queues)
+        gtap::detail::thread::shared_layout_for(
+            config.block_size / gtap::detail::warp_size,
+            config.num_queues,
+            gtap::detail::thread::include_queue_tails).bytes
     };
     GTAP_DETAIL_CUDA_TRY(gtap::detail::publish_launch_config(launch_config));
     gtap::detail::stored_stream() = config.stream;

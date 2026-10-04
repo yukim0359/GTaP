@@ -7,7 +7,7 @@
 
 #include "../common/profile_export.cuh"
 #include "../common/runtime.cuh"
-#include "core.cuh"
+#include "profile_buffer.cuh"
 
 #ifdef GTAP_ENABLE_PROFILING
 

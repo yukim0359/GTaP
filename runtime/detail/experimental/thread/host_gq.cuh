@@ -1,16 +1,9 @@
 #pragma once
 
-#include "runtime_gq.cuh"
+#include "scheduler_gq.cuh"
 
 namespace gtap::detail::thread {
 using namespace gtap::detail;
-
-inline size_t dynamic_shared_bytes(
-    int block_size, int num_queues
-) {
-    return shared_layout_for(
-        block_size / warp_size, num_queues, false).bytes;
-}
 
 static size_t runtime_device_allocation_bytes() {
     const launch_config& c = stored_launch_config();
