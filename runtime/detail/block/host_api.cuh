@@ -1,6 +1,6 @@
 #pragma once
 
-// Public block host API. Include after the backend host header.
+// Public block host API. Include after the backend scheduler and lifecycle.
 
 #include <climits>
 

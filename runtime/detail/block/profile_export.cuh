@@ -5,64 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../common/profile_buffer.cuh"
 #include "../common/profile_export.cuh"
 #include "../common/runtime_config.cuh"
-#include "../common/runtime_error.cuh"
 
-#include "core.cuh"
+#include "profile_buffer.cuh"
 
 #ifdef GTAP_ENABLE_PROFILING
-
-namespace gtap::detail::block {
-
-cudaError_t get_working_time_data(long long* host_working_time) {
-    long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    return cudaMemcpy(
-        host_working_time, ptr,
-        sizeof(long long) * h_launch_config.grid_size *
-            profile_timestamp_capacity(),
-        cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_block_profile_dropped_events_data(
-    unsigned long long* host_counts
-) {
-    unsigned long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, profile_dropped_events, sizeof(ptr)));
-    return cudaMemcpy(
-        host_counts, ptr,
-        sizeof(unsigned long long) * h_launch_config.grid_size,
-        cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_block_working_time_data(
-    int block_id, long long* host_working_time, int max_samples
-) {
-    long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    const int count = max_samples < profile_timestamp_capacity() ? max_samples : profile_timestamp_capacity();
-    return cudaMemcpy(
-        host_working_time,
-        ptr + static_cast<size_t>(block_id) * profile_timestamp_capacity(),
-        sizeof(long long) * count, cudaMemcpyDeviceToHost);
-}
-
-__global__ void get_block_working_time_counts(int* counts) {
-    if (threadIdx.x == 0) {
-        int count = 0;
-        for (int i = 0; i < profile_timestamp_capacity(); i++) {
-            if (working_time[blockIdx.x * profile_timestamp_capacity() + i] > 0) {
-                count++;
-            }
-        }
-        counts[blockIdx.x] = count;
-    }
-}
-
-}  // namespace gtap::detail::block
 
 static inline gtap_profile_export_result gtap_export_profile(
     const gtap_profile_export_options& options = {}
