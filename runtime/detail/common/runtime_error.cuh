@@ -216,20 +216,20 @@ inline void print_error_report(const runtime_error_record* r) {
 
 }  // namespace gtap::detail
 
-inline cudaError_t gtap_synchronize() {
-    cudaError_t st = cudaDeviceSynchronize();
-    gtap::detail::runtime_error_record record{};
-    if (gtap::detail::read_error_report(&record)) {
-        gtap::detail::print_error_report(&record);
-        gtap::detail::reset_runtime_error_record_host();
-        return st;
-    }
-    if (st != cudaSuccess) {
-        fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
-        return st;
-    }
-    return cudaSuccess;
-}
+#ifndef GTAP_DETAIL_CUDA_TRY
+#define GTAP_DETAIL_CUDA_TRY(call) do { \
+    cudaError_t __st = (call); \
+    if (__st != cudaSuccess) { \
+        gtap::detail::runtime_error_record __record{}; \
+        if (gtap::detail::read_error_report(&__record)) { \
+            gtap::detail::print_error_report(&__record); \
+        } else { \
+            fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(__st)); \
+        } \
+        return __st; \
+    } \
+} while (0)
+#endif
 
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(tid, queue_idx, num_queues) \
     gtap::detail::record_runtime_error_and_trap( \

@@ -3,63 +3,13 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "../common/profile_export.cuh"
-#include "../common/runtime.cuh"
-#include "core.cuh"
+#include "../common/runtime_config.cuh"
+
+#include "profile_buffer.cuh"
 
 #ifdef GTAP_ENABLE_PROFILING
-
-namespace gtap::detail::block {
-
-cudaError_t get_working_time_data(long long* host_working_time) {
-    long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    return cudaMemcpy(
-        host_working_time, ptr,
-        sizeof(long long) * stored_launch_config().grid_size *
-            profile_capacity(),
-        cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_block_profile_dropped_events_data(
-    unsigned long long* host_counts
-) {
-    unsigned long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, profile_dropped_events, sizeof(ptr)));
-    return cudaMemcpy(
-        host_counts, ptr,
-        sizeof(unsigned long long) * stored_launch_config().grid_size,
-        cudaMemcpyDeviceToHost);
-}
-
-cudaError_t get_block_working_time_data(
-    int block_id, long long* host_working_time, int max_samples
-) {
-    long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
-    const int count = max_samples < profile_capacity() ? max_samples : profile_capacity();
-    return cudaMemcpy(
-        host_working_time,
-        ptr + static_cast<size_t>(block_id) * profile_capacity(),
-        sizeof(long long) * count, cudaMemcpyDeviceToHost);
-}
-
-__global__ void get_block_working_time_counts(int* counts) {
-    if (threadIdx.x == 0) {
-        int count = 0;
-        for (int i = 0; i < profile_capacity(); i++) {
-            if (working_time[blockIdx.x * profile_capacity() + i] > 0) {
-                count++;
-            }
-        }
-        counts[blockIdx.x] = count;
-    }
-}
-
-}  // namespace gtap::detail::block
 
 static inline gtap_profile_export_result gtap_export_profile(
     const gtap_profile_export_options& options = {}
@@ -70,13 +20,13 @@ static inline gtap_profile_export_result gtap_export_profile(
         return result;
     }
 
-    const int blocks = gtap::detail::stored_launch_config().grid_size;
+    const int blocks = gtap::detail::h_launch_config.grid_size;
     int* device_indices = nullptr;
     int* indices = static_cast<int*>(malloc(sizeof(int) * blocks));
     unsigned long long* dropped = static_cast<unsigned long long*>(
         malloc(sizeof(unsigned long long) * blocks));
     long long* times = static_cast<long long*>(malloc(
-        sizeof(long long) * blocks * gtap::detail::profile_capacity()));
+        sizeof(long long) * blocks * gtap::detail::profile_timestamp_capacity()));
     if (!indices || !dropped || !times) {
         free(indices); free(dropped); free(times);
         result.status = gtap_profile_export_status::out_of_memory;
@@ -93,11 +43,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         indices, device_indices, sizeof(int) * blocks, cudaMemcpyDeviceToHost);
     if (error == cudaSuccess) error = gtap::detail::block::get_working_time_data(times);
     if (error == cudaSuccess) {
-#ifdef GTAP_PROFILE_HAS_DROPPED_COUNTER
         error = gtap::detail::block::get_block_profile_dropped_events_data(dropped);
-#else
-        memset(dropped, 0, sizeof(unsigned long long) * blocks);
-#endif
     }
     cudaFree(device_indices);
     if (error != cudaSuccess) {
@@ -115,7 +61,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         result.recorded_intervals += static_cast<size_t>(indices[block] / 2);
         result.dropped_intervals += static_cast<size_t>(dropped[block]);
         for (int i = 0; i < indices[block]; ++i) {
-            const long long value = times[block * gtap::detail::profile_capacity() + i];
+            const long long value = times[block * gtap::detail::profile_timestamp_capacity() + i];
             if (value > 0 && (!origin || value < origin)) origin = value;
             if (value > profile_end) profile_end = value;
         }
@@ -148,7 +94,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         long long execution_ns = 0;
         for (int i = 0; i < indices[block]; i += 2) {
             const size_t offset =
-                static_cast<size_t>(block) * gtap::detail::profile_capacity() + i;
+                static_cast<size_t>(block) * gtap::detail::profile_timestamp_capacity() + i;
             const long long duration = times[offset + 1] - times[offset];
             durations[task_index++] = static_cast<double>(duration);
             execution_ns += duration;
@@ -181,7 +127,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     for (int block = 0; block < blocks; ++block) {
         for (int i = 0; i < indices[block]; i += 2) {
             const size_t offset =
-                static_cast<size_t>(block) * gtap::detail::profile_capacity() + i;
+                static_cast<size_t>(block) * gtap::detail::profile_timestamp_capacity() + i;
             fprintf(timeline, "%d,%lld,%lld\n", block,
                     times[offset] - origin, times[offset + 1] - origin);
         }
@@ -199,7 +145,7 @@ static inline gtap_profile_export_result gtap_export_profile(
             long long last_execution_ns = 0;
             for (int i = 0; i < indices[block]; i += 2) {
                 const size_t offset =
-                    static_cast<size_t>(block) * gtap::detail::profile_capacity() + i;
+                    static_cast<size_t>(block) * gtap::detail::profile_timestamp_capacity() + i;
                 const long long start_ns = times[offset] - origin;
                 const long long end_ns = times[offset + 1] - origin;
                 recorded_task_execution_ns += end_ns - start_ns;
@@ -255,10 +201,10 @@ static inline gtap_profile_export_result gtap_export_profile(
             "    }\n"
             "  }\n"
             "}\n",
-            gtap::detail::stored_launch_config().grid_size,
-            gtap::detail::stored_launch_config().block_size,
+            gtap::detail::h_launch_config.grid_size,
+            gtap::detail::h_launch_config.block_size,
             blocks, blocks_with_executed_tasks,
-            gtap::detail::stored_launch_config().profile_interval_capacity,
+            gtap::detail::h_launch_config.profile_interval_capacity,
             result.recorded_intervals, result.dropped_intervals,
             duration_stats.mean, duration_stats.stddev,
             duration_stats.min, duration_stats.p50, duration_stats.p95,

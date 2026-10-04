@@ -1,8 +1,11 @@
 #pragma once
 
-// Public thread host API. Include after the backend host header.
-
 #include <climits>
+
+#include "../common/cuda_primitives.cuh"
+#include "../common/host_api.cuh"
+
+#include "lifecycle.cuh"
 
 struct gtap_thread_config {
     int grid_size = 4096;
@@ -63,11 +66,13 @@ inline cudaError_t gtap_initialize(
         config.num_queues,
         config.max_tasks_per_warp / config.num_queues,
         config.profile_capacity_per_warp,
-        gtap::detail::thread::dynamic_shared_bytes(
-            config.block_size, config.num_queues)
+        gtap::detail::thread::shared_layout_for(
+            config.block_size / gtap::detail::warp_size,
+            config.num_queues,
+            gtap::detail::thread::include_queue_tails).bytes
     };
     GTAP_DETAIL_CUDA_TRY(gtap::detail::publish_launch_config(launch_config));
-    gtap::detail::stored_stream() = config.stream;
+    gtap::detail::h_stream = config.stream;
     cudaError_t err = gtap::detail::thread::initialize_runtime();
     if (err == cudaSuccess) {
         gtap::detail::initialized_flag() = true;
@@ -83,7 +88,7 @@ inline cudaError_t gtap_finalize() {
     cudaError_t err = gtap::detail::thread::finalize_runtime();
     if (err == cudaSuccess) {
         gtap::detail::initialized_flag() = false;
-        gtap::detail::stored_stream() = nullptr;
+        gtap::detail::h_stream = nullptr;
     }
     return err;
 }

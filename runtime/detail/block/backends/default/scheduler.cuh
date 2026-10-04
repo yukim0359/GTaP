@@ -1,34 +1,20 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <climits>
-#include "../common/runtime.cuh"
-#include "core.cuh"
 
-#define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
+#include "../../../common/cuda_primitives.cuh"
+#include "../../../common/runtime_error.cuh"
+#include "../../../common/termination.cuh"
+#include "../../../common/victim_select.cuh"
 
-extern const size_t __gtap_auto_entry_result_size;
+#include "../../profile_buffer.cuh"
+#include "../../task_pool.cuh"
+#include "../../task_types.cuh"
+#include "../../termination.cuh"
+#include "queue_storage.cuh"
 
-// Exposed device globals
-// Note: gtap::detail::block::d_task_data_bytes is now char* (byte array) to support type-erased task data (static allocation)
 namespace gtap::detail::block {
 using namespace gtap::detail;
-
-struct BlockTaskQueueMetadata {
-    int top;
-    int bottom;
-};
-
-__constant__ BlockTaskQueueMetadata* d_block_task_queue_metadata;
-__constant__ int* d_block_task_queue_storage;
-
-__device__ __forceinline__ int* block_queue_slot(
-    int block_idx, int slot
-) {
-    return &d_block_task_queue_storage[
-        static_cast<size_t>(block_idx) *
-            d_launch_config.queue_capacity + slot];
-}
 
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int task_id) {
     BlockTaskQueueMetadata* q = &d_block_task_queue_metadata[blockIdx.x];
@@ -41,7 +27,7 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
     }
     store_L2(
         block_queue_slot(blockIdx.x, old_tail % queue_capacity), task_id);
-    atomicAdd(&ctx->task_id_generated_count, 1);
+    atomicAdd(&ctx->generated_task_count, 1);
 }
 
 // Chase-Lev pop: owner pops from bottom
@@ -131,7 +117,7 @@ __device__ __forceinline__ void push(
 
 #ifdef GTAP_ASSUME_NO_TASKWAIT
     int publish_bottom = ctx->queue_tail;
-    if (ctx->task_id_generated_count > 0) {
+    if (ctx->generated_task_count > 0) {
         publish_bottom = ctx->queue_tail - 1;
         if (threadIdx.x == 0) {
             *execute_task_id = load_L2(block_queue_slot(
@@ -148,7 +134,7 @@ __device__ __forceinline__ void push(
             printf("resume: %d (block: %d)\n", *execute_task_id, blockIdx.x);
 #endif
         }
-    } else if (ctx->task_id_generated_count > 0) {
+    } else if (ctx->generated_task_count > 0) {
         publish_bottom = ctx->queue_tail - 1;
         if (threadIdx.x == 0) {
             *execute_task_id = load_L2(block_queue_slot(
@@ -162,122 +148,6 @@ __device__ __forceinline__ void push(
     if (threadIdx.x == 0) {
         store_L2(&myQueue->bottom, publish_bottom);
     }
-}
-
-__device__ __forceinline__ void set_state_for_join(
-    int tid,
-    int child_count,
-    int next_state,
-    int unused_value
-) {
-    (void)unused_value;
-    __syncthreads();
-    if (threadIdx.x == 0) {
-        TaskHeader* hdr = &d_task_headers[tid];
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-        hdr->state = next_state;
-        hdr->waiting_child_count = child_count;
-#endif
-    }
-}
-
-__device__ __forceinline__ bool set_state_for_join_block(
-    int tid,
-    TaskContext* ctx,
-    int next_state,
-    int unused_value
-) {
-    (void)unused_value;
-    __syncthreads();
-    int child_count = ctx->task_id_generated_count;
-    if (threadIdx.x == 0) {
-        TaskHeader* hdr = &d_task_headers[tid];
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-        hdr->state = next_state;
-        hdr->waiting_child_count = child_count;
-#endif
-#ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    printf("set_state_for_join_block: tid=%d child_count=%d\n", tid, child_count);
-#endif
-    }
-    __syncthreads();
-    return child_count != 0;
-}
-
-__device__ __forceinline__ int get_task_state(int tid) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-    return 0;
-#else
-    return load_L2(&d_task_headers[tid].state);
-#endif
-}
-
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-__device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
-    TaskHeader* parent_hdr = &d_task_headers[parentId];
-    __threadfence();
-    int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
-    if (rem == 1) {
-        ctx->have_task_id_resumable = true;
-        ctx->task_id_resumable = parentId;
-    }
-#ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    printf("notify_parent: %d, rem: %d\n", parentId, rem);
-#endif
-    return rem;
-}
-#endif
-
-__device__ void finish_task(int tid, TaskContext* ctx) {
-    __syncthreads();
-    if (threadIdx.x == 0) {
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-        release_task_id_to_block_pool(tid);
-        if (tid == 0) store_L2(&d_first_task_finished, 1);
-#else
-        TaskHeader* cached_hdr = &ctx->cached_task_header;
-        int parent_tid = cached_hdr->parent_tid;
-        d_task_headers[tid].generation = cached_hdr->generation + 1;
-
-        if (tid != 0 && load_L2(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
-#ifdef GTAP_DETAIL_INTERNAL_DEBUG
-            printf("finish_task: %d, parent_tid: %d\n", tid, parent_tid);
-#endif
-            notify_parent(parent_tid, ctx);
-            release_task_id_to_block_pool(tid);
-        } else {
-            release_task_id_to_block_pool(tid);
-        }
-        if (tid == 0) store_L2(&d_first_task_finished, 1);
-#endif
-    }
-}
-
-__device__ __forceinline__ void* spawn_task(
-    TaskContext* ctx,
-    int self_tid,
-    int* child_count,
-    void (*func)(void*, int, TaskContext*),
-    int unused_value
-) {
-    (void)unused_value;
-    int new_tid = get_task_id_from_block_pool(
-        &d_task_id_list_free_positions[blockIdx.x],
-        &ctx->id_list_alloc_pos,
-        &ctx->id_list_free_pos_stale);
-    TaskHeader* new_hdr = &d_task_headers[new_tid];
-    new_hdr->func = func;
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-    TaskHeader* cached_hdr = &ctx->cached_task_header;
-    new_hdr->parent_tid = self_tid;
-    new_hdr->parent_generation = cached_hdr->generation;
-    new_hdr->state = 0;
-    new_hdr->waiting_child_count = 0;
-#endif
-
-    reserve_unpublished_task_id(ctx, new_tid);
-    (void)child_count;
-    return get_task_data(new_tid);
 }
 
 __device__ __forceinline__ void push_initial_task(
@@ -319,7 +189,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
         block_ctx.have_task_id_resumable = false;
 #endif
-        block_ctx.task_id_generated_count = 0;
+        block_ctx.generated_task_count = 0;
         block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_worker;
 #ifdef GTAP_ENABLE_PROFILING
         working_time_idx = 0;
@@ -379,7 +249,7 @@ __device__ __forceinline__ void execute_task_loop() {
         } else {
             if (threadIdx.x == 0) {
                 prev_get_task = true;
-                block_ctx.task_id_generated_count = 0;
+                block_ctx.generated_task_count = 0;
                 block_ctx.queue_tail = load_L2(&d_block_task_queue_metadata[blockIdx.x].bottom);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
                 block_ctx.have_task_id_resumable = false;
@@ -403,9 +273,9 @@ __device__ __forceinline__ void execute_task_loop() {
 
 #ifdef GTAP_ENABLE_PROFILING
             if (threadIdx.x == 0) {
-                if (working_time_idx + 1 < profile_capacity()) {
+                if (working_time_idx + 1 < profile_timestamp_capacity()) {
                     working_time[
-                        blockIdx.x * profile_capacity() +
+                        blockIdx.x * profile_timestamp_capacity() +
                         working_time_idx] = get_global_time();
                     working_time_idx++;
                 } else {
@@ -424,9 +294,9 @@ __device__ __forceinline__ void execute_task_loop() {
         __threadfence();
 #ifdef GTAP_ENABLE_PROFILING
         if (threadIdx.x == 0) {
-            if (working_time_idx < profile_capacity()) {
+            if (working_time_idx < profile_timestamp_capacity()) {
                 working_time[
-                    blockIdx.x * profile_capacity() +
+                    blockIdx.x * profile_timestamp_capacity() +
                     working_time_idx] = get_global_time();
                 working_time_idx++;
             }
@@ -435,9 +305,9 @@ __device__ __forceinline__ void execute_task_loop() {
 
         int total_count =
 #ifdef GTAP_ASSUME_NO_TASKWAIT
-            block_ctx.task_id_generated_count;
+            block_ctx.generated_task_count;
 #else
-            (block_ctx.have_task_id_resumable ? 1 : 0) + block_ctx.task_id_generated_count;
+            (block_ctx.have_task_id_resumable ? 1 : 0) + block_ctx.generated_task_count;
 #endif
         int push_total = max(total_count - 1, 0);
         push(&block_ctx, push_total, &execute_task_id);

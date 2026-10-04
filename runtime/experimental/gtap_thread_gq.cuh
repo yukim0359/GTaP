@@ -1,6 +1,18 @@
 #pragma once
 
-#include "../detail/experimental/thread/host_gq.cuh"
+#ifndef __GTAP_IS_THREAD_MODE
+#define __GTAP_IS_THREAD_MODE
+#endif
+
+#if defined(GTAP_DETAIL_THREAD_BACKEND_DEFAULT) || \
+    defined(GTAP_DETAIL_THREAD_BACKEND_EXPERIMENTAL_CHASE_LEV)
+#error "A different thread backend is already selected"
+#endif
+
+#define GTAP_DETAIL_THREAD_BACKEND_EXPERIMENTAL_GLOBAL_QUEUE
+
+#include "../detail/thread/scheduler.cuh"
+#include "../detail/thread/lifecycle.cuh"
 #include "../detail/thread/host_api.cuh"
 #include "../detail/thread/compiler_api.cuh"
-#include "../detail/thread/profile.cuh"
+#include "../detail/thread/profile_export.cuh"

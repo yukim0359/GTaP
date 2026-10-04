@@ -1,6 +1,6 @@
 #pragma once
 
-// Compiler entry points for block mode. Include after the runtime header.
+#include "task_ops.cuh"
 
 __device__ inline void __gtap_execute_task_loop() {
 #ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH
@@ -12,12 +12,6 @@ __device__ inline void __gtap_execute_task_loop() {
 
 __device__ __forceinline__ int __gtap_get_task_state(int tid) {
     return gtap::detail::block::get_task_state(tid);
-}
-
-__device__ __forceinline__ void __gtap_set_state_for_join(
-    int tid, int child_count, int next_state, int unused_value
-) {
-    gtap::detail::block::set_state_for_join(tid, child_count, next_state, unused_value);
 }
 
 __device__ __forceinline__ bool __gtap_set_state_for_join_block(

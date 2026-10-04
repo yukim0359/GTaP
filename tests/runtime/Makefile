@@ -8,11 +8,7 @@ OUT_DIR := bin
 TESTS := fib_thread fib_block binary_tree_thread binary_tree_block \
 	multiple_taskwait_queue invalid_queue_thread
 BINS := $(addprefix $(OUT_DIR)/,$(TESTS))
-RUNTIME_HEADERS := $(wildcard \
-	$(GT_INC)/*.cuh \
-	$(GT_INC)/detail/*/*.cuh \
-	$(GT_INC)/detail/*/*/*.cuh \
-	$(GT_INC)/experimental/*.cuh)
+DEPS := $(addsuffix .d,$(BINS))
 
 COMMON_FLAGS := -O3 -x cuda --cuda-path="$(CUDA_PATH)" \
 	--cuda-gpu-arch="$(CUDA_ARCH)" -I"$(GT_INC)" \
@@ -24,8 +20,15 @@ all: $(BINS)
 $(OUT_DIR):
 	mkdir -p "$@"
 
-$(OUT_DIR)/%: %.cu $(RUNTIME_HEADERS) | $(OUT_DIR)
-	"$(CLANG_BIN)" $(COMMON_FLAGS) "$<" -o "$@"
+# A missing .d is an out-of-date prerequisite, so the first build records headers.
+# The compile refreshes the .d; .PRECIOUS keeps make from deleting that side effect.
+$(OUT_DIR)/%: %.cu $(OUT_DIR)/%.d | $(OUT_DIR)
+	"$(CLANG_BIN)" $(COMMON_FLAGS) -MMD -MP -MT "$@" -MF "$(OUT_DIR)/$*.d" "$<" -o "$@"
+
+$(OUT_DIR)/%.d: ;
+.PRECIOUS: $(OUT_DIR)/%.d
+
+-include $(DEPS)
 
 check: all
 	@echo "[ RUN      ] fib_thread"
@@ -48,4 +51,4 @@ check: all
 	@echo "[       OK ] invalid_queue_thread"
 
 clean:
-	rm -f $(BINS)
+	rm -f $(BINS) $(DEPS)
