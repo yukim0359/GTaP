@@ -61,42 +61,8 @@ static inline gtap_profile_export_result gtap_export_profile(
     const gtap_profile_export_options& options = {}
 ) {
     gtap_profile_export_result result;
-    if (!gtap::detail::valid_label(options.label)) {
-        result.status = gtap_profile_export_status::invalid_label;
-        printf("GTaP profile not written: invalid label\n");
-        return result;
-    }
-    if (!gtap::detail::resolve_output(
-            options.output_directory, result.result_directory,
-            sizeof(result.result_directory))) {
-        result.status = gtap_profile_export_status::invalid_output_directory;
-        printf("GTaP profile not written: invalid output directory\n");
-        return result;
-    }
-    const int metadata_len = snprintf(
-        result.profile_path, sizeof(result.profile_path), "%s/profile.json",
-        result.result_directory);
-    const int timeline_len = snprintf(
-        result.intervals_path, sizeof(result.intervals_path),
-        "%s/task_execution_intervals.csv", result.result_directory);
-    const int statistics_len = snprintf(
-        result.aggregates_path, sizeof(result.aggregates_path),
-        "%s/task_execution_aggregates.csv", result.result_directory);
-    if (metadata_len < 0 || timeline_len < 0 || statistics_len < 0 ||
-        static_cast<size_t>(metadata_len) >= sizeof(result.profile_path) ||
-        static_cast<size_t>(timeline_len) >= sizeof(result.intervals_path) ||
-        static_cast<size_t>(statistics_len) >= sizeof(result.aggregates_path)) {
-        result.status = gtap_profile_export_status::path_too_long;
-        printf("GTaP profile not written: output path is too long\n");
-        return result;
-    }
-    if (!options.overwrite &&
-        (gtap::detail::path_exists(result.profile_path) ||
-         gtap::detail::path_exists(result.intervals_path) ||
-         gtap::detail::path_exists(result.aggregates_path))) {
-        result.status = gtap_profile_export_status::already_exists;
-        printf("GTaP profile not written: files already exist in %s\n",
-               result.result_directory);
+    if (gtap::detail::prepare_profile_output(options, result) !=
+        gtap_profile_export_status::success) {
         return result;
     }
 
@@ -236,7 +202,7 @@ static inline gtap_profile_export_result gtap_export_profile(
                     task_counts[offset]);
         }
     }
-    bool io_ok = !ferror(timeline) && fclose(timeline) == 0;
+    bool io_ok = gtap::detail::close_profile_file(timeline);
     FILE* stats = io_ok ? fopen(result.aggregates_path, "w") : nullptr;
     if (stats) {
         fprintf(stats,
@@ -264,7 +230,7 @@ static inline gtap_profile_export_result gtap_export_profile(
                     recorded_task_execution_ns, first_execution_ns,
                     last_execution_ns);
         }
-        io_ok = !ferror(stats) && fclose(stats) == 0;
+        io_ok = gtap::detail::close_profile_file(stats);
     } else {
         io_ok = false;
     }
@@ -334,9 +300,7 @@ static inline gtap_profile_export_result gtap_export_profile(
             active_warp_ratio_stats.stddev, active_warp_ratio_stats.min,
             active_warp_ratio_stats.p50, active_warp_ratio_stats.p95,
             active_warp_ratio_stats.p99, active_warp_ratio_stats.max) >= 0;
-        const bool metadata_error = ferror(metadata) != 0;
-        const bool metadata_closed = fclose(metadata) == 0;
-        io_ok = metadata_ok && !metadata_error && metadata_closed;
+        io_ok = metadata_ok && gtap::detail::close_profile_file(metadata);
     } else {
         io_ok = false;
     }
