@@ -12,8 +12,6 @@
 #include "../../../termination.cuh"
 #include "queue_storage.cuh"
 
-#define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
-
 namespace gtap::detail::block {
 using namespace gtap::detail;
 

@@ -3,7 +3,6 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "../common/profile_export.cuh"
 #include "../common/runtime_config.cuh"
@@ -44,11 +43,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         indices, device_indices, sizeof(int) * blocks, cudaMemcpyDeviceToHost);
     if (error == cudaSuccess) error = gtap::detail::block::get_working_time_data(times);
     if (error == cudaSuccess) {
-#ifdef GTAP_PROFILE_HAS_DROPPED_COUNTER
         error = gtap::detail::block::get_block_profile_dropped_events_data(dropped);
-#else
-        memset(dropped, 0, sizeof(unsigned long long) * blocks);
-#endif
     }
     cudaFree(device_indices);
     if (error != cudaSuccess) {
