@@ -17,8 +17,8 @@ struct launch_config {
     int grid_size;
     int block_size;
     int warps_per_block;
-    int total_workers;
-    int tasks_per_worker;
+    int total_scheduling_units;
+    int tasks_per_scheduling_unit;
     int num_queues;
     int queue_capacity;
     int profile_interval_capacity;

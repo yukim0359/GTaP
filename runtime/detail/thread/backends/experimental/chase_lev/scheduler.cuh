@@ -6,7 +6,7 @@
 #include "../../../../common/runtime_error.cuh"
 #include "../../../../common/termination.cuh"
 #include "../../../../common/victim_select.cuh"
-#include "../../../../common/worker_index.cuh"
+#include "../../../../common/warp_index.cuh"
 
 #include "../../../profile_buffer.cuh"
 #include "../../../queue_select.cuh"
@@ -29,7 +29,7 @@ extern __shared__ unsigned char dynamic_shared[];
 // Chase-Lev popBottom (single item) - called only by lane 0
 // Returns task_id on success, -1 on failure (Empty)
 __device__ __forceinline__ int pop_single_chase_lev(
-    WarpTaskQueueMetadata* q, int queue_idx, int worker_idx
+    WarpTaskQueueMetadata* q, int queue_idx, int warp_idx
 ) {
     int b = q->bottom - 1;
     store_L2(&q->bottom, b);
@@ -43,7 +43,7 @@ __device__ __forceinline__ int pop_single_chase_lev(
     }
 
     int task_id = load_L2(chaselev_queue_slot(
-        queue_idx, worker_idx,
+        queue_idx, warp_idx,
         b % d_launch_config.queue_capacity));
 
     if (size > 0) {
@@ -91,7 +91,7 @@ __device__ __forceinline__ int pop_chase_lev(int* execute_task_id, int max_count
 // Chase-Lev steal (single item) - called only by lane 0
 // Returns task_id on success, -1 on failure (Empty or Abort)
 __device__ __forceinline__ int steal_single_chase_lev(
-    WarpTaskQueueMetadata* q, int queue_idx, int worker_idx
+    WarpTaskQueueMetadata* q, int queue_idx, int warp_idx
 ) {
     int t = load_L2(&q->top);
     __threadfence();
@@ -101,7 +101,7 @@ __device__ __forceinline__ int steal_single_chase_lev(
     if (size <= 0) return -1;
 
     int task_id = load_L2(chaselev_queue_slot(
-        queue_idx, worker_idx,
+        queue_idx, warp_idx,
         t % d_launch_config.queue_capacity));
 
     if (atomicCAS(&q->top, t, t + 1) != t) {
@@ -140,7 +140,7 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
 
         if (task_id == -1) break;
 
-        // Increment active worker count on first successful steal
+        // Increment the active warp count on the first successful steal
         if (M == TERMINATE_ON_ALL_TASKS_FINISH && !active_count_incremented && !prev_get_task) {
             if (lane == 0) atomicAdd(&d_active_warp_count, 1);
             active_count_incremented = true;
@@ -324,7 +324,7 @@ __device__ __forceinline__ void execute_task_loop() {
             reinterpret_cast<int*>(dynamic_shared + layout.staged_task_ids) +
             warp_id_in_block * d_launch_config.num_queues * warp_size;
         task_context->queue_idx = 0;
-        task_context->id_list_free_pos_stale = d_launch_config.tasks_per_worker;
+        task_context->id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
         #pragma unroll
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
             task_context->generated_task_counts[k] = 0;

@@ -5,7 +5,7 @@
 #include "../../../../common/cuda_primitives.cuh"
 #include "../../../../common/runtime_error.cuh"
 #include "../../../../common/termination.cuh"
-#include "../../../../common/worker_index.cuh"
+#include "../../../../common/warp_index.cuh"
 
 #include "../../../profile_buffer.cuh"
 #include "../../../queue_select.cuh"
@@ -24,7 +24,7 @@ inline constexpr bool include_queue_tails = false;
 extern __shared__ unsigned char dynamic_shared[];
 
 // ============================================================================
-// Global Queue Operations (no steal needed - all workers pop from global queue)
+// Global Queue Operations (no steal needed - all warps pop from global queue)
 // ============================================================================
 
 // Keep the common case in warp-local shared memory.  Overflow remains in the
@@ -74,7 +74,7 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
             int new_head = old_head + count;
             if (atomicCAS(&d_queue_head[queue_idx], old_head, new_head) == old_head) {
                 base_head = old_head;
-                // Increment active worker count if this worker was previously idle
+                // Increment the active warp count if this warp was previously idle
                 if (M == TERMINATE_ON_ALL_TASKS_FINISH && !prev_get_task) {
                     atomicAdd(&d_active_warp_count, 1);
                 }
@@ -91,7 +91,7 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
     // Each lane reads its task (if it has one)
     if (lane < count) {
         int idx = (base_head + lane) %
-            (d_launch_config.total_workers * d_launch_config.queue_capacity);
+            (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity);
         int tid = load_L2(global_queue_slot(queue_idx, idx));
         *execute_task_id = tid;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
@@ -158,10 +158,10 @@ __device__ __forceinline__ void push_global_queue(
             base_pos = atomicAdd(&d_queue_alloc[kind], push_cnt);
             // Overflow check
             int head_val = load_L2(&d_queue_head[kind]);
-            if (base_pos + push_cnt - head_val > (d_launch_config.total_workers * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN) {
+            if (base_pos + push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN) {
             GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
                 -1, kind, base_pos + push_cnt - head_val,
-                (d_launch_config.total_workers * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN);
+                (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN);
             }
         }
         base_pos = __shfl_sync(0xFFFFFFFFu, base_pos, 0);
@@ -170,7 +170,7 @@ __device__ __forceinline__ void push_global_queue(
         for (int j = lane; j < push_cnt; j += warp_size) {
             int tid = get_unpublished_task_id(
                 ctx, kind, first_idx_to_push + j);
-            int pos = (base_pos + j) % (d_launch_config.total_workers * d_launch_config.queue_capacity);
+            int pos = (base_pos + j) % (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity);
             store_L2(global_queue_slot(kind, pos), tid);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
             printf("push_global: tid=%d to queue %d, pos %d in lane %d\n", tid, kind, pos, lane);
@@ -253,7 +253,7 @@ __device__ __forceinline__ void execute_task_loop() {
             reinterpret_cast<int*>(dynamic_shared + layout.staged_task_ids) +
             warp_id_in_block * d_launch_config.num_queues * warp_size;
         task_context->queue_idx = 0;
-        task_context->id_list_free_pos_stale = d_launch_config.tasks_per_worker;
+        task_context->id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
         #pragma unroll
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
             task_context->generated_task_counts[k] = 0;

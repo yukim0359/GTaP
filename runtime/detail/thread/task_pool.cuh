@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../common/runtime_error.cuh"
-#include "../common/worker_index.cuh"
+#include "../common/warp_index.cuh"
 
 #include "task_types.cuh"
 
@@ -34,7 +34,7 @@ __global__ void init_warp_id_pools_metadata() {
     if (warp_id_in_block < d_launch_config.warps_per_block && lane == 0) {
         int qid =
             blockIdx.x * d_launch_config.warps_per_block + warp_id_in_block;
-        d_task_id_list_free_positions[qid] = d_launch_config.tasks_per_worker;
+        d_task_id_list_free_positions[qid] = d_launch_config.tasks_per_scheduling_unit;
     }
     __threadfence();
 }
@@ -47,7 +47,7 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
     int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     int warp_id_global = id_list_free_pos - d_task_id_list_free_positions;
     int id = 0;
-    const int task_ids_per_warp = d_launch_config.tasks_per_worker;
+    const int task_ids_per_warp = d_launch_config.tasks_per_scheduling_unit;
     bool first_use = (old_alloc < task_ids_per_warp);
     if (first_use) {
         id = warp_id_global * task_ids_per_warp + old_alloc;
@@ -78,7 +78,7 @@ __device__ __forceinline__ void release_task_id_to_warp_pool(int id) {
     int warp_id_global = get_warp_id_global();
     int* id_list_free_pos = &d_task_id_list_free_positions[warp_id_global];
     int old_free = atomicAdd(id_list_free_pos, 1);
-    const int task_ids_per_warp = d_launch_config.tasks_per_worker;
+    const int task_ids_per_warp = d_launch_config.tasks_per_scheduling_unit;
     const int storage_idx =
         warp_id_global * task_ids_per_warp + old_free % task_ids_per_warp;
     store_L2(&d_task_id_storage[storage_idx], id);
@@ -97,16 +97,16 @@ struct task_pool_buffers {
     int* id_valid = nullptr;
 };
 
-inline size_t task_pool_allocation_bytes(size_t workers, size_t tasks) {
+inline size_t task_pool_allocation_bytes(size_t scheduling_units, size_t tasks) {
     return sizeof(TaskHeader) * tasks
         + host_task_data_stride() * tasks
-        + sizeof(int) * workers
+        + sizeof(int) * scheduling_units
         + 2 * sizeof(int) * tasks;
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
 inline cudaError_t stage_task_pool(
-    size_t workers, size_t tasks,
+    size_t scheduling_units, size_t tasks,
     cudaStream_t header_stream,
     cudaStream_t data_stream,
     cudaStream_t id_stream,
@@ -126,9 +126,9 @@ inline cudaError_t stage_task_pool(
 
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_list_free_positions),
-        sizeof(int) * workers));
+        sizeof(int) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->id_list_free_positions, 0xFF, sizeof(int) * workers,
+        buffers->id_list_free_positions, 0xFF, sizeof(int) * scheduling_units,
         id_stream));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_storage), sizeof(int) * tasks));
@@ -156,7 +156,7 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
 }
 
 inline cudaError_t clear_task_pool(
-    size_t workers, size_t tasks,
+    size_t scheduling_units, size_t tasks,
     cudaStream_t header_stream,
     cudaStream_t data_stream,
     cudaStream_t id_stream
@@ -184,7 +184,7 @@ inline cudaError_t clear_task_pool(
     }
     if (id_list_free_positions != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_list_free_positions, 0xFF, sizeof(int) * workers, id_stream));
+            id_list_free_positions, 0xFF, sizeof(int) * scheduling_units, id_stream));
     }
     if (id_valid != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(

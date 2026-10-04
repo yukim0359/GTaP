@@ -190,7 +190,7 @@ __device__ __forceinline__ void execute_task_loop() {
         block_ctx.have_task_id_resumable = false;
 #endif
         block_ctx.generated_task_count = 0;
-        block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_worker;
+        block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
 #ifdef GTAP_ENABLE_PROFILING
         working_time_idx = 0;
 #endif

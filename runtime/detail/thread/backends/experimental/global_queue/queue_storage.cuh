@@ -27,7 +27,7 @@ __device__ __forceinline__ int* global_queue_slot(
     int queue_idx, int position
 ) {
     const size_t capacity =
-        static_cast<size_t>(d_launch_config.total_workers) *
+        static_cast<size_t>(d_launch_config.total_scheduling_units) *
         d_launch_config.queue_capacity;
     return &d_global_task_queue[
         static_cast<size_t>(queue_idx) * capacity + position];
@@ -65,28 +65,28 @@ struct queue_storage_buffers {
     int* generated = nullptr;
 };
 
-inline size_t generated_task_id_bytes(size_t workers, int num_queues) {
-    return sizeof(int) * workers * static_cast<size_t>(num_queues) *
+inline size_t generated_task_id_bytes(size_t scheduling_units, int num_queues) {
+    return sizeof(int) * scheduling_units * static_cast<size_t>(num_queues) *
         GTAP_TASK_ID_GEN_QUEUE_STRIDE;
 }
 
 inline size_t queue_storage_allocation_bytes(
-    size_t workers, size_t tasks, int num_queues
+    size_t scheduling_units, size_t tasks, int num_queues
 ) {
     return sizeof(int) * tasks
         + 3 * sizeof(int) * static_cast<size_t>(num_queues)
-        + generated_task_id_bytes(workers, num_queues);
+        + generated_task_id_bytes(scheduling_units, num_queues);
 }
 
 // Starts the async clears. Symbols are published later.
 inline cudaError_t stage_queue_storage(
-    size_t workers, size_t tasks, int num_queues,
+    size_t scheduling_units, size_t tasks, int num_queues,
     cudaStream_t stream,
     queue_storage_buffers* buffers
 ) {
     const size_t slot_bytes = sizeof(int) * tasks;
     const size_t metadata_bytes = sizeof(int) * static_cast<size_t>(num_queues);
-    const size_t generated_bytes = generated_task_id_bytes(workers, num_queues);
+    const size_t generated_bytes = generated_task_id_bytes(scheduling_units, num_queues);
 
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEvent_t start, stop;
@@ -161,7 +161,7 @@ inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
 }
 
 inline cudaError_t clear_queue_storage(
-    size_t workers, size_t tasks, int num_queues,
+    size_t scheduling_units, size_t tasks, int num_queues,
     cudaStream_t stream
 ) {
     int* slots = nullptr;
@@ -183,7 +183,7 @@ inline cudaError_t clear_queue_storage(
     }
     if (generated != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            generated, 0, generated_task_id_bytes(workers, num_queues), stream));
+            generated, 0, generated_task_id_bytes(scheduling_units, num_queues), stream));
     }
     const size_t metadata_bytes = sizeof(int) * static_cast<size_t>(num_queues);
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(head, 0, metadata_bytes, stream));

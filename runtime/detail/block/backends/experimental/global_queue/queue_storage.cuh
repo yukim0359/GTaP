@@ -45,15 +45,15 @@ struct queue_storage_buffers {
 };
 
 inline size_t queue_storage_allocation_bytes(
-    size_t workers, size_t tasks, int num_queues
+    size_t scheduling_units, size_t tasks, int num_queues
 ) {
     (void)num_queues;
     return sizeof(int) * tasks
-        + sizeof(int) * workers * GTAP_MAX_CHILD_TASKS;
+        + sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS;
 }
 
 inline cudaError_t stage_queue_storage(
-    size_t workers, size_t tasks, int num_queues,
+    size_t scheduling_units, size_t tasks, int num_queues,
     cudaStream_t streams[],
     queue_storage_buffers* buffers
 ) {
@@ -63,7 +63,7 @@ inline cudaError_t stage_queue_storage(
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->slots, 0, sizeof(int) * tasks, streams[0]));
     const size_t generated_bytes =
-        sizeof(int) * workers * GTAP_MAX_CHILD_TASKS;
+        sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS;
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->generated), generated_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -80,7 +80,7 @@ inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
 }
 
 inline cudaError_t clear_queue_storage(
-    size_t workers, size_t tasks, int num_queues,
+    size_t scheduling_units, size_t tasks, int num_queues,
     cudaStream_t streams[]
 ) {
     (void)num_queues;
@@ -96,7 +96,7 @@ inline cudaError_t clear_queue_storage(
     }
     if (generated != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            generated, 0, sizeof(int) * workers * GTAP_MAX_CHILD_TASKS,
+            generated, 0, sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS,
             streams[4]));
     }
     return cudaSuccess;

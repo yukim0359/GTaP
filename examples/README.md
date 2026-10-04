@@ -87,7 +87,7 @@ int main() {
 | Pragma | Description |
 |--------|-------------|
 | `#pragma gtap function` | Marks a `__device__` function as a *task function*. The compiler transforms it into a state-machine so it can suspend at `taskwait` and resume later. |
-| `#pragma gtap task [queue(expr)]` | Spawns a child task. Must be placed immediately before a call to a task function. The parent continues; the child is enqueued by the runtime. The optional `queue(expr)` hint enables DAQ (thread workers only). |
+| `#pragma gtap task [queue(expr)]` | Spawns a child task. Must be placed immediately before a call to a task function. The parent continues; the child is enqueued by the runtime. The optional `queue(expr)` hint enables DAQ (thread mode only). |
 | `#pragma gtap taskwait [queue(expr)]` | Suspends the current task until all direct child tasks spawned since the last `taskwait` have completed. `queue(expr)` selects the queue for the re-enqueued continuation. |
 | `#pragma gtap entry` | Enqueues the initial (root) task and starts execution inside the persistent kernel. Must be immediately followed by a call to a task function. |
 

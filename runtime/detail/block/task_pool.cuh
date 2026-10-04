@@ -37,7 +37,7 @@ __constant__ int* d_task_id_storage;             // int[num_blocks * tasks_per_b
 __global__ void init_block_id_pools_metadata() {
     if (threadIdx.x == 0) {
         d_task_id_list_free_positions[blockIdx.x] =
-            d_launch_config.tasks_per_worker;
+            d_launch_config.tasks_per_scheduling_unit;
     }
     __threadfence();
 }
@@ -48,7 +48,7 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
     int* id_list_free_pos_stale
 ) {
     int old_alloc = atomicAdd(id_list_alloc_pos, 1);
-    const int tasks_per_block = d_launch_config.tasks_per_worker;
+    const int tasks_per_block = d_launch_config.tasks_per_scheduling_unit;
     int idx = old_alloc % tasks_per_block;
     int block_id = static_cast<int>(
         id_list_free_pos - d_task_id_list_free_positions);
@@ -73,7 +73,7 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
 }
 
 __device__ __forceinline__ void release_task_id_to_block_pool(int id) {
-    const int tasks_per_block = d_launch_config.tasks_per_worker;
+    const int tasks_per_block = d_launch_config.tasks_per_scheduling_unit;
     int block_id = id / tasks_per_block;
     int* id_list_free_pos = &d_task_id_list_free_positions[block_id];
     int old_free = atomicAdd(id_list_free_pos, 1);
@@ -100,9 +100,9 @@ struct task_pool_buffers {
 };
 
 inline size_t task_pool_allocation_bytes(
-    size_t workers, size_t tasks, int block_size
+    size_t scheduling_units, size_t tasks, int block_size
 ) {
-    return sizeof(int) * workers
+    return sizeof(int) * scheduling_units
         + sizeof(int) * tasks
         + sizeof(TaskHeader) * tasks
         + host_task_data_stride() * tasks
@@ -112,17 +112,17 @@ inline size_t task_pool_allocation_bytes(
 // Allocates the pool and starts the async clears. Symbols are published later.
 // TODO: Take each stream as its own argument. See lifecycle.cuh.
 inline cudaError_t stage_task_pool(
-    size_t workers, size_t tasks, int block_size,
+    size_t scheduling_units, size_t tasks, int block_size,
     cudaStream_t streams[],
     int free_position_fill,
     task_pool_buffers* buffers
 ) {
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_list_free_positions),
-        sizeof(int) * workers));
+        sizeof(int) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->id_list_free_positions, free_position_fill,
-        sizeof(int) * workers, streams[1]));
+        sizeof(int) * scheduling_units, streams[1]));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_storage), sizeof(int) * tasks));
 
@@ -164,7 +164,7 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
 }
 
 inline cudaError_t clear_task_pool(
-    size_t workers, size_t tasks, int block_size,
+    size_t scheduling_units, size_t tasks, int block_size,
     cudaStream_t streams[],
     int free_position_fill
 ) {
@@ -184,7 +184,7 @@ inline cudaError_t clear_task_pool(
     if (id_list_free_positions != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
             id_list_free_positions, free_position_fill,
-            sizeof(int) * workers, streams[1]));
+            sizeof(int) * scheduling_units, streams[1]));
     }
     if (headers != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(

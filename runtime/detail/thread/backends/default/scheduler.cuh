@@ -6,7 +6,7 @@
 #include "../../../common/runtime_error.cuh"
 #include "../../../common/termination.cuh"
 #include "../../../common/victim_select.cuh"
-#include "../../../common/worker_index.cuh"
+#include "../../../common/warp_index.cuh"
 
 #include "../../profile_buffer.cuh"
 #include "../../queue_select.cuh"
@@ -272,7 +272,7 @@ __device__ __forceinline__ void execute_task_loop() {
             reinterpret_cast<int*>(dynamic_shared + layout.staged_task_ids) +
             warp_id_in_block * d_launch_config.num_queues * warp_size;
         task_context->id_list_free_pos_stale =
-            d_launch_config.tasks_per_worker;
+            d_launch_config.tasks_per_scheduling_unit;
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
             task_context->generated_task_counts[k] = 0;
             queue_tails[k] = 0;

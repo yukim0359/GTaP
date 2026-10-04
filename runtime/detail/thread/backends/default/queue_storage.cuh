@@ -23,7 +23,7 @@ __device__ __forceinline__ int* warp_queue_slot(
     int queue_idx, int warp_idx, int slot
 ) {
     const size_t index =
-        (static_cast<size_t>(queue_idx) * d_launch_config.total_workers + warp_idx) * d_launch_config.queue_capacity + slot;
+        (static_cast<size_t>(queue_idx) * d_launch_config.total_scheduling_units + warp_idx) * d_launch_config.queue_capacity + slot;
     return &d_warp_task_queue_storage[index];
 }
 
@@ -34,17 +34,17 @@ struct queue_storage_buffers {
 };
 
 inline size_t queue_storage_allocation_bytes(
-    size_t workers, size_t tasks, int num_queues
+    size_t scheduling_units, size_t tasks, int num_queues
 ) {
     return sizeof(WarpTaskQueueMetadata*) * static_cast<size_t>(num_queues)
-        + static_cast<size_t>(num_queues) * sizeof(WarpTaskQueueMetadata) * workers
+        + static_cast<size_t>(num_queues) * sizeof(WarpTaskQueueMetadata) * scheduling_units
         + sizeof(int) * tasks;
 }
 
 // Allocates metadata planes and the task-id ring, and starts the async clears.
 // Symbols are published later.
 inline cudaError_t stage_queue_storage(
-    size_t workers, size_t tasks, int num_queues,
+    size_t scheduling_units, size_t tasks, int num_queues,
     cudaStream_t stream,
     queue_storage_buffers* buffers
 ) {
@@ -76,21 +76,21 @@ inline cudaError_t stage_queue_storage(
         WarpTaskQueueMetadata* plane_ptr = nullptr;
         GTAP_DETAIL_CUDA_TRY(cudaMalloc(
             reinterpret_cast<void**>(&plane_ptr),
-            sizeof(WarpTaskQueueMetadata) * workers));
+            sizeof(WarpTaskQueueMetadata) * scheduling_units));
         #ifdef GTAP_INTERNAL_PROFILE_INIT
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&elapsed, start, stop);
-        printf("  cudaMalloc(queue plane %d, %zu bytes): %.3f ms\n", k, sizeof(WarpTaskQueueMetadata) * workers, elapsed);
+        printf("  cudaMalloc(queue plane %d, %zu bytes): %.3f ms\n", k, sizeof(WarpTaskQueueMetadata) * scheduling_units, elapsed);
         cudaEventRecord(start);
         #endif
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            plane_ptr, 0, sizeof(WarpTaskQueueMetadata) * workers, stream));
+            plane_ptr, 0, sizeof(WarpTaskQueueMetadata) * scheduling_units, stream));
         #ifdef GTAP_INTERNAL_PROFILE_INIT
         cudaEventRecord(stop, stream);
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&elapsed, start, stop);
-        printf("  cudaMemsetAsync(queue plane %d, %zu bytes): %.3f ms\n", k, sizeof(WarpTaskQueueMetadata) * workers, elapsed);
+        printf("  cudaMemsetAsync(queue plane %d, %zu bytes): %.3f ms\n", k, sizeof(WarpTaskQueueMetadata) * scheduling_units, elapsed);
         #endif
         buffers->host_planes[k] = plane_ptr;
     }
@@ -128,7 +128,7 @@ inline cudaError_t publish_queue_storage(queue_storage_buffers& buffers) {
 }
 
 inline cudaError_t clear_queue_storage(
-    size_t workers, size_t tasks, int num_queues,
+    size_t scheduling_units, size_t tasks, int num_queues,
     cudaStream_t stream
 ) {
     WarpTaskQueueMetadata** metadata = nullptr;
@@ -148,7 +148,7 @@ inline cudaError_t clear_queue_storage(
         if (host_planes[k] != nullptr) {
             GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
                 host_planes[k], 0,
-                sizeof(WarpTaskQueueMetadata) * workers, stream));
+                sizeof(WarpTaskQueueMetadata) * scheduling_units, stream));
         }
     }
     if (slots != nullptr) {

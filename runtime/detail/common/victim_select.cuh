@@ -22,7 +22,7 @@ __device__ __forceinline__ int get_random_warp_id_global(int selfWarp) {
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    int totalWarps = d_launch_config.total_workers;
+    int totalWarps = d_launch_config.total_scheduling_units;
     int r = seed % totalWarps;
     if (r == selfWarp) r = (r + 1) % totalWarps;
     return r;

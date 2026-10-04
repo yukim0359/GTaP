@@ -51,7 +51,7 @@ disabled.
 
 ## Profile capacity
 
-Each worker has a fixed-capacity interval buffer:
+Each scheduling unit has a fixed-capacity interval buffer:
 
 - thread mode uses `config.profile_capacity_per_warp`
 - block mode uses `config.profile_capacity_per_block`

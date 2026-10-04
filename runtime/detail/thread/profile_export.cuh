@@ -20,7 +20,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         return result;
     }
 
-    const int warps = gtap::detail::h_launch_config.total_workers;
+    const int warps = gtap::detail::h_launch_config.total_scheduling_units;
     int* device_indices = nullptr;
     int* indices = static_cast<int*>(malloc(sizeof(int) * warps));
     unsigned long long* dropped = static_cast<unsigned long long*>(

@@ -23,7 +23,7 @@ __device__ __forceinline__ void reserve_unpublished_task_id(
 }
 
 // ============================================================================
-// Global Queue Operations (no steal needed - all workers pop from global queue)
+// Global Queue Operations (no steal needed - all blocks pop from global queue)
 // ============================================================================
 
 // Pop from global queue - block pops a single task
@@ -44,7 +44,7 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
         if (atomicCAS(&d_queue_head, old_head, new_head) == old_head) {
             head = old_head;
             pop_success = true;
-            // Increment active worker count if this worker was previously idle
+            // Increment the active block count if this block was previously idle
             if (M == TERMINATE_ON_ALL_TASKS_FINISH && !prev_get_task) {
                 atomicAdd(&d_active_block_count, 1);
             }
@@ -54,7 +54,7 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
     }
 
     if (pop_success) {
-        int idx = head % (d_launch_config.total_workers * d_launch_config.tasks_per_worker);
+        int idx = head % (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit);
         *execute_task_id = load_L2(&d_global_task_queue[idx]);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
         printf("pop_global: tid=%d in block %d\n", *execute_task_id, blockIdx.x);
@@ -126,11 +126,11 @@ __device__ __forceinline__ void push_global_queue(
         base_pos = atomicAdd(&d_queue_alloc, (unsigned int)push_cnt);
         // Overflow check (unsigned subtraction handles wrap-around)
         unsigned int head_val = load_L2(&d_queue_head);
-        if (base_pos + (unsigned int)push_cnt - head_val > (d_launch_config.total_workers * d_launch_config.tasks_per_worker) - GTAP_DETAIL_QUEUE_MARGIN) {
+        if (base_pos + (unsigned int)push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit) - GTAP_DETAIL_QUEUE_MARGIN) {
             GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
                 -1, 0,
                 static_cast<int>(base_pos + (unsigned int)push_cnt - head_val),
-                (d_launch_config.total_workers * d_launch_config.tasks_per_worker) - GTAP_DETAIL_QUEUE_MARGIN);
+                (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit) - GTAP_DETAIL_QUEUE_MARGIN);
         }
     }
     __syncthreads();
@@ -138,7 +138,7 @@ __device__ __forceinline__ void push_global_queue(
     // Write tasks to reserved slots (parallel using block threads)
     for (int j = threadIdx.x; j < push_cnt; j += blockDim.x) {
         int tid = get_task_id_generated(blockIdx.x, first_idx_to_push + j);
-        unsigned int pos = (base_pos + (unsigned int)j) % (d_launch_config.total_workers * d_launch_config.tasks_per_worker);
+        unsigned int pos = (base_pos + (unsigned int)j) % (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit);
         store_L2(&d_global_task_queue[pos], tid);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
         printf("push_global: tid=%d to pos %d in block %d\n", tid, pos, blockIdx.x);
@@ -200,7 +200,7 @@ __device__ __forceinline__ void execute_task_loop() {
         block_ctx.have_task_id_resumable = false;
 #endif
         block_ctx.generated_task_count = 0;
-        block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_worker;
+        block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
 #ifdef GTAP_ENABLE_PROFILING
         working_time_idx = 0;
 #endif

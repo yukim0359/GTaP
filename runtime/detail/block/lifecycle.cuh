@@ -7,7 +7,7 @@
 // task_id_free_position_fill currently come from queue_storage, and task_pool
 // uses streams[1], [2], and [3] by index. Do this together with thread mode,
 // which still runs every clear on h_stream. init_block_id_pools_metadata
-// overwrites the free-position fill with tasks_per_worker, so the 0 / 0xFF
+// overwrites the free-position fill with tasks_per_scheduling_unit, so the 0 / 0xFF
 // backend difference can go.
 
 #include "../common/runtime_config.cuh"
@@ -24,18 +24,18 @@ using namespace gtap::detail;
 
 static size_t runtime_device_allocation_bytes() {
     const launch_config& c = h_launch_config;
-    const size_t workers = static_cast<size_t>(c.total_workers);
-    const size_t tasks = workers * c.tasks_per_worker;
-    return queue_storage_allocation_bytes(workers, tasks, c.num_queues) +
-           task_pool_allocation_bytes(workers, tasks, c.block_size) +
-           profile_buffer_allocation_bytes(workers);
+    const size_t scheduling_units = static_cast<size_t>(c.total_scheduling_units);
+    const size_t tasks = scheduling_units * c.tasks_per_scheduling_unit;
+    return queue_storage_allocation_bytes(scheduling_units, tasks, c.num_queues) +
+           task_pool_allocation_bytes(scheduling_units, tasks, c.block_size) +
+           profile_buffer_allocation_bytes(scheduling_units);
 }
 
 cudaError_t initialize_runtime() {
     GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
     const launch_config& runtime_config = h_launch_config;
-    const size_t total_workers = runtime_config.total_workers;
-    const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;
+    const size_t total_scheduling_units = runtime_config.total_scheduling_units;
+    const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;
 
     cudaStream_t streams[runtime_init_stream_count];
     for (int i = 0; i < runtime_init_stream_count; ++i) {
@@ -44,11 +44,11 @@ cudaError_t initialize_runtime() {
 
     queue_storage_buffers queues{};
     GTAP_DETAIL_CUDA_TRY(stage_queue_storage(
-        total_workers, total_tasks, runtime_config.num_queues, streams,
+        total_scheduling_units, total_tasks, runtime_config.num_queues, streams,
         &queues));
     task_pool_buffers task_pool{};
     GTAP_DETAIL_CUDA_TRY(stage_task_pool(
-        total_workers, total_tasks, runtime_config.block_size, streams,
+        total_scheduling_units, total_tasks, runtime_config.block_size, streams,
         task_id_free_position_fill, &task_pool));
 
     for (int i = 0; i < runtime_init_stream_count; ++i) {
@@ -59,7 +59,7 @@ cudaError_t initialize_runtime() {
     GTAP_DETAIL_CUDA_TRY(publish_task_pool(task_pool));
     profile_buffers profile{};
     GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
-        total_workers, streams[1], streams[0], &profile));
+        total_scheduling_units, streams[1], streams[0], &profile));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[0]));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[1]));
     GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
@@ -95,8 +95,8 @@ cudaError_t finalize_runtime() {
 cudaError_t reset_runtime() {
     reset_runtime_error_record_host();
     const launch_config& runtime_config = h_launch_config;
-    const size_t total_workers = runtime_config.total_workers;
-    const size_t total_tasks = total_workers * runtime_config.tasks_per_worker;
+    const size_t total_scheduling_units = runtime_config.total_scheduling_units;
+    const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;
 
     cudaStream_t streams[runtime_init_stream_count];
     for (int i = 0; i < runtime_init_stream_count; ++i) {
@@ -104,12 +104,12 @@ cudaError_t reset_runtime() {
     }
 
     GTAP_DETAIL_CUDA_TRY(clear_queue_storage(
-        total_workers, total_tasks, runtime_config.num_queues, streams));
+        total_scheduling_units, total_tasks, runtime_config.num_queues, streams));
     GTAP_DETAIL_CUDA_TRY(clear_task_pool(
-        total_workers, total_tasks, runtime_config.block_size, streams,
+        total_scheduling_units, total_tasks, runtime_config.block_size, streams,
         task_id_free_position_fill));
     GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(
-        total_workers, streams[1], streams[0]));
+        total_scheduling_units, streams[1], streams[0]));
 
     for (int i = 0; i < runtime_init_stream_count; ++i) {
         GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[i]));
