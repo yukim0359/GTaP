@@ -2,9 +2,18 @@
 
 #include "../../../../common/runtime.cuh"
 
+// Depth of the per-queue unpublished child-task buffer. Override with -D.
+#ifndef GTAP_MAX_CHILD_TASKS
+#define GTAP_MAX_CHILD_TASKS 32
+#endif
+static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negative");
+
 namespace gtap::detail::thread {
 
 using namespace gtap::detail;
+
+constexpr int GTAP_TASK_ID_GEN_QUEUE_STRIDE =
+    GTAP_MAX_CHILD_TASKS * warp_size;
 
 __constant__ int* d_global_task_queue;
 __constant__ int* d_queue_head;

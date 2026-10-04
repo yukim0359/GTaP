@@ -9,19 +9,9 @@
 #include "../../../termination.cuh"
 #include "../../../profile_buffer.cuh"
 #include "../../../queue_select.cuh"
+#include "queue_storage.cuh"
 
 #define GTAP_PROFILE_HAS_DROPPED_COUNTER 1
-
-// Depth of the per-queue unpublished child-task buffer. Override with -D.
-#ifndef GTAP_MAX_CHILD_TASKS
-#define GTAP_MAX_CHILD_TASKS 32
-#endif
-static_assert(GTAP_MAX_CHILD_TASKS >= 0, "GTAP_MAX_CHILD_TASKS must be non-negative");
-
-constexpr int GTAP_TASK_ID_GEN_QUEUE_STRIDE =
-    GTAP_MAX_CHILD_TASKS * gtap::detail::warp_size;
-
-#include "queue_storage.cuh"
 
 namespace gtap::detail::thread {
 using namespace gtap::detail;
