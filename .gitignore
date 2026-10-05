@@ -1,5 +1,6 @@
 # Local IDE config
 .clangd
+.clang-format
 .cache/
 
 # Build and profiling outputs
