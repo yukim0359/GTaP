@@ -80,7 +80,7 @@ __device__ __forceinline__ void push_global_queue(
 #ifdef GTAP_ASSUME_NO_TASKWAIT
         ctx->generated_task_count;
 #else
-        (ctx->have_task_id_resumable ? 1 : 0) + ctx->generated_task_count;
+        (ctx->task_id_resumable != -1 ? 1 : 0) + ctx->generated_task_count;
 #endif
 
     if (total_count == 0) {
@@ -100,7 +100,7 @@ __device__ __forceinline__ void push_global_queue(
             *have_execute_task = false;
         }
 #else
-        if (ctx->have_task_id_resumable) {
+        if (ctx->task_id_resumable != -1) {
             *execute_task_id = ctx->task_id_resumable;
             *have_execute_task = true;
         } else if (ctx->generated_task_count > 0) {
@@ -197,7 +197,7 @@ __device__ __forceinline__ void execute_task_loop() {
         should_continue = true;
         have_execute_task = false;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-        block_ctx.have_task_id_resumable = false;
+        block_ctx.task_id_resumable = -1;
 #endif
         block_ctx.generated_task_count = 0;
         block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
@@ -254,7 +254,7 @@ __device__ __forceinline__ void execute_task_loop() {
                 prev_get_task = true;
                 block_ctx.generated_task_count = 0;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-                block_ctx.have_task_id_resumable = false;
+                block_ctx.task_id_resumable = -1;
 #endif
             }
             __syncthreads();
@@ -265,10 +265,9 @@ __device__ __forceinline__ void execute_task_loop() {
             // Copy task header to TaskContext for reuse in task function (using L2 load)
             if (threadIdx.x == 0) {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                TaskHeader* dst_hdr = &block_ctx.cached_task_header;
-                dst_hdr->generation = load_L2(&src_hdr->generation);
-                dst_hdr->parent_tid = load_L2(&src_hdr->parent_tid);
-                dst_hdr->parent_generation = load_L2(&src_hdr->parent_generation);
+                block_ctx.generation = load_L2(&src_hdr->generation);
+                block_ctx.parent_tid = load_L2(&src_hdr->parent_tid);
+                block_ctx.parent_generation = load_L2(&src_hdr->parent_generation);
             }
             __syncthreads();
 #endif

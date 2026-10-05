@@ -45,7 +45,6 @@ __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
     __threadfence();
     int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
     if (rem == 1) {
-        ctx->have_task_id_resumable = true;
         ctx->task_id_resumable = parentId;
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
@@ -60,23 +59,19 @@ __device__ void finish_task(int tid, TaskContext* ctx) {
     if (threadIdx.x == 0) {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
         release_task_id_to_block_pool(tid);
-        if (tid == 0) store_L2(&d_first_task_finished, 1);
 #else
-        TaskHeader* cached_hdr = &ctx->cached_task_header;
-        int parent_tid = cached_hdr->parent_tid;
-        d_task_headers[tid].generation = cached_hdr->generation + 1;
+        int parent_tid = ctx->parent_tid;
+        d_task_headers[tid].generation = ctx->generation + 1;
 
-        if (tid != 0 && load_L2(&d_task_headers[parent_tid].generation) == cached_hdr->parent_generation) {
+        if (tid != 0 && load_L2(&d_task_headers[parent_tid].generation) == ctx->parent_generation) {
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
             printf("finish_task: %d, parent_tid: %d\n", tid, parent_tid);
 #endif
             notify_parent(parent_tid, ctx);
-            release_task_id_to_block_pool(tid);
-        } else {
-            release_task_id_to_block_pool(tid);
         }
-        if (tid == 0) store_L2(&d_first_task_finished, 1);
+        release_task_id_to_block_pool(tid);
 #endif
+        if (tid == 0) store_L2(&d_first_task_finished, 1);
     }
 }
 
@@ -95,9 +90,8 @@ __device__ __forceinline__ void* spawn_task(
     TaskHeader* new_hdr = &d_task_headers[new_tid];
     new_hdr->func = func;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    TaskHeader* cached_hdr = &ctx->cached_task_header;
     new_hdr->parent_tid = self_tid;
-    new_hdr->parent_generation = cached_hdr->generation;
+    new_hdr->parent_generation = ctx->generation;
     new_hdr->state = 0;
     new_hdr->waiting_child_count = 0;
 #endif

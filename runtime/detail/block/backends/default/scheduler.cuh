@@ -127,7 +127,7 @@ __device__ __forceinline__ void push(
     }
 #else
     int publish_bottom = ctx->queue_tail;
-    if (ctx->have_task_id_resumable) {
+    if (ctx->task_id_resumable != -1) {
         if (threadIdx.x == 0) {
             *execute_task_id = ctx->task_id_resumable;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
@@ -187,7 +187,7 @@ __device__ __forceinline__ void execute_task_loop() {
         should_continue = true;
         have_execute_task = false;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-        block_ctx.have_task_id_resumable = false;
+        block_ctx.task_id_resumable = -1;
 #endif
         block_ctx.generated_task_count = 0;
         block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
@@ -252,7 +252,7 @@ __device__ __forceinline__ void execute_task_loop() {
                 block_ctx.generated_task_count = 0;
                 block_ctx.queue_tail = load_L2(&d_block_task_queue_metadata[blockIdx.x].bottom);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-                block_ctx.have_task_id_resumable = false;
+                block_ctx.task_id_resumable = -1;
 #endif
             }
             __syncthreads();
@@ -263,10 +263,9 @@ __device__ __forceinline__ void execute_task_loop() {
             // Copy task header to TaskContext for reuse in task function (using L2 load)
             if (threadIdx.x == 0) {
                 TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                TaskHeader* dst_hdr = &block_ctx.cached_task_header;
-                dst_hdr->generation = load_L2(&src_hdr->generation);
-                dst_hdr->parent_tid = load_L2(&src_hdr->parent_tid);
-                dst_hdr->parent_generation = load_L2(&src_hdr->parent_generation);
+                block_ctx.generation = load_L2(&src_hdr->generation);
+                block_ctx.parent_tid = load_L2(&src_hdr->parent_tid);
+                block_ctx.parent_generation = load_L2(&src_hdr->parent_generation);
             }
             __syncthreads();
 #endif
@@ -307,7 +306,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
             block_ctx.generated_task_count;
 #else
-            (block_ctx.have_task_id_resumable ? 1 : 0) + block_ctx.generated_task_count;
+            (block_ctx.task_id_resumable != -1 ? 1 : 0) + block_ctx.generated_task_count;
 #endif
         int push_total = max(total_count - 1, 0);
         push(&block_ctx, push_total, &execute_task_id);
