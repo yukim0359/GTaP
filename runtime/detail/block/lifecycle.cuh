@@ -98,11 +98,17 @@ cudaError_t initialize_runtime() {
         abandon_initialize(&queues, &task_pool, &profile));
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaGetLastError(),
+        abandon_initialize(&queues, &task_pool, &profile));
     // TODO: cudaDeviceSynchronize waits for every stream.
     GTAP_DETAIL_CUDA_TRY_OR(
         cudaDeviceSynchronize(),
         abandon_initialize(&queues, &task_pool, &profile));
-    return cudaGetLastError();
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaGetLastError(),
+        abandon_initialize(&queues, &task_pool, &profile));
+    return cudaSuccess;
 }
 
 cudaError_t finalize_runtime() {

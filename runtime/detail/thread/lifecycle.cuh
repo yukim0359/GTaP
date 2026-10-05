@@ -53,6 +53,7 @@ cudaError_t initialize_runtime() {
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     printf("\n=== initialize_runtime detailed profiling ===\n");
+    // TODO: Events leak when initialize returns early.
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
@@ -119,6 +120,9 @@ cudaError_t initialize_runtime() {
 #endif
     init_warp_id_pools_metadata<<<
         runtime_config.grid_size, runtime_config.block_size, 0, stream>>>();
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaGetLastError(),
+        abandon_initialize(&queues, &task_pool, &profile));
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
 #endif
@@ -135,7 +139,10 @@ cudaError_t initialize_runtime() {
     printf("=== initialize_runtime profiling complete ===\n\n");
 #endif
 
-    return cudaGetLastError();
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaGetLastError(),
+        abandon_initialize(&queues, &task_pool, &profile));
+    return cudaSuccess;
 }
 
 cudaError_t finalize_runtime() {

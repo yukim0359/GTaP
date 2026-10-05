@@ -66,6 +66,7 @@ inline cudaError_t stage_queue_storage(
     const size_t slot_bytes = queue_slot_bytes(scheduling_units, num_queues);
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
+    // TODO: Events leak when initialize returns early.
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
