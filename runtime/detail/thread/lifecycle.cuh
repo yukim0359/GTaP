@@ -46,9 +46,13 @@ cudaError_t initialize_runtime() {
     task_pool_buffers task_pool{};
     GTAP_DETAIL_CUDA_TRY(stage_task_pool(
         total_scheduling_units, total_tasks, stream, &task_pool));
+    profile_buffers profile{};
+    GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
+        total_scheduling_units, stream, &profile));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
     GTAP_DETAIL_CUDA_TRY(publish_queue_storage(queues));
     GTAP_DETAIL_CUDA_TRY(publish_task_pool(task_pool));
+    GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
 
     #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(start);
@@ -72,21 +76,6 @@ cudaError_t initialize_runtime() {
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMemcpyToSymbol(d_active_warp_count): %.3f ms\n", elapsed);
-    #endif
-
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
-    cudaEventRecord(start);
-    #endif
-    profile_buffers profile{};
-    GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
-        total_scheduling_units, stream, &profile));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
-    GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMemset(profile data): %.3f ms\n", elapsed);
     #endif
 
     #ifdef GTAP_INTERNAL_PROFILE_INIT
