@@ -25,16 +25,12 @@ struct TaskHeader {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
     uint16_t   queue_idx;
 #else
-    // TODO: Place the ints before the uint16s to shrink this header from 32 to 24 bytes.
-    // Info of current task
+    int        parent_tid;
+    int        waiting_child_count;
     uint16_t   generation;
     uint16_t   state;
     uint16_t   queue_idx;
-    // Info of parent task
-    int        parent_tid;
     uint16_t   parent_generation;
-    // Info of child tasks
-    int        waiting_child_count;
 #endif
 };
 
