@@ -64,57 +64,57 @@ inline cudaError_t stage_queue_storage(
     const size_t metadata_bytes = queue_metadata_bytes(scheduling_units, num_queues);
     const size_t slot_bytes = queue_slot_bytes(scheduling_units, num_queues);
 
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     float elapsed;
     cudaEventRecord(start);
-    #endif
+#endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->metadata), metadata_bytes));
 
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMalloc(queue metadata, %zu bytes): %.3f ms\n", metadata_bytes, elapsed);
     cudaEventRecord(start, stream);
-    #endif
+#endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->metadata, 0, metadata_bytes, stream));
 
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMemsetAsync(queue metadata, %zu bytes): %.3f ms\n", metadata_bytes, elapsed);
     cudaEventRecord(start);
-    #endif
+#endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->slots), slot_bytes));
 
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMalloc(queue slots, %zu bytes): %.3f ms\n", slot_bytes, elapsed);
     cudaEventRecord(start, stream);
-    #endif
+#endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->slots, 0, slot_bytes, stream));
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMemsetAsync(queue slots, %zu bytes): %.3f ms\n", slot_bytes, elapsed);
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-    #endif
+#endif
     return cudaSuccess;
 }
 

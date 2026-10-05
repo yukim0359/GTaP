@@ -93,51 +93,51 @@ inline cudaError_t stage_queue_storage(
     const size_t metadata_bytes = sizeof(int) * static_cast<size_t>(num_queues);
     const size_t generated_bytes = generated_task_id_bytes(scheduling_units, num_queues);
 
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     float elapsed;
     cudaEventRecord(start);
-    #endif
+#endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->slots), slot_bytes));
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMalloc(global queue, %zu bytes): %.3f ms\n", slot_bytes, elapsed);
     cudaEventRecord(start, stream);
-    #endif
+#endif
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream));
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMemsetAsync(global queue, %zu bytes): %.3f ms\n", slot_bytes, elapsed);
     cudaEventRecord(start);
-    #endif
+#endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->generated), generated_bytes));
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMalloc(task_id_generated, %zu bytes): %.3f ms\n", generated_bytes, elapsed);
     cudaEventRecord(start, stream);
-    #endif
+#endif
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->generated, 0, generated_bytes, stream));
-    #ifdef GTAP_INTERNAL_PROFILE_INIT
+#ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMemsetAsync(task_id_generated, %zu bytes): %.3f ms\n", generated_bytes, elapsed);
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
-    #endif
+#endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->head), metadata_bytes));
