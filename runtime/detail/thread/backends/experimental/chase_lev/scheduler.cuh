@@ -61,7 +61,7 @@ __device__ __forceinline__ int pop_single_chase_lev(
 // Sequential pop using chase-lev (repeats single pops)
 __device__ __forceinline__ int pop_chase_lev(int* execute_task_id, int max_count_to_pop, int queue_idx) {
     int lane = get_lane_id();
-    WarpTaskQueueMetadata* myQueue = &d_warp_task_queue_metadata[queue_idx][get_warp_id_global()];
+    WarpTaskQueueMetadata* myQueue = warp_queue_metadata(queue_idx, get_warp_id_global());
     int pop_count = 0;
 
     for (int i = 0; i < max_count_to_pop; i++) {
@@ -124,10 +124,10 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
     // Select a random victim (lane 0 only)
     if (lane == 0) {
         target_warp_id_global = get_random_warp_id_global(warp_id_global);
-        targetWq = &d_warp_task_queue_metadata[queue_idx][target_warp_id_global];
+        targetWq = warp_queue_metadata(queue_idx, target_warp_id_global);
     }
     target_warp_id_global = __shfl_sync(0xFFFFFFFFu, target_warp_id_global, 0);
-    targetWq = &d_warp_task_queue_metadata[queue_idx][target_warp_id_global];
+    targetWq = warp_queue_metadata(queue_idx, target_warp_id_global);
 
     // Sequential steals using chase-lev
     for (int i = 0; i < max_count_to_steal; i++) {
@@ -176,7 +176,7 @@ __device__ __forceinline__ void reserve_unpublished_task_id(
     // bottom until push_batch after all producing lanes have synchronized.
     int old_tail = atomicAdd(&ctx->queue_tails[queue_idx], 1);
     WarpTaskQueueMetadata* q =
-        &d_warp_task_queue_metadata[queue_idx][get_warp_id_global()];
+        warp_queue_metadata(queue_idx, get_warp_id_global());
     int top = load_L2(&q->top);
     const int capacity = d_launch_config.queue_capacity;
     if (old_tail + 1 - top > capacity - GTAP_DETAIL_QUEUE_MARGIN) {
@@ -233,7 +233,7 @@ __device__ __forceinline__ void push_batch (
         int push_cnt = ctx->generated_task_counts[kind] - first_idx_to_push;
         if (push_cnt <= 0) continue;
 
-        WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[kind][warp_id_global];
+        WarpTaskQueueMetadata* q = warp_queue_metadata(kind, warp_id_global);
         int total = ctx->generated_task_counts[kind];
         int staged_n = min(total, warp_size);
         if (kind != k_max) {
@@ -333,7 +333,7 @@ __device__ __forceinline__ void execute_task_loop() {
         if (warp_id_global == 0) {
             task_context->id_list_alloc_pos = 1;
             // Chase-Lev: set bottom = 1 (initial task at position 0)
-            WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[0][0];
+            WarpTaskQueueMetadata* q = warp_queue_metadata(0, 0);
             q->bottom = 1;
             queue_tails[0] = 1;
         } else {
@@ -350,7 +350,7 @@ __device__ __forceinline__ void execute_task_loop() {
                     warp_id_in_block * d_launch_config.num_queues;
                 if (lane == 0) {
                     for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                        WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[k][warp_id_global];
+                        WarpTaskQueueMetadata* q = warp_queue_metadata(k, warp_id_global);
                         queue_lengths[k] =
                             load_L2(&q->bottom) - load_L2(&q->top);
                     }
@@ -400,7 +400,7 @@ __device__ __forceinline__ void execute_task_loop() {
                             #pragma unroll
                             for (int k = 0; k < d_launch_config.num_queues; ++k) {
                                 // Chase-Lev: check if queue is empty (top >= bottom)
-                                WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[k][warp_id_global];
+                                WarpTaskQueueMetadata* q = warp_queue_metadata(k, warp_id_global);
                                 if (q->top < q->bottom) {
                                     all_tasks_finished = 0;
                                     break;
@@ -428,7 +428,7 @@ __device__ __forceinline__ void execute_task_loop() {
                     task_context->
                         generated_task_counts[k] = 0;
                     task_context->queue_tails[k] =
-                        load_L2(&d_warp_task_queue_metadata[k][warp_id_global].bottom);
+                        load_L2(&warp_queue_metadata(k, warp_id_global)->bottom);
                 }
             }
             __syncwarp();

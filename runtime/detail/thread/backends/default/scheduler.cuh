@@ -31,7 +31,7 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
         return;
     }
 
-    WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[queue_idx][get_warp_id_global()];
+    WarpTaskQueueMetadata* q = warp_queue_metadata_ptr(queue_idx, get_warp_id_global());
     int old_tail = atomicAdd(&ctx->queue_tails[queue_idx], 1);
     int head = load_L2(&q->head);
     const int queue_capacity = d_launch_config.queue_capacity;
@@ -39,14 +39,14 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
         GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
             task_id, queue_idx, old_tail + 1 - head, queue_capacity - GTAP_DETAIL_QUEUE_MARGIN);
     }
-    *warp_queue_slot(
+    *warp_queue_slot_ptr(
         queue_idx, get_warp_id_global(), old_tail % queue_capacity) = task_id;
 }
 
 // define pop_batch, steal_batch, push_batch
 __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_pop, int* tail, int queue_idx) {
     int lane = get_lane_id();
-    WarpTaskQueueMetadata* myQueue = &d_warp_task_queue_metadata[queue_idx][get_warp_id_global()];
+    WarpTaskQueueMetadata* myQueue = warp_queue_metadata_ptr(queue_idx, get_warp_id_global());
     int pop_count = 0;
     if (lane == 0) {
         while (true) {
@@ -62,7 +62,7 @@ __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_
     }
     pop_count = __shfl_sync(0xFFFFFFFFu, pop_count, 0);
     if (lane >= warp_size - max_count_to_pop && lane < warp_size - max_count_to_pop + pop_count) {
-        int pop_task_id = load_L2(warp_queue_slot(
+        int pop_task_id = load_L2(warp_queue_slot_ptr(
             queue_idx,
             get_warp_id_global(),
             (*tail + (lane - warp_size + max_count_to_pop)) %
@@ -87,7 +87,7 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
         unsigned lock_backoff_ns = 32;
         while (true) {
             target_warp_id_global = get_random_warp_id_global(warp_id_global);
-            targetWq = &d_warp_task_queue_metadata[queue_idx][target_warp_id_global];
+            targetWq = warp_queue_metadata_ptr(queue_idx, target_warp_id_global);
             if (atomicCAS(&targetWq->lock, 0, 1) == 0) break;
             __nanosleep(lock_backoff_ns);
             if (lock_backoff_ns < (1u << 12)) {
@@ -116,8 +116,8 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
     target_warp_id_global = __shfl_sync(0xFFFFFFFFu, target_warp_id_global, 0);
     old_head = __shfl_sync(0xFFFFFFFFu, old_head, 0);
     if (lane >= warp_size - max_count_to_steal && lane < warp_size - max_count_to_steal + steal_count) {
-        targetWq = &d_warp_task_queue_metadata[queue_idx][target_warp_id_global];
-        int steal_task_id = load_L2(warp_queue_slot(
+        targetWq = warp_queue_metadata_ptr(queue_idx, target_warp_id_global);
+        int steal_task_id = load_L2(warp_queue_slot_ptr(
             queue_idx,
             target_warp_id_global,
             (old_head + (lane - warp_size + max_count_to_steal)) %
@@ -182,12 +182,12 @@ __device__ __forceinline__ void push_batch (
         }
         if (push_cnt <= 0) continue;
 
-        WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[kind][warp_id_global];
+        WarpTaskQueueMetadata* q = warp_queue_metadata_ptr(kind, warp_id_global);
         int total = ctx->generated_task_counts[kind];
         int staged_n = min(total, warp_size);
         if (kind != k_max) {
             for (int j = lane; j < staged_n; j += warp_size) {
-                *warp_queue_slot(
+                *warp_queue_slot_ptr(
                     kind,
                     warp_id_global,
                     (queue_tails[kind] + j) %
@@ -229,7 +229,7 @@ __device__ __forceinline__ void push_initial_task(
 
     // Task data is copied from the compiler-generated code (out of this function)
 
-    *warp_queue_slot(initial_queue_idx, warp_id_global, 0) = new_tid;
+    *warp_queue_slot_ptr(initial_queue_idx, warp_id_global, 0) = new_tid;
     __threadfence();
     // atomicExch(&d_active_warp_count, 1);
 }
@@ -279,7 +279,7 @@ __device__ __forceinline__ void execute_task_loop() {
         }
         if (warp_id_global == 0) {
             task_context->id_list_alloc_pos = 1;
-            WarpTaskQueueMetadata* q = &d_warp_task_queue_metadata[0][0];
+            WarpTaskQueueMetadata* q = warp_queue_metadata_ptr(0, 0);
             store_L2(&q->count, 1);
             queue_tails[0] = 1;
         } else {
@@ -317,7 +317,7 @@ __device__ __forceinline__ void execute_task_loop() {
                     if (lane == 0) {
                         for (int k = 0; k < d_launch_config.num_queues; ++k) {
                             queue_lengths[k] = load_L2(
-                                &d_warp_task_queue_metadata[k][warp_id_global].count);
+                                &warp_queue_metadata_ptr(k, warp_id_global)->count);
                         }
                     }
                     for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
@@ -384,7 +384,7 @@ __device__ __forceinline__ void execute_task_loop() {
                         if (active_warp_count == 0) {
                             bool all_tasks_finished = 1;
                             for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                                if (d_warp_task_queue_metadata[k][warp_id_global].head < queue_tails[k]) {
+                                if (warp_queue_metadata_ptr(k, warp_id_global)->head < queue_tails[k]) {
                                     all_tasks_finished = 0;
                                     break;
                                 }
