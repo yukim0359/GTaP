@@ -63,6 +63,7 @@ cudaError_t initialize_runtime() {
         d_active_block_count, &one, sizeof(int)));
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
+    // TODO: cudaDeviceSynchronize waits for every stream.
     return cudaDeviceSynchronize();
 }
 
@@ -103,6 +104,7 @@ cudaError_t reset_runtime() {
         d_active_block_count, &one, sizeof(int)));
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
+    // TODO: cudaDeviceSynchronize waits for every stream.
     GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
     return cudaGetLastError();
 }

@@ -82,7 +82,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMalloc(queue metadata, %zu bytes): %.3f ms\n", metadata_bytes, elapsed);
-    cudaEventRecord(start);
+    cudaEventRecord(start, stream);
     #endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -104,7 +104,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMalloc(queue slots, %zu bytes): %.3f ms\n", slot_bytes, elapsed);
-    cudaEventRecord(start);
+    cudaEventRecord(start, stream);
     #endif
 
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(

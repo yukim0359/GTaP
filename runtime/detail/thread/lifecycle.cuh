@@ -79,13 +79,16 @@ cudaError_t initialize_runtime() {
     #endif
 
     #ifdef GTAP_INTERNAL_PROFILE_INIT
-    cudaEventRecord(start);
+    cudaEventRecord(start, stream);
     #endif
     init_warp_id_pools_metadata<<<
         runtime_config.grid_size, runtime_config.block_size, 0, stream>>>();
+    #ifdef GTAP_INTERNAL_PROFILE_INIT
+    cudaEventRecord(stop, stream);
+    #endif
+    // TODO: cudaDeviceSynchronize waits for every stream.
     GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
     #ifdef GTAP_INTERNAL_PROFILE_INIT
-    cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  init_warp_id_pools_metadata kernel: %.3f ms\n", elapsed);
@@ -133,6 +136,7 @@ cudaError_t reset_runtime() {
 
     init_warp_id_pools_metadata<<<
         runtime_config.grid_size, runtime_config.block_size, 0, stream>>>();
+    // TODO: cudaDeviceSynchronize waits for every stream.
     GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
     return cudaGetLastError();
 }
