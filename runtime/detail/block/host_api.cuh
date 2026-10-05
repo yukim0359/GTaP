@@ -72,6 +72,7 @@ inline cudaError_t gtap_initialize(
         return err;
     }
     gtap::detail::h_runtime_initialized = true;
+    gtap::detail::h_runtime_error_reported = false;
     if (device_bytes_allocated != nullptr) {
         *device_bytes_allocated =
             gtap::detail::block::runtime_device_allocation_bytes();

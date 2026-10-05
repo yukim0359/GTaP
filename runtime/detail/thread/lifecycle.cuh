@@ -146,8 +146,6 @@ cudaError_t initialize_runtime() {
 }
 
 cudaError_t finalize_runtime() {
-    // TODO: After gtap_synchronize has printed the GTaP record, skip the generic
-    // "CUDA ERROR: unspecified launch failure" and only return the status.
     GTAP_DETAIL_CUDA_TRY(free_queue_storage());
     GTAP_DETAIL_CUDA_TRY(free_task_pool());
     GTAP_DETAIL_CUDA_TRY(free_profile_buffers());
@@ -156,7 +154,7 @@ cudaError_t finalize_runtime() {
 }
 
 cudaError_t reset_runtime() {
-    reset_runtime_error_record_host();
+    reset_runtime_error_record();
     const launch_config& runtime_config = h_launch_config;
     const size_t total_scheduling_units = runtime_config.total_scheduling_units;
     const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;

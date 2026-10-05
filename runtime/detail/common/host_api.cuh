@@ -39,15 +39,6 @@ inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
 
 inline cudaError_t gtap_synchronize() {
     cudaError_t st = cudaDeviceSynchronize();
-    gtap::detail::runtime_error_record record{};
-    if (gtap::detail::read_error_report(&record)) {
-        gtap::detail::print_error_report(&record);
-        gtap::detail::reset_runtime_error_record_host();
-        return st;
-    }
-    if (st != cudaSuccess) {
-        fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
-        return st;
-    }
-    return cudaSuccess;
+    gtap::detail::print_failed_cuda_call(st);
+    return st;
 }

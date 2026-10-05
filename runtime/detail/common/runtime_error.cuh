@@ -38,6 +38,10 @@ __constant__ runtime_error_record* d_runtime_error_record;
 
 static runtime_error_record* h_runtime_error_record = nullptr;
 
+// True after the GTaP record has been printed. Stays set until the next
+// successful gtap_initialize, so that trap is not printed again.
+inline bool h_runtime_error_reported = false;
+
 inline cudaError_t initialize_runtime_error_record() {
     if (h_runtime_error_record == nullptr) {
         cudaError_t st = cudaHostAlloc(reinterpret_cast<void**>(&h_runtime_error_record),
@@ -55,7 +59,7 @@ inline cudaError_t initialize_runtime_error_record() {
                               sizeof(runtime_error_record*));
 }
 
-inline void reset_runtime_error_record_host() {
+inline void reset_runtime_error_record() {
     if (h_runtime_error_record != nullptr) {
         memset(h_runtime_error_record, 0, sizeof(runtime_error_record));
     }
@@ -188,7 +192,7 @@ inline const char* get_runtime_error_string(int error_code) {
     return "Unknown error";
 }
 
-static void print_error_details(const runtime_error_record* r) {
+static void print_runtime_error_detail(const runtime_error_record* r) {
     if (runtime_error_code_is_valid(r->code) &&
         error_detail_printer[r->code] != nullptr) {
         error_detail_printer[r->code](r);
@@ -200,7 +204,7 @@ static void print_error_details(const runtime_error_record* r) {
         r->tid, r->queue_idx, r->value, r->limit);
 }
 
-inline bool read_error_report(runtime_error_record* record) {
+inline bool read_runtime_error_record(runtime_error_record* record) {
     if (h_runtime_error_record != nullptr &&
         h_runtime_error_record->valid != 0) {
         *record = *h_runtime_error_record;
@@ -210,26 +214,30 @@ inline bool read_error_report(runtime_error_record* record) {
     return false;
 }
 
-inline void print_error_report(const runtime_error_record* r) {
+inline void print_runtime_error_record(const runtime_error_record* r) {
     fprintf(stderr,
         "GTaP Runtime Error at block %d, thread %d: ",
         r->block_idx, r->thread_idx);
-    print_error_details(r);
+    print_runtime_error_detail(r);
     fprintf(stderr, " (source_line: %d)\n", r->src_line);
+}
+
+inline void print_failed_cuda_call(cudaError_t st) {
+    runtime_error_record record{};
+    if (read_runtime_error_record(&record)) {
+        print_runtime_error_record(&record);
+        reset_runtime_error_record();
+        h_runtime_error_reported = true;
+        return;
+    }
+    if (st == cudaSuccess) return;
+    if (h_runtime_error_reported && st == cudaErrorLaunchFailure) return;
+    fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
 }
 
 inline int cuda_try_nesting = 0;
 
 }  // namespace gtap::detail
-
-#define GTAP_DETAIL_PRINT_FAILED_CUDA_CALL(st) do { \
-    gtap::detail::runtime_error_record __record{}; \
-    if (gtap::detail::read_error_report(&__record)) { \
-        gtap::detail::print_error_report(&__record); \
-    } else { \
-        fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st)); \
-    } \
-} while (0)
 
 #ifndef GTAP_DETAIL_CUDA_TRY
 #define GTAP_DETAIL_CUDA_TRY(call) do { \
@@ -238,7 +246,7 @@ inline int cuda_try_nesting = 0;
     --gtap::detail::cuda_try_nesting; \
     if (__st != cudaSuccess) { \
         if (gtap::detail::cuda_try_nesting == 0) { \
-            GTAP_DETAIL_PRINT_FAILED_CUDA_CALL(__st); \
+            gtap::detail::print_failed_cuda_call(__st); \
         } \
         return __st; \
     } \
@@ -252,7 +260,7 @@ inline int cuda_try_nesting = 0;
     --gtap::detail::cuda_try_nesting; \
     if (__st != cudaSuccess) { \
         if (gtap::detail::cuda_try_nesting == 0) { \
-            GTAP_DETAIL_PRINT_FAILED_CUDA_CALL(__st); \
+            gtap::detail::print_failed_cuda_call(__st); \
         } \
         on_fail; \
         return __st; \
