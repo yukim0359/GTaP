@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../common/device_memory.cuh"
 #include "../../../common/runtime_config.cuh"
 #include "../../../common/runtime_error.cuh"
 
@@ -41,14 +42,12 @@ inline cudaError_t stage_queue_storage(
     queue_storage_buffers* buffers
 ) {
     (void)num_queues;
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->metadata),
-        sizeof(BlockTaskQueueMetadata) * scheduling_units));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(
+        &buffers->metadata, sizeof(BlockTaskQueueMetadata) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->metadata, 0, sizeof(BlockTaskQueueMetadata) * scheduling_units,
         stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->slots), sizeof(int) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, sizeof(int) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->slots, 0, sizeof(int) * tasks, stream));
     return cudaSuccess;
@@ -98,6 +97,15 @@ inline cudaError_t free_queue_storage() {
     if (metadata != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(metadata));
     if (slots != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(slots));
     return cudaSuccess;
+}
+
+inline void release_staged_queue_storage(queue_storage_buffers* buffers) {
+    free_device(buffers->metadata);
+    free_device(buffers->slots);
+    BlockTaskQueueMetadata* metadata = nullptr;
+    int* slots = nullptr;
+    cudaMemcpyToSymbol(d_block_task_queue_metadata, &metadata, sizeof(BlockTaskQueueMetadata*));
+    cudaMemcpyToSymbol(d_block_task_queue_storage, &slots, sizeof(int*));
 }
 
 inline cudaError_t reset_queue_counters() {

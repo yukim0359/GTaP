@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../common/device_memory.cuh"
 #include "../common/profile_buffer.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
@@ -82,11 +83,9 @@ inline cudaError_t stage_profile_buffers(
 #ifdef GTAP_ENABLE_PROFILING
     const size_t profile_bytes =
         sizeof(long long) * scheduling_units * profile_timestamp_capacity();
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->working_time), profile_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->dropped_events),
-        sizeof(unsigned long long) * scheduling_units));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->working_time, profile_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(
+        &buffers->dropped_events, sizeof(unsigned long long) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->working_time, 0, profile_bytes, stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -156,6 +155,18 @@ inline cudaError_t free_profile_buffers() {
     }
 #endif
     return cudaSuccess;
+}
+
+inline void release_staged_profile_buffers(profile_buffers* buffers) {
+    free_device(buffers->working_time);
+    free_device(buffers->dropped_events);
+#ifdef GTAP_ENABLE_PROFILING
+    long long* working_time_ptr = nullptr;
+    unsigned long long* dropped_events = nullptr;
+    cudaMemcpyToSymbol(working_time, &working_time_ptr, sizeof(working_time_ptr));
+    cudaMemcpyToSymbol(
+        profile_dropped_events, &dropped_events, sizeof(dropped_events));
+#endif
 }
 
 }  // namespace gtap::detail::block

@@ -30,10 +30,7 @@ __constant__ launch_config d_launch_config;
 
 inline cudaStream_t h_stream = nullptr;
 
-inline bool& initialized_flag() {
-    static bool initialized = false;
-    return initialized;
-}
+inline bool h_runtime_initialized = false;
 
 inline cudaError_t publish_launch_config(const launch_config& config) {
     cudaError_t status =

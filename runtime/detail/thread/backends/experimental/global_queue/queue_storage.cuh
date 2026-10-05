@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../../common/cuda_primitives.cuh"
+#include "../../../../common/device_memory.cuh"
 #include "../../../../common/runtime_config.cuh"
 #include "../../../../common/runtime_error.cuh"
 
@@ -101,8 +102,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->slots), slot_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, slot_bytes));
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -119,8 +119,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->generated), generated_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->generated, generated_bytes));
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -139,12 +138,9 @@ inline cudaError_t stage_queue_storage(
     cudaEventDestroy(stop);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->head), metadata_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->tail), metadata_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->alloc), metadata_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->head, metadata_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->tail, metadata_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->alloc, metadata_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->head, 0, metadata_bytes, stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->tail, 0, metadata_bytes, stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->alloc, 0, metadata_bytes, stream));
@@ -191,9 +187,15 @@ inline cudaError_t clear_queue_storage(
             generated, 0, generated_task_id_bytes(scheduling_units, num_queues), stream));
     }
     const size_t metadata_bytes = sizeof(int) * static_cast<size_t>(num_queues);
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(head, 0, metadata_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(tail, 0, metadata_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(alloc, 0, metadata_bytes, stream));
+    if (head != nullptr) {
+        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(head, 0, metadata_bytes, stream));
+    }
+    if (tail != nullptr) {
+        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(tail, 0, metadata_bytes, stream));
+    }
+    if (alloc != nullptr) {
+        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(alloc, 0, metadata_bytes, stream));
+    }
     return cudaSuccess;
 }
 
@@ -217,6 +219,24 @@ inline cudaError_t free_queue_storage() {
     if (tail != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(tail));
     if (alloc != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(alloc));
     return cudaSuccess;
+}
+
+inline void release_staged_queue_storage(queue_storage_buffers* buffers) {
+    free_device(buffers->slots);
+    free_device(buffers->head);
+    free_device(buffers->tail);
+    free_device(buffers->alloc);
+    free_device(buffers->generated);
+    int* slots = nullptr;
+    int* head = nullptr;
+    int* tail = nullptr;
+    int* alloc = nullptr;
+    int* generated = nullptr;
+    cudaMemcpyToSymbol(d_global_task_queue, &slots, sizeof(slots));
+    cudaMemcpyToSymbol(d_queue_head, &head, sizeof(head));
+    cudaMemcpyToSymbol(d_queue_tail, &tail, sizeof(tail));
+    cudaMemcpyToSymbol(d_queue_alloc, &alloc, sizeof(alloc));
+    cudaMemcpyToSymbol(d_task_id_generated_by_queue_idx, &generated, sizeof(generated));
 }
 
 }  // namespace gtap::detail::thread

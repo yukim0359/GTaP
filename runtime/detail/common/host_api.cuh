@@ -7,7 +7,7 @@
 
 template<class Kernel, class... Args>
 inline cudaError_t gtap_launch(Kernel kernel, Args&&... args) {
-    if (!gtap::detail::initialized_flag()) {
+    if (!gtap::detail::h_runtime_initialized) {
         return cudaErrorInitializationError;
     }
     const gtap::detail::launch_config& config = gtap::detail::h_launch_config;

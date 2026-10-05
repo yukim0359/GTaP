@@ -51,7 +51,7 @@ inline cudaError_t gtap_initialize(
 ) {
     cudaError_t validation = gtap_validate_config(config);
     if (validation != cudaSuccess) return validation;
-    if (gtap::detail::initialized_flag()) return cudaErrorInitializationError;
+    if (gtap::detail::h_runtime_initialized) return cudaErrorInitializationError;
 
     gtap::detail::launch_config launch_config{
         config.grid_size,
@@ -67,12 +67,14 @@ inline cudaError_t gtap_initialize(
     GTAP_DETAIL_CUDA_TRY(gtap::detail::publish_launch_config(launch_config));
     gtap::detail::h_stream = config.stream;
     cudaError_t err = gtap::detail::block::initialize_runtime();
-    if (err == cudaSuccess) {
-        gtap::detail::initialized_flag() = true;
-        if (device_bytes_allocated != nullptr) {
-            *device_bytes_allocated =
-                gtap::detail::block::runtime_device_allocation_bytes();
-        }
+    if (err != cudaSuccess) {
+        gtap::detail::h_stream = nullptr;
+        return err;
+    }
+    gtap::detail::h_runtime_initialized = true;
+    if (device_bytes_allocated != nullptr) {
+        *device_bytes_allocated =
+            gtap::detail::block::runtime_device_allocation_bytes();
     }
     return err;
 }
@@ -80,7 +82,7 @@ inline cudaError_t gtap_initialize(
 inline cudaError_t gtap_finalize() {
     cudaError_t err = gtap::detail::block::finalize_runtime();
     if (err == cudaSuccess) {
-        gtap::detail::initialized_flag() = false;
+        gtap::detail::h_runtime_initialized = false;
         gtap::detail::h_stream = nullptr;
     }
     return err;

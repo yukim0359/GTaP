@@ -3,6 +3,7 @@
 // Call order for every block backend.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
 // All clears use h_stream.
+// A failed initialize releases staged buffers. The caller owns h_stream.
 
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
@@ -25,46 +26,83 @@ static size_t runtime_device_allocation_bytes() {
            profile_buffer_allocation_bytes(scheduling_units);
 }
 
+inline void abandon_initialize(
+    queue_storage_buffers* queues,
+    task_pool_buffers* task_pool,
+    profile_buffers* profile
+) {
+    cudaStreamSynchronize(h_stream);
+    release_staged_queue_storage(queues);
+    release_staged_task_pool(task_pool);
+    release_staged_profile_buffers(profile);
+    finalize_runtime_error_record();
+    cudaGetLastError();
+}
+
 cudaError_t initialize_runtime() {
-    GTAP_DETAIL_CUDA_TRY(initialize_runtime_error_record());
+    queue_storage_buffers queues{};
+    task_pool_buffers task_pool{};
+    profile_buffers profile{};
+    GTAP_DETAIL_CUDA_TRY_OR(
+        initialize_runtime_error_record(),
+        abandon_initialize(&queues, &task_pool, &profile));
     const launch_config& runtime_config = h_launch_config;
     const size_t total_scheduling_units = runtime_config.total_scheduling_units;
     const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;
 
     cudaStream_t stream = h_stream;
 
-    queue_storage_buffers queues{};
-    GTAP_DETAIL_CUDA_TRY(stage_queue_storage(
-        total_scheduling_units, total_tasks, runtime_config.num_queues, stream,
-        &queues));
-    task_pool_buffers task_pool{};
-    GTAP_DETAIL_CUDA_TRY(stage_task_pool(
-        total_scheduling_units, total_tasks, runtime_config.block_size, stream,
-        &task_pool));
-    profile_buffers profile{};
-    GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
-        total_scheduling_units, stream, &profile));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        stage_queue_storage(
+            total_scheduling_units, total_tasks, runtime_config.num_queues, stream,
+            &queues),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        stage_task_pool(
+            total_scheduling_units, total_tasks, runtime_config.block_size, stream,
+            &task_pool),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        stage_profile_buffers(total_scheduling_units, stream, &profile),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaStreamSynchronize(stream),
+        abandon_initialize(&queues, &task_pool, &profile));
 
-    GTAP_DETAIL_CUDA_TRY(publish_queue_storage(queues));
-    GTAP_DETAIL_CUDA_TRY(publish_task_pool(task_pool));
-    GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        publish_queue_storage(queues),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        publish_task_pool(task_pool),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        publish_profile_buffers(profile),
+        abandon_initialize(&queues, &task_pool, &profile));
 
     int zero = 0;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_first_task_finished, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_all_tasks_finished, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_runtime_error_code, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(reset_queue_counters());
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
+        abandon_initialize(&queues, &task_pool, &profile));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        reset_queue_counters(),
+        abandon_initialize(&queues, &task_pool, &profile));
     int one = 1;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_active_block_count, &one, sizeof(int)));
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int)),
+        abandon_initialize(&queues, &task_pool, &profile));
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
     // TODO: cudaDeviceSynchronize waits for every stream.
-    return cudaDeviceSynchronize();
+    GTAP_DETAIL_CUDA_TRY_OR(
+        cudaDeviceSynchronize(),
+        abandon_initialize(&queues, &task_pool, &profile));
+    return cudaGetLastError();
 }
 
 cudaError_t finalize_runtime() {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../common/device_memory.cuh"
 #include "../common/runtime_error.cuh"
 #include "../common/warp_index.cuh"
 
@@ -110,28 +111,22 @@ inline cudaError_t stage_task_pool(
     cudaStream_t stream,
     task_pool_buffers* buffers
 ) {
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->headers),
-        sizeof(TaskHeader) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->headers, sizeof(TaskHeader) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
 
     const size_t task_data_size = compute_task_data_stride() * tasks;
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->task_data), task_data_size));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->task_data, task_data_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->task_data, 0, task_data_size, stream));
 
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->id_list_free_positions),
-        sizeof(int) * scheduling_units));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(
+        &buffers->id_list_free_positions, sizeof(int) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->id_list_free_positions, 0, sizeof(int) * scheduling_units,
         stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->id_storage), sizeof(int) * tasks));
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->id_valid), sizeof(int) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_storage, sizeof(int) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_valid, sizeof(int) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->id_valid, 0, sizeof(int) * tasks, stream));
     return cudaSuccess;
@@ -214,6 +209,28 @@ inline cudaError_t free_task_pool() {
     if (id_storage != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(id_storage));
     if (id_valid != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(id_valid));
     return cudaSuccess;
+}
+
+inline void release_staged_task_pool(task_pool_buffers* buffers) {
+    free_device(buffers->headers);
+    free_device(buffers->task_data);
+    free_device(buffers->id_list_free_positions);
+    free_device(buffers->id_storage);
+    free_device(buffers->id_valid);
+    TaskHeader* headers = nullptr;
+    char* task_data = nullptr;
+    int* id_list_free_positions = nullptr;
+    int* id_storage = nullptr;
+    int* id_valid = nullptr;
+    size_t stride = 0;
+    cudaMemcpyToSymbol(d_task_headers, &headers, sizeof(TaskHeader*));
+    cudaMemcpyToSymbol(d_task_data_bytes, &task_data, sizeof(task_data));
+    cudaMemcpyToSymbol(d_task_data_stride, &stride, sizeof(stride));
+    cudaMemcpyToSymbol(
+        d_task_id_list_free_positions, &id_list_free_positions,
+        sizeof(id_list_free_positions));
+    cudaMemcpyToSymbol(d_task_id_storage, &id_storage, sizeof(id_storage));
+    cudaMemcpyToSymbol(d_task_id_valid, &id_valid, sizeof(id_valid));
 }
 
 }  // namespace gtap::detail::thread

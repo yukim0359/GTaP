@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../common/cuda_primitives.cuh"
+#include "../common/device_memory.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 
@@ -115,31 +116,25 @@ inline cudaError_t stage_task_pool(
     cudaStream_t stream,
     task_pool_buffers* buffers
 ) {
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->id_list_free_positions),
-        sizeof(int) * scheduling_units));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(
+        &buffers->id_list_free_positions, sizeof(int) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->id_list_free_positions, 0,
         sizeof(int) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->id_storage), sizeof(int) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_storage, sizeof(int) * tasks));
 
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->headers),
-        sizeof(TaskHeader) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->headers, sizeof(TaskHeader) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
 
     const size_t task_data_size = compute_task_data_stride() * tasks;
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->task_data), task_data_size));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->task_data, task_data_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->task_data, 0, task_data_size, stream));
 
     const size_t entry_result_size =
         __gtap_auto_entry_result_size * static_cast<size_t>(block_size);
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->entry_result), entry_result_size));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->entry_result, entry_result_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->entry_result, 0, entry_result_size, stream));
     return cudaSuccess;
@@ -225,6 +220,28 @@ inline cudaError_t free_task_pool() {
     if (task_data != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(task_data));
     if (entry_result != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(entry_result));
     return cudaSuccess;
+}
+
+inline void release_staged_task_pool(task_pool_buffers* buffers) {
+    free_device(buffers->id_list_free_positions);
+    free_device(buffers->id_storage);
+    free_device(buffers->headers);
+    free_device(buffers->task_data);
+    free_device(buffers->entry_result);
+    int* id_list_free_positions = nullptr;
+    int* id_storage = nullptr;
+    TaskHeader* headers = nullptr;
+    char* task_data = nullptr;
+    char* entry_result = nullptr;
+    size_t stride = 0;
+    cudaMemcpyToSymbol(
+        d_task_id_list_free_positions, &id_list_free_positions,
+        sizeof(id_list_free_positions));
+    cudaMemcpyToSymbol(d_task_id_storage, &id_storage, sizeof(id_storage));
+    cudaMemcpyToSymbol(d_task_headers, &headers, sizeof(TaskHeader*));
+    cudaMemcpyToSymbol(d_task_data_bytes, &task_data, sizeof(task_data));
+    cudaMemcpyToSymbol(d_entry_result_bytes, &entry_result, sizeof(entry_result));
+    cudaMemcpyToSymbol(d_task_data_stride, &stride, sizeof(stride));
 }
 
 }  // namespace gtap::detail::block

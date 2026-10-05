@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../../common/cuda_primitives.cuh"
+#include "../../../../common/device_memory.cuh"
 #include "../../../../common/runtime_config.cuh"
 #include "../../../../common/runtime_error.cuh"
 
@@ -74,8 +75,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->metadata), metadata_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->metadata, metadata_bytes));
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
@@ -96,8 +96,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(cudaMalloc(
-        reinterpret_cast<void**>(&buffers->slots), slot_bytes));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, slot_bytes));
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
@@ -161,6 +160,15 @@ inline cudaError_t free_queue_storage() {
     if (metadata != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(metadata));
     if (slots != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(slots));
     return cudaSuccess;
+}
+
+inline void release_staged_queue_storage(queue_storage_buffers* buffers) {
+    free_device(buffers->metadata);
+    free_device(buffers->slots);
+    WarpTaskQueueMetadata* metadata = nullptr;
+    int* slots = nullptr;
+    cudaMemcpyToSymbol(d_warp_task_queue_metadata, &metadata, sizeof(WarpTaskQueueMetadata*));
+    cudaMemcpyToSymbol(d_warp_task_queue_storage, &slots, sizeof(int*));
 }
 
 }  // namespace gtap::detail::thread

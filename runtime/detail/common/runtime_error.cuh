@@ -67,6 +67,10 @@ inline cudaError_t finalize_runtime_error_record() {
         st = cudaFreeHost(h_runtime_error_record);
         h_runtime_error_record = nullptr;
     }
+    runtime_error_record* record = nullptr;
+    cudaError_t clear = cudaMemcpyToSymbol(
+        d_runtime_error_record, &record, sizeof(runtime_error_record*));
+    if (st == cudaSuccess) st = clear;
     return st;
 }
 
@@ -214,22 +218,46 @@ inline void print_error_report(const runtime_error_record* r) {
     fprintf(stderr, " (source_line: %d)\n", r->src_line);
 }
 
+inline int cuda_try_nesting = 0;
+
 }  // namespace gtap::detail
+
+#define GTAP_DETAIL_PRINT_FAILED_CUDA_CALL(st) do { \
+    gtap::detail::runtime_error_record __record{}; \
+    if (gtap::detail::read_error_report(&__record)) { \
+        gtap::detail::print_error_report(&__record); \
+    } else { \
+        fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st)); \
+    } \
+} while (0)
 
 #ifndef GTAP_DETAIL_CUDA_TRY
 #define GTAP_DETAIL_CUDA_TRY(call) do { \
+    ++gtap::detail::cuda_try_nesting; \
     cudaError_t __st = (call); \
+    --gtap::detail::cuda_try_nesting; \
     if (__st != cudaSuccess) { \
-        gtap::detail::runtime_error_record __record{}; \
-        if (gtap::detail::read_error_report(&__record)) { \
-            gtap::detail::print_error_report(&__record); \
-        } else { \
-            fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(__st)); \
+        if (gtap::detail::cuda_try_nesting == 0) { \
+            GTAP_DETAIL_PRINT_FAILED_CUDA_CALL(__st); \
         } \
         return __st; \
     } \
 } while (0)
 #endif
+
+// Like GTAP_DETAIL_CUDA_TRY, then runs on_fail before returning.
+#define GTAP_DETAIL_CUDA_TRY_OR(call, on_fail) do { \
+    ++gtap::detail::cuda_try_nesting; \
+    cudaError_t __st = (call); \
+    --gtap::detail::cuda_try_nesting; \
+    if (__st != cudaSuccess) { \
+        if (gtap::detail::cuda_try_nesting == 0) { \
+            GTAP_DETAIL_PRINT_FAILED_CUDA_CALL(__st); \
+        } \
+        on_fail; \
+        return __st; \
+    } \
+} while (0)
 
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(tid, queue_idx, num_queues) \
     gtap::detail::record_runtime_error_and_trap( \
