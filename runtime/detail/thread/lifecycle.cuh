@@ -3,9 +3,6 @@
 // Call order for every thread backend.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
 // All clears use h_stream.
-// TODO: initialize and reset are faster when those clears overlap on several streams.
-// Do that together with block mode: lifecycle creates the streams and passes
-// each stage and clear the ones it uses.
 
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
@@ -48,7 +45,7 @@ cudaError_t initialize_runtime() {
         total_scheduling_units, runtime_config.num_queues, stream, &queues));
     task_pool_buffers task_pool{};
     GTAP_DETAIL_CUDA_TRY(stage_task_pool(
-        total_scheduling_units, total_tasks, stream, stream, stream, &task_pool));
+        total_scheduling_units, total_tasks, stream, &task_pool));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
     GTAP_DETAIL_CUDA_TRY(publish_queue_storage(queues));
     GTAP_DETAIL_CUDA_TRY(publish_task_pool(task_pool));
@@ -82,7 +79,7 @@ cudaError_t initialize_runtime() {
     #endif
     profile_buffers profile{};
     GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
-        total_scheduling_units, stream, stream, stream, &profile));
+        total_scheduling_units, stream, &profile));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
     GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
     #ifdef GTAP_INTERNAL_PROFILE_INIT
@@ -132,7 +129,7 @@ cudaError_t reset_runtime() {
     GTAP_DETAIL_CUDA_TRY(clear_queue_storage(
         total_scheduling_units, runtime_config.num_queues, stream));
     GTAP_DETAIL_CUDA_TRY(clear_task_pool(
-        total_scheduling_units, total_tasks, stream, stream, stream));
+        total_scheduling_units, total_tasks, stream));
 
     int zero = 0;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
@@ -142,7 +139,7 @@ cudaError_t reset_runtime() {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)));
 
     GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(
-        total_scheduling_units, stream, stream, stream));
+        total_scheduling_units, stream));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
 
     init_warp_id_pools_metadata<<<

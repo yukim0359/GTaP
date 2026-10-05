@@ -2,13 +2,7 @@
 
 // Call order for every block backend.
 // Queue storage, the task pool, and profile buffers are allocated by their owners.
-// TODO: Create and assign the init/reset streams here, and pass each stage and
-// clear the streams it uses. runtime_init_stream_count and
-// task_id_free_position_fill currently come from queue_storage, and task_pool
-// uses streams[1], [2], and [3] by index. Do this together with thread mode,
-// which still runs every clear on h_stream. init_block_id_pools_metadata
-// overwrites the free-position fill with tasks_per_scheduling_unit, so the 0 / 0xFF
-// backend difference can go.
+// All clears use h_stream.
 
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
@@ -37,36 +31,24 @@ cudaError_t initialize_runtime() {
     const size_t total_scheduling_units = runtime_config.total_scheduling_units;
     const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;
 
-    cudaStream_t streams[runtime_init_stream_count];
-    for (int i = 0; i < runtime_init_stream_count; ++i) {
-        GTAP_DETAIL_CUDA_TRY(cudaStreamCreate(&streams[i]));
-    }
+    cudaStream_t stream = h_stream;
 
     queue_storage_buffers queues{};
     GTAP_DETAIL_CUDA_TRY(stage_queue_storage(
-        total_scheduling_units, total_tasks, runtime_config.num_queues, streams,
+        total_scheduling_units, total_tasks, runtime_config.num_queues, stream,
         &queues));
     task_pool_buffers task_pool{};
     GTAP_DETAIL_CUDA_TRY(stage_task_pool(
-        total_scheduling_units, total_tasks, runtime_config.block_size, streams,
-        task_id_free_position_fill, &task_pool));
-
-    for (int i = 0; i < runtime_init_stream_count; ++i) {
-        GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[i]));
-    }
+        total_scheduling_units, total_tasks, runtime_config.block_size, stream,
+        &task_pool));
+    profile_buffers profile{};
+    GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
+        total_scheduling_units, stream, &profile));
+    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
 
     GTAP_DETAIL_CUDA_TRY(publish_queue_storage(queues));
     GTAP_DETAIL_CUDA_TRY(publish_task_pool(task_pool));
-    profile_buffers profile{};
-    GTAP_DETAIL_CUDA_TRY(stage_profile_buffers(
-        total_scheduling_units, streams[1], streams[0], &profile));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[0]));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[1]));
     GTAP_DETAIL_CUDA_TRY(publish_profile_buffers(profile));
-
-    for (int i = 0; i < runtime_init_stream_count; ++i) {
-        GTAP_DETAIL_CUDA_TRY(cudaStreamDestroy(streams[i]));
-    }
 
     int zero = 0;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
@@ -80,7 +62,7 @@ cudaError_t initialize_runtime() {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         d_active_block_count, &one, sizeof(int)));
 
-    init_block_id_pools_metadata<<<runtime_config.grid_size, 1>>>();
+    init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
     return cudaDeviceSynchronize();
 }
 
@@ -98,22 +80,15 @@ cudaError_t reset_runtime() {
     const size_t total_scheduling_units = runtime_config.total_scheduling_units;
     const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;
 
-    cudaStream_t streams[runtime_init_stream_count];
-    for (int i = 0; i < runtime_init_stream_count; ++i) {
-        GTAP_DETAIL_CUDA_TRY(cudaStreamCreate(&streams[i]));
-    }
+    cudaStream_t stream = h_stream;
 
     GTAP_DETAIL_CUDA_TRY(clear_queue_storage(
-        total_scheduling_units, total_tasks, runtime_config.num_queues, streams));
+        total_scheduling_units, total_tasks, runtime_config.num_queues, stream));
     GTAP_DETAIL_CUDA_TRY(clear_task_pool(
-        total_scheduling_units, total_tasks, runtime_config.block_size, streams,
-        task_id_free_position_fill));
+        total_scheduling_units, total_tasks, runtime_config.block_size, stream));
     GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(
-        total_scheduling_units, streams[1], streams[0]));
-
-    for (int i = 0; i < runtime_init_stream_count; ++i) {
-        GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(streams[i]));
-    }
+        total_scheduling_units, stream));
+    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
 
     int zero = 0;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
@@ -127,12 +102,8 @@ cudaError_t reset_runtime() {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         d_active_block_count, &one, sizeof(int)));
 
-    init_block_id_pools_metadata<<<runtime_config.grid_size, 1>>>();
+    init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
     GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
-
-    for (int i = 0; i < runtime_init_stream_count; ++i) {
-        GTAP_DETAIL_CUDA_TRY(cudaStreamDestroy(streams[i]));
-    }
     return cudaGetLastError();
 }
 

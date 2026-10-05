@@ -107,35 +107,33 @@ inline size_t task_pool_allocation_bytes(size_t scheduling_units, size_t tasks) 
 // Allocates the pool and starts the async clears. Symbols are published later.
 inline cudaError_t stage_task_pool(
     size_t scheduling_units, size_t tasks,
-    cudaStream_t header_stream,
-    cudaStream_t data_stream,
-    cudaStream_t id_stream,
+    cudaStream_t stream,
     task_pool_buffers* buffers
 ) {
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->headers),
         sizeof(TaskHeader) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->headers, 0, sizeof(TaskHeader) * tasks, header_stream));
+        buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
 
     const size_t task_data_size = host_task_data_stride() * tasks;
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->task_data), task_data_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->task_data, 0, task_data_size, data_stream));
+        buffers->task_data, 0, task_data_size, stream));
 
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_list_free_positions),
         sizeof(int) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->id_list_free_positions, 0xFF, sizeof(int) * scheduling_units,
-        id_stream));
+        buffers->id_list_free_positions, 0, sizeof(int) * scheduling_units,
+        stream));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_storage), sizeof(int) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_valid), sizeof(int) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->id_valid, 0, sizeof(int) * tasks, id_stream));
+        buffers->id_valid, 0, sizeof(int) * tasks, stream));
     return cudaSuccess;
 }
 
@@ -157,9 +155,7 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
 
 inline cudaError_t clear_task_pool(
     size_t scheduling_units, size_t tasks,
-    cudaStream_t header_stream,
-    cudaStream_t data_stream,
-    cudaStream_t id_stream
+    cudaStream_t stream
 ) {
     TaskHeader* headers = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
@@ -176,19 +172,19 @@ inline cudaError_t clear_task_pool(
 
     if (headers != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            headers, 0, sizeof(TaskHeader) * tasks, header_stream));
+            headers, 0, sizeof(TaskHeader) * tasks, stream));
     }
     if (task_data != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            task_data, 0, host_task_data_stride() * tasks, data_stream));
+            task_data, 0, host_task_data_stride() * tasks, stream));
     }
     if (id_list_free_positions != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_list_free_positions, 0xFF, sizeof(int) * scheduling_units, id_stream));
+            id_list_free_positions, 0, sizeof(int) * scheduling_units, stream));
     }
     if (id_valid != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_valid, 0, sizeof(int) * tasks, id_stream));
+            id_valid, 0, sizeof(int) * tasks, stream));
     }
     return cudaSuccess;
 }

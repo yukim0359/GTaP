@@ -13,10 +13,6 @@ namespace gtap::detail::block {
 
 using namespace gtap::detail;
 
-// TODO: Init policy, not queue storage. See lifecycle.cuh.
-inline constexpr int runtime_init_stream_count = 5;
-inline constexpr int task_id_free_position_fill = 0xFF;
-
 __constant__ int* d_global_task_queue; // int[num_blocks * tasks_per_block]
 __device__ unsigned int d_queue_head;
 __device__ unsigned int d_queue_tail;
@@ -54,20 +50,20 @@ inline size_t queue_storage_allocation_bytes(
 
 inline cudaError_t stage_queue_storage(
     size_t scheduling_units, size_t tasks, int num_queues,
-    cudaStream_t streams[],
+    cudaStream_t stream,
     queue_storage_buffers* buffers
 ) {
     (void)num_queues;
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->slots), sizeof(int) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->slots, 0, sizeof(int) * tasks, streams[0]));
+        buffers->slots, 0, sizeof(int) * tasks, stream));
     const size_t generated_bytes =
         sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS;
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->generated), generated_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->generated, 0, generated_bytes, streams[4]));
+        buffers->generated, 0, generated_bytes, stream));
     return cudaSuccess;
 }
 
@@ -81,7 +77,7 @@ inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
 
 inline cudaError_t clear_queue_storage(
     size_t scheduling_units, size_t tasks, int num_queues,
-    cudaStream_t streams[]
+    cudaStream_t stream
 ) {
     (void)num_queues;
     int* slots = nullptr;
@@ -92,12 +88,12 @@ inline cudaError_t clear_queue_storage(
         &generated, d_task_id_generated, sizeof(int*)));
     if (slots != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, sizeof(int) * tasks, streams[0]));
+            slots, 0, sizeof(int) * tasks, stream));
     }
     if (generated != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
             generated, 0, sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS,
-            streams[4]));
+            stream));
     }
     return cudaSuccess;
 }

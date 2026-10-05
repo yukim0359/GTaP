@@ -110,19 +110,17 @@ inline size_t task_pool_allocation_bytes(
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
-// TODO: Take each stream as its own argument. See lifecycle.cuh.
 inline cudaError_t stage_task_pool(
     size_t scheduling_units, size_t tasks, int block_size,
-    cudaStream_t streams[],
-    int free_position_fill,
+    cudaStream_t stream,
     task_pool_buffers* buffers
 ) {
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_list_free_positions),
         sizeof(int) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->id_list_free_positions, free_position_fill,
-        sizeof(int) * scheduling_units, streams[1]));
+        buffers->id_list_free_positions, 0,
+        sizeof(int) * scheduling_units, stream));
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->id_storage), sizeof(int) * tasks));
 
@@ -130,20 +128,20 @@ inline cudaError_t stage_task_pool(
         reinterpret_cast<void**>(&buffers->headers),
         sizeof(TaskHeader) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->headers, 0, sizeof(TaskHeader) * tasks, streams[2]));
+        buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
 
     const size_t task_data_size = host_task_data_stride() * tasks;
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->task_data), task_data_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->task_data, 0, task_data_size, streams[3]));
+        buffers->task_data, 0, task_data_size, stream));
 
     const size_t entry_result_size =
         __gtap_auto_entry_result_size * static_cast<size_t>(block_size);
     GTAP_DETAIL_CUDA_TRY(cudaMalloc(
         reinterpret_cast<void**>(&buffers->entry_result), entry_result_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->entry_result, 0, entry_result_size, streams[3]));
+        buffers->entry_result, 0, entry_result_size, stream));
     return cudaSuccess;
 }
 
@@ -165,8 +163,7 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
 
 inline cudaError_t clear_task_pool(
     size_t scheduling_units, size_t tasks, int block_size,
-    cudaStream_t streams[],
-    int free_position_fill
+    cudaStream_t stream
 ) {
     int* id_list_free_positions = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
@@ -183,22 +180,22 @@ inline cudaError_t clear_task_pool(
 
     if (id_list_free_positions != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_list_free_positions, free_position_fill,
-            sizeof(int) * scheduling_units, streams[1]));
+            id_list_free_positions, 0,
+            sizeof(int) * scheduling_units, stream));
     }
     if (headers != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            headers, 0, sizeof(TaskHeader) * tasks, streams[2]));
+            headers, 0, sizeof(TaskHeader) * tasks, stream));
     }
     if (task_data != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            task_data, 0, host_task_data_stride() * tasks, streams[3]));
+            task_data, 0, host_task_data_stride() * tasks, stream));
     }
     if (entry_result != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
             entry_result, 0,
             __gtap_auto_entry_result_size * static_cast<size_t>(block_size),
-            streams[3]));
+            stream));
     }
     return cudaSuccess;
 }
