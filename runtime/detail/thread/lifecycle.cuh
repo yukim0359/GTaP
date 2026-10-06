@@ -18,12 +18,10 @@ namespace gtap::detail::thread {
 using namespace gtap::detail;
 
 static size_t runtime_device_allocation_bytes() {
-    const launch_config& c = h_launch_config;
-    const size_t scheduling_units = static_cast<size_t>(c.total_scheduling_units);
-    const size_t tasks = scheduling_units * c.tasks_per_scheduling_unit;
-    return queue_storage_allocation_bytes(scheduling_units, c.num_queues) +
-           task_pool_allocation_bytes(scheduling_units, tasks) +
-           profile_buffer_allocation_bytes(scheduling_units);
+    const launch_config& config = h_launch_config;
+    return queue_storage_allocation_bytes(config) +
+           task_pool_allocation_bytes(config) +
+           profile_buffer_allocation_bytes(config);
 }
 
 inline void abandon_initialize(
@@ -47,8 +45,6 @@ cudaError_t initialize_runtime() {
         initialize_runtime_error_record(),
         abandon_initialize(&queues, &task_pool, &profile));
     const launch_config& runtime_config = h_launch_config;
-    const size_t total_scheduling_units = runtime_config.total_scheduling_units;
-    const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;
     cudaStream_t stream = h_stream;
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
@@ -61,14 +57,13 @@ cudaError_t initialize_runtime() {
 #endif
 
     GTAP_DETAIL_CUDA_TRY_OR(
-        stage_queue_storage(
-            total_scheduling_units, runtime_config.num_queues, stream, &queues),
+        stage_queue_storage(runtime_config, stream, &queues),
         abandon_initialize(&queues, &task_pool, &profile));
     GTAP_DETAIL_CUDA_TRY_OR(
-        stage_task_pool(total_scheduling_units, total_tasks, stream, &task_pool),
+        stage_task_pool(runtime_config, stream, &task_pool),
         abandon_initialize(&queues, &task_pool, &profile));
     GTAP_DETAIL_CUDA_TRY_OR(
-        stage_profile_buffers(total_scheduling_units, stream, &profile),
+        stage_profile_buffers(runtime_config, stream, &profile),
         abandon_initialize(&queues, &task_pool, &profile));
     GTAP_DETAIL_CUDA_TRY_OR(
         cudaStreamSynchronize(stream),
@@ -156,14 +151,10 @@ cudaError_t finalize_runtime() {
 cudaError_t reset_runtime() {
     reset_runtime_error_record();
     const launch_config& runtime_config = h_launch_config;
-    const size_t total_scheduling_units = runtime_config.total_scheduling_units;
-    const size_t total_tasks = total_scheduling_units * runtime_config.tasks_per_scheduling_unit;
     cudaStream_t stream = h_stream;
 
-    GTAP_DETAIL_CUDA_TRY(clear_queue_storage(
-        total_scheduling_units, runtime_config.num_queues, stream));
-    GTAP_DETAIL_CUDA_TRY(clear_task_pool(
-        total_scheduling_units, total_tasks, stream));
+    GTAP_DETAIL_CUDA_TRY(clear_queue_storage(runtime_config, stream));
+    GTAP_DETAIL_CUDA_TRY(clear_task_pool(runtime_config, stream));
 
     int zero = 0;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
@@ -172,8 +163,7 @@ cudaError_t reset_runtime() {
     int one = 1;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)));
 
-    GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(
-        total_scheduling_units, stream));
+    GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(runtime_config, stream));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
 
     init_warp_id_pools_metadata<<<

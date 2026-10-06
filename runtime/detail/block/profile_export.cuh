@@ -217,7 +217,7 @@ static inline gtap_profile_export_result gtap_export_profile(
             active_block_ratio_stats.stddev, active_block_ratio_stats.min,
             active_block_ratio_stats.p50, active_block_ratio_stats.p95,
             active_block_ratio_stats.p99, active_block_ratio_stats.max) >= 0;
-        io_ok = metadata_ok && gtap::detail::close_profile_file(metadata);
+        io_ok = gtap::detail::close_profile_file(metadata) && metadata_ok;
     } else io_ok = false;
 
     free(indices); free(dropped); free(times);

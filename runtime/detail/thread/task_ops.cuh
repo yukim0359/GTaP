@@ -19,7 +19,8 @@ __device__ __forceinline__ int get_task_state(int tid) {
 }
 
 __device__ __forceinline__ bool set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
-    if (queue_idx_after_join >= d_launch_config.num_queues) {
+    if (queue_idx_after_join < 0 ||
+        queue_idx_after_join >= d_launch_config.num_queues) {
         GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(
             tid, queue_idx_after_join, d_launch_config.num_queues);
     }
@@ -95,7 +96,8 @@ __device__ __forceinline__ void* spawn_task(
     void (*func)(void*, int, TaskContext*),
     int child_queue_idx
 ) {
-    if (child_queue_idx >= d_launch_config.num_queues) {
+    if (child_queue_idx < 0 ||
+        child_queue_idx >= d_launch_config.num_queues) {
         GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(
             self_tid, child_queue_idx, d_launch_config.num_queues);
     }

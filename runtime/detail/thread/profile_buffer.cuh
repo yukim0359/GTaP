@@ -56,13 +56,14 @@ __global__ void get_warp_working_time_counts(int* counts) {
 }
 #endif
 
-inline size_t profile_buffer_allocation_bytes(size_t scheduling_units) {
+inline size_t profile_buffer_allocation_bytes(const launch_config& config) {
 #ifdef GTAP_ENABLE_PROFILING
-    return scheduling_units * static_cast<size_t>(profile_timestamp_capacity()) *
-            (sizeof(long long) + sizeof(int))
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t timestamps = static_cast<size_t>(config.profile_interval_capacity) * 2;
+    return scheduling_units * timestamps * (sizeof(long long) + sizeof(int))
         + scheduling_units * sizeof(unsigned long long);
 #else
-    (void)scheduling_units;
+    (void)config;
     return 0;
 #endif
 }
@@ -74,15 +75,15 @@ struct profile_buffers {
 };
 
 inline cudaError_t stage_profile_buffers(
-    size_t scheduling_units,
+    const launch_config& config,
     cudaStream_t stream,
     profile_buffers* buffers
 ) {
 #ifdef GTAP_ENABLE_PROFILING
-    const size_t profile_long_bytes =
-        sizeof(long long) * scheduling_units * profile_timestamp_capacity();
-    const size_t profile_int_bytes =
-        sizeof(int) * scheduling_units * profile_timestamp_capacity();
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t timestamps = static_cast<size_t>(config.profile_interval_capacity) * 2;
+    const size_t profile_long_bytes = sizeof(long long) * scheduling_units * timestamps;
+    const size_t profile_int_bytes = sizeof(int) * scheduling_units * timestamps;
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->working_time, profile_long_bytes));
     GTAP_DETAIL_CUDA_TRY(alloc_device(
         &buffers->tasks_processed_count, profile_int_bytes));
@@ -96,7 +97,7 @@ inline cudaError_t stage_profile_buffers(
         buffers->dropped_events, 0,
         sizeof(unsigned long long) * scheduling_units, stream));
 #else
-    (void)scheduling_units;
+    (void)config;
     (void)stream;
     (void)buffers;
 #endif
@@ -120,10 +121,12 @@ inline cudaError_t publish_profile_buffers(const profile_buffers& buffers) {
 }
 
 inline cudaError_t clear_profile_buffers(
-    size_t scheduling_units,
+    const launch_config& config,
     cudaStream_t stream
 ) {
 #ifdef GTAP_ENABLE_PROFILING
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t timestamps = static_cast<size_t>(config.profile_interval_capacity) * 2;
     long long* working_time_ptr = nullptr;
     int* tasks_processed_count_ptr = nullptr;
     unsigned long long* profile_dropped_events_ptr = nullptr;
@@ -137,17 +140,17 @@ inline cudaError_t clear_profile_buffers(
         sizeof(profile_dropped_events_ptr)));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         working_time_ptr, 0,
-        sizeof(long long) * scheduling_units * profile_timestamp_capacity(),
+        sizeof(long long) * scheduling_units * timestamps,
         stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         tasks_processed_count_ptr, 0,
-        sizeof(int) * scheduling_units * profile_timestamp_capacity(),
+        sizeof(int) * scheduling_units * timestamps,
         stream));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         profile_dropped_events_ptr, 0,
         sizeof(unsigned long long) * scheduling_units, stream));
 #else
-    (void)scheduling_units;
+    (void)config;
     (void)stream;
 #endif
     return cudaSuccess;
