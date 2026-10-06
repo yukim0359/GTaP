@@ -17,15 +17,14 @@ using namespace gtap::detail;
 
 __constant__ size_t d_task_data_stride;
 
-inline size_t compute_task_data_stride() {
+inline size_t compute_task_data_stride(const launch_config& config) {
     return align_up(
-        __gtap_auto_block_task_data_sizes[
-            h_launch_config.block_size / warp_size],
+        __gtap_auto_block_task_data_sizes[config.block_size / warp_size],
         16);
 }
 
 inline cudaError_t publish_task_data_stride() {
-    size_t stride = compute_task_data_stride();
+    size_t stride = compute_task_data_stride(h_launch_config);
     return cudaMemcpyToSymbol(d_task_data_stride, &stride, sizeof(size_t));
 }
 
@@ -100,22 +99,27 @@ struct task_pool_buffers {
     char* entry_result = nullptr;
 };
 
-inline size_t task_pool_allocation_bytes(
-    size_t scheduling_units, size_t tasks, int block_size
-) {
+inline size_t task_pool_allocation_bytes(const launch_config& config) {
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     return sizeof(int) * scheduling_units
         + sizeof(int) * tasks
         + sizeof(TaskHeader) * tasks
-        + compute_task_data_stride() * tasks
-        + __gtap_auto_entry_result_size * static_cast<size_t>(block_size);
+        + compute_task_data_stride(config) * tasks
+        + __gtap_auto_entry_result_size * static_cast<size_t>(config.block_size);
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
 inline cudaError_t stage_task_pool(
-    size_t scheduling_units, size_t tasks, int block_size,
+    const launch_config& config,
     cudaStream_t stream,
     task_pool_buffers* buffers
 ) {
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
+    const size_t task_data_stride = compute_task_data_stride(config);
     GTAP_DETAIL_CUDA_TRY(alloc_device(
         &buffers->id_list_free_positions, sizeof(int) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -127,13 +131,13 @@ inline cudaError_t stage_task_pool(
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
 
-    const size_t task_data_size = compute_task_data_stride() * tasks;
+    const size_t task_data_size = task_data_stride * tasks;
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->task_data, task_data_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->task_data, 0, task_data_size, stream));
 
     const size_t entry_result_size =
-        __gtap_auto_entry_result_size * static_cast<size_t>(block_size);
+        __gtap_auto_entry_result_size * static_cast<size_t>(config.block_size);
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->entry_result, entry_result_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->entry_result, 0, entry_result_size, stream));
@@ -157,9 +161,12 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
 }
 
 inline cudaError_t clear_task_pool(
-    size_t scheduling_units, size_t tasks, int block_size,
+    const launch_config& config,
     cudaStream_t stream
 ) {
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     int* id_list_free_positions = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &id_list_free_positions, d_task_id_list_free_positions, sizeof(int*)));
@@ -184,12 +191,12 @@ inline cudaError_t clear_task_pool(
     }
     if (task_data != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            task_data, 0, compute_task_data_stride() * tasks, stream));
+            task_data, 0, compute_task_data_stride(config) * tasks, stream));
     }
     if (entry_result != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
             entry_result, 0,
-            __gtap_auto_entry_result_size * static_cast<size_t>(block_size),
+            __gtap_auto_entry_result_size * static_cast<size_t>(config.block_size),
             stream));
     }
     return cudaSuccess;

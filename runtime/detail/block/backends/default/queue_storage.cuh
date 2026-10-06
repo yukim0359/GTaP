@@ -29,19 +29,21 @@ struct queue_storage_buffers {
     int* slots = nullptr;
 };
 
-inline size_t queue_storage_allocation_bytes(
-    size_t scheduling_units, size_t tasks, int num_queues
-) {
-    (void)num_queues;
+inline size_t queue_storage_allocation_bytes(const launch_config& config) {
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     return sizeof(BlockTaskQueueMetadata) * scheduling_units + sizeof(int) * tasks;
 }
 
 inline cudaError_t stage_queue_storage(
-    size_t scheduling_units, size_t tasks, int num_queues,
+    const launch_config& config,
     cudaStream_t stream,
     queue_storage_buffers* buffers
 ) {
-    (void)num_queues;
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     GTAP_DETAIL_CUDA_TRY(alloc_device(
         &buffers->metadata, sizeof(BlockTaskQueueMetadata) * scheduling_units));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -63,10 +65,12 @@ inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
 }
 
 inline cudaError_t clear_queue_storage(
-    size_t scheduling_units, size_t tasks, int num_queues,
+    const launch_config& config,
     cudaStream_t stream
 ) {
-    (void)num_queues;
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     BlockTaskQueueMetadata* metadata = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &metadata, d_block_task_queue_metadata,

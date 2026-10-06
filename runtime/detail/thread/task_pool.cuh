@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../common/device_memory.cuh"
+#include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 #include "../common/warp_index.cuh"
 
@@ -98,7 +99,10 @@ struct task_pool_buffers {
     int* id_valid = nullptr;
 };
 
-inline size_t task_pool_allocation_bytes(size_t scheduling_units, size_t tasks) {
+inline size_t task_pool_allocation_bytes(const launch_config& config) {
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     return sizeof(TaskHeader) * tasks
         + compute_task_data_stride() * tasks
         + sizeof(int) * scheduling_units
@@ -107,10 +111,13 @@ inline size_t task_pool_allocation_bytes(size_t scheduling_units, size_t tasks) 
 
 // Allocates the pool and starts the async clears. Symbols are published later.
 inline cudaError_t stage_task_pool(
-    size_t scheduling_units, size_t tasks,
+    const launch_config& config,
     cudaStream_t stream,
     task_pool_buffers* buffers
 ) {
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->headers, sizeof(TaskHeader) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
@@ -149,9 +156,12 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
 }
 
 inline cudaError_t clear_task_pool(
-    size_t scheduling_units, size_t tasks,
+    const launch_config& config,
     cudaStream_t stream
 ) {
+    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
+    const size_t tasks =
+        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     TaskHeader* headers = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &headers, d_task_headers, sizeof(TaskHeader*)));

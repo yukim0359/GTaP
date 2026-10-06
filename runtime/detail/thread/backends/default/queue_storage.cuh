@@ -40,30 +40,31 @@ struct queue_storage_buffers {
     int* slots = nullptr;
 };
 
-inline size_t queue_metadata_bytes(size_t scheduling_units, int num_queues) {
-    return sizeof(WarpTaskQueueMetadata) * scheduling_units * static_cast<size_t>(num_queues);
+inline size_t queue_metadata_bytes(const launch_config& config) {
+    return sizeof(WarpTaskQueueMetadata)
+        * static_cast<size_t>(config.total_scheduling_units)
+        * static_cast<size_t>(config.num_queues);
 }
 
-inline size_t queue_slot_bytes(size_t scheduling_units, int num_queues) {
-    return sizeof(int) * scheduling_units * static_cast<size_t>(num_queues) *
-        static_cast<size_t>(h_launch_config.queue_capacity);
+inline size_t queue_slot_bytes(const launch_config& config) {
+    return sizeof(int)
+        * static_cast<size_t>(config.total_scheduling_units)
+        * static_cast<size_t>(config.num_queues)
+        * static_cast<size_t>(config.queue_capacity);
 }
 
-inline size_t queue_storage_allocation_bytes(
-    size_t scheduling_units, int num_queues
-) {
-    return queue_metadata_bytes(scheduling_units, num_queues) +
-        queue_slot_bytes(scheduling_units, num_queues);
+inline size_t queue_storage_allocation_bytes(const launch_config& config) {
+    return queue_metadata_bytes(config) + queue_slot_bytes(config);
 }
 
 // Allocates the metadata array and the task-id ring, and starts the async clears.
 // Symbols are published later.
 inline cudaError_t stage_queue_storage(
-    size_t scheduling_units, int num_queues,
+    const launch_config& config,
     cudaStream_t stream, queue_storage_buffers* buffers
 ) {
-    const size_t metadata_bytes = queue_metadata_bytes(scheduling_units, num_queues);
-    const size_t slot_bytes = queue_slot_bytes(scheduling_units, num_queues);
+    const size_t metadata_bytes = queue_metadata_bytes(config);
+    const size_t slot_bytes = queue_slot_bytes(config);
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     // TODO: Events leak when initialize returns early.
@@ -127,7 +128,7 @@ inline cudaError_t publish_queue_storage(queue_storage_buffers& buffers) {
 }
 
 inline cudaError_t clear_queue_storage(
-    size_t scheduling_units, int num_queues,
+    const launch_config& config,
     cudaStream_t stream
 ) {
     WarpTaskQueueMetadata* metadata = nullptr;
@@ -139,11 +140,11 @@ inline cudaError_t clear_queue_storage(
 
     if (metadata != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            metadata, 0, queue_metadata_bytes(scheduling_units, num_queues), stream));
+            metadata, 0, queue_metadata_bytes(config), stream));
     }
     if (slots != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, queue_slot_bytes(scheduling_units, num_queues), stream));
+            slots, 0, queue_slot_bytes(config), stream));
     }
     return cudaSuccess;
 }
