@@ -112,11 +112,12 @@ Thread mode uses `gtap_thread_config`:
 |-------|-------------|
 | `grid_size` | Number of thread blocks. |
 | `block_size` | Number of threads per block. |
-| `max_tasks_per_warp` | Number of task slots per warp. |
+| `max_tasks_per_warp` | Task slots per warp. `0` means unset. |
+| `max_task_memory_bytes` | Byte budget for the task-management region. `0` means unset. One value selects the slot count; both take the minimum. Both unset uses 10000. |
 | `num_queues` | Number of DAQ queues. |
 
-Block mode uses `gtap_block_config`, with `grid_size`, `block_size`, and
-`max_tasks_per_block`.
+Block mode uses `gtap_block_config`, with `grid_size`, `block_size`,
+`max_tasks_per_block`, and `max_task_memory_bytes`.
 
 The compiler option `-fgtap-no-taskwait` enables the compact runtime mode
 for programs that never execute `taskwait`.

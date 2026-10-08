@@ -10,7 +10,10 @@
 struct gtap_thread_config {
     int grid_size = 4096;
     int block_size = 32;
-    int max_tasks_per_warp = 10000;
+    // 0 means unset. One set value selects the slot count. Both set takes
+    // the minimum. Both unset uses 10000 slots per warp.
+    int max_tasks_per_warp = 0;
+    size_t max_task_memory_bytes = 0;
     int num_queues = 1;
     int profile_capacity_per_warp = 15000;
     cudaStream_t stream = nullptr;
@@ -25,9 +28,9 @@ inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
         config.block_size % gtap::detail::warp_size != 0) {
         return cudaErrorInvalidConfiguration;
     }
-    if (config.max_tasks_per_warp <= 0 ||
-        config.num_queues <= 0 ||
-        config.max_tasks_per_warp % config.num_queues != 0) {
+    if (config.num_queues <= 0 || config.max_tasks_per_warp < 0 ||
+        (config.max_tasks_per_warp > 0 &&
+         config.max_tasks_per_warp % config.num_queues != 0)) {
         return cudaErrorInvalidValue;
     }
 #ifdef GTAP_ENABLE_PROFILING
@@ -36,6 +39,24 @@ inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
         return cudaErrorInvalidValue;
     }
 #endif
+    const int queue_capacity = config.max_tasks_per_warp > 0
+        ? config.max_tasks_per_warp / config.num_queues
+        : 0;
+    gtap::detail::launch_config probe{
+        config.grid_size,
+        config.block_size,
+        config.block_size / gtap::detail::warp_size,
+        config.grid_size * (config.block_size / gtap::detail::warp_size),
+        config.max_tasks_per_warp,
+        config.num_queues,
+        queue_capacity,
+        config.profile_capacity_per_warp,
+        0
+    };
+    if (gtap::detail::thread::tasks_within_budget(
+            probe, config.max_task_memory_bytes) <= 0) {
+        return cudaErrorInvalidValue;
+    }
     return cudaSuccess;
 }
 
@@ -64,13 +85,20 @@ inline cudaError_t gtap_initialize(
         config.grid_size * (config.block_size / gtap::detail::warp_size),
         config.max_tasks_per_warp,
         config.num_queues,
-        config.max_tasks_per_warp / config.num_queues,
+        config.max_tasks_per_warp > 0
+            ? config.max_tasks_per_warp / config.num_queues
+            : 0,
         config.profile_capacity_per_warp,
         gtap::detail::thread::shared_layout_for(
             config.block_size / gtap::detail::warp_size,
             config.num_queues,
             gtap::detail::thread::include_queue_tails).bytes
     };
+    const int tasks = gtap::detail::thread::tasks_within_budget(
+        launch_config, config.max_task_memory_bytes);
+    if (tasks <= 0) return cudaErrorInvalidValue;
+    launch_config.tasks_per_scheduling_unit = tasks;
+    launch_config.queue_capacity = tasks / config.num_queues;
     GTAP_DETAIL_CUDA_TRY(gtap::detail::publish_launch_config(launch_config));
     gtap::detail::h_stream = config.stream;
     cudaError_t err = gtap::detail::thread::initialize_runtime();

@@ -5,6 +5,8 @@
 // All clears use h_stream.
 // A failed initialize releases staged buffers. The caller owns h_stream.
 
+#include <climits>
+
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 
@@ -22,6 +24,50 @@ static size_t runtime_device_allocation_bytes() {
     return queue_storage_allocation_bytes(config) +
            task_pool_allocation_bytes(config) +
            profile_buffer_allocation_bytes(config);
+}
+
+inline size_t task_management_bytes(const launch_config& config) {
+    return task_pool_allocation_bytes(config) + queue_storage_allocation_bytes(config);
+}
+
+// A task count of 0 means unset. A budget of 0 means unset.
+// One set value is used as given. Both set takes the smaller slot count.
+// Both unset uses default_tasks_per_scheduling_unit.
+// The task region is fixed bytes plus a constant increment per queue-group of slots.
+inline int tasks_within_budget(launch_config config, size_t budget) {
+    if (config.num_queues <= 0) return 0;
+    if (budget == 0) {
+        const int tasks = config.tasks_per_scheduling_unit == 0
+            ? default_tasks_per_scheduling_unit
+            : config.tasks_per_scheduling_unit;
+        if (tasks <= 0 || tasks % config.num_queues != 0) return 0;
+        return tasks;
+    }
+
+    int ceiling = config.tasks_per_scheduling_unit;
+    if (ceiling == 0) {
+        const int units = config.total_scheduling_units;
+        if (units <= 0) return 0;
+        // id = slot * units + unit must fit in a signed int.
+        ceiling = INT_MAX / units;
+    }
+    if (ceiling < config.num_queues) return 0;
+    ceiling -= ceiling % config.num_queues;
+
+    config.tasks_per_scheduling_unit = 0;
+    config.queue_capacity = 0;
+    const size_t bytes_with_no_slots = task_management_bytes(config);
+    if (budget <= bytes_with_no_slots) return 0;
+    config.tasks_per_scheduling_unit = config.num_queues;
+    config.queue_capacity = 1;
+    const size_t bytes_with_one_slot_per_queue = task_management_bytes(config);
+    if (bytes_with_one_slot_per_queue <= bytes_with_no_slots) return 0;
+    const size_t bytes_per_slot_group =
+        bytes_with_one_slot_per_queue - bytes_with_no_slots;
+    size_t groups = (budget - bytes_with_no_slots) / bytes_per_slot_group;
+    const size_t max_groups = static_cast<size_t>(ceiling / config.num_queues);
+    if (groups > max_groups) groups = max_groups;
+    return static_cast<int>(groups) * config.num_queues;
 }
 
 inline void abandon_initialize(

@@ -13,6 +13,9 @@
 
 namespace gtap::detail {
 
+// Used when both the task count and the task-memory budget are unset.
+inline constexpr int default_tasks_per_scheduling_unit = 10000;
+
 struct launch_config {
     int grid_size;
     int block_size;

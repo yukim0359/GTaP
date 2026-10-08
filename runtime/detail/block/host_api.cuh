@@ -10,7 +10,10 @@
 struct gtap_block_config {
     int grid_size = 1024;
     int block_size = 256;
-    int max_tasks_per_block = 10000;
+    // 0 means unset. One set value selects the slot count. Both set takes
+    // the minimum. Both unset uses 10000 slots per block.
+    int max_tasks_per_block = 0;
+    size_t max_task_memory_bytes = 0;
     int profile_capacity_per_block = 15000;
     size_t dynamic_shared_bytes = 0;
     cudaStream_t stream = nullptr;
@@ -23,7 +26,7 @@ inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
         config.block_size % gtap::detail::warp_size != 0) {
         return cudaErrorInvalidConfiguration;
     }
-    if (config.max_tasks_per_block <= 0) {
+    if (config.max_tasks_per_block < 0) {
         return cudaErrorInvalidValue;
     }
 #ifdef GTAP_ENABLE_PROFILING
@@ -32,6 +35,21 @@ inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
         return cudaErrorInvalidValue;
     }
 #endif
+    gtap::detail::launch_config probe{
+        config.grid_size,
+        config.block_size,
+        config.block_size / gtap::detail::warp_size,
+        config.grid_size,
+        config.max_tasks_per_block,
+        1,
+        config.max_tasks_per_block > 0 ? config.max_tasks_per_block : 0,
+        config.profile_capacity_per_block,
+        config.dynamic_shared_bytes
+    };
+    if (gtap::detail::block::tasks_within_budget(
+            probe, config.max_task_memory_bytes) <= 0) {
+        return cudaErrorInvalidValue;
+    }
     return cudaSuccess;
 }
 
@@ -64,6 +82,11 @@ inline cudaError_t gtap_initialize(
         config.profile_capacity_per_block,
         config.dynamic_shared_bytes
     };
+    const int tasks = gtap::detail::block::tasks_within_budget(
+        launch_config, config.max_task_memory_bytes);
+    if (tasks <= 0) return cudaErrorInvalidValue;
+    launch_config.tasks_per_scheduling_unit = tasks;
+    launch_config.queue_capacity = tasks;
     GTAP_DETAIL_CUDA_TRY(gtap::detail::publish_launch_config(launch_config));
     gtap::detail::h_stream = config.stream;
     cudaError_t err = gtap::detail::block::initialize_runtime();

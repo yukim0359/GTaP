@@ -5,6 +5,8 @@
 // All clears use h_stream.
 // A failed initialize releases staged buffers. The caller owns h_stream.
 
+#include <climits>
+
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 
@@ -22,6 +24,47 @@ static size_t runtime_device_allocation_bytes() {
     return queue_storage_allocation_bytes(config) +
            task_pool_allocation_bytes(config) +
            profile_buffer_allocation_bytes(config);
+}
+
+inline size_t task_management_bytes(const launch_config& config) {
+    const size_t entry_result =
+        __gtap_auto_entry_result_size * static_cast<size_t>(config.block_size);
+    return task_pool_allocation_bytes(config) - entry_result
+        + queue_storage_allocation_bytes(config);
+}
+
+// A task count of 0 means unset. A budget of 0 means unset.
+// One set value is used as given. Both set takes the smaller slot count.
+// Both unset uses default_tasks_per_scheduling_unit.
+// The task region is fixed bytes plus a constant increment per slot.
+inline int tasks_within_budget(launch_config config, size_t budget) {
+    if (budget == 0) {
+        return config.tasks_per_scheduling_unit == 0
+            ? default_tasks_per_scheduling_unit
+            : config.tasks_per_scheduling_unit;
+    }
+
+    int ceiling = config.tasks_per_scheduling_unit;
+    if (ceiling == 0) {
+        const int units = config.total_scheduling_units;
+        if (units <= 0) return 0;
+        // id = slot * units + unit must fit in a signed int.
+        ceiling = INT_MAX / units;
+    }
+    if (ceiling <= 0) return 0;
+
+    config.tasks_per_scheduling_unit = 0;
+    config.queue_capacity = 0;
+    const size_t bytes_with_no_slots = task_management_bytes(config);
+    if (budget <= bytes_with_no_slots) return 0;
+    config.tasks_per_scheduling_unit = 1;
+    config.queue_capacity = 1;
+    const size_t bytes_with_one_slot = task_management_bytes(config);
+    if (bytes_with_one_slot <= bytes_with_no_slots) return 0;
+    const size_t bytes_per_slot = bytes_with_one_slot - bytes_with_no_slots;
+    size_t tasks = (budget - bytes_with_no_slots) / bytes_per_slot;
+    if (tasks > static_cast<size_t>(ceiling)) tasks = static_cast<size_t>(ceiling);
+    return static_cast<int>(tasks);
 }
 
 inline void abandon_initialize(
