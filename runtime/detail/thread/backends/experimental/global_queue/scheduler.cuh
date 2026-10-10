@@ -366,7 +366,6 @@ __device__ __forceinline__ void record_execution_end(
             working_time_idx[warp_id_in_block]++;
         }
     }
-    __syncwarp();
 }
 #endif
 
@@ -485,6 +484,7 @@ __device__ __forceinline__ void execute_task_loop() {
         record_execution_end(
             warp_id_in_block, warp_id_global, lane,
             execute_task_count, working_time_idx);
+        __syncwarp();
 #endif
 
         push_global_queue<M>(
