@@ -7,6 +7,7 @@
 #include "../../../../common/termination.cuh"
 
 #include "../../../profile_buffer.cuh"
+#include "../../../scheduler_helpers.cuh"
 #include "../../../task_pool.cuh"
 #include "../../../task_types.cuh"
 #include "../../../termination.cuh"
@@ -15,7 +16,7 @@
 namespace gtap::detail::block {
 using namespace gtap::detail;
 
-__device__ __forceinline__ void reserve_unpublished_task_id(
+__device__ __forceinline__ void stage_task_id(
     TaskContext* ctx, int task_id
 ) {
     int gen_idx = atomicAdd(&ctx->generated_task_count, 1);
@@ -118,6 +119,13 @@ __device__ __forceinline__ void push_global_queue(
     }
     __syncthreads();
 
+    if (threadIdx.x == 0) {
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+        ctx->task_id_resumable = -1;
+#endif
+        ctx->generated_task_count = 0;
+    }
+
     // Push remaining tasks to global queue
     if (push_cnt <= 0) return;
 
@@ -157,12 +165,15 @@ __device__ __forceinline__ void push_global_queue(
     __syncthreads();
 }
 
+// TODO: Clarify which of the block task ops and push_initial_task are thread 0
+// only and which run on every thread in the block.
 __device__ __forceinline__ void push_initial_task(
     void (*func)(void*, int, TaskContext*),
     int unused_value
 ) {
     (void)unused_value;
-    TaskHeader* initial_hdr = &d_task_headers[0];
+    constexpr int new_tid = 0;
+    TaskHeader* const initial_hdr = &d_task_headers[new_tid];
     initial_hdr->func = func;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     initial_hdr->state = 0;
@@ -173,7 +184,7 @@ __device__ __forceinline__ void push_initial_task(
 
     // Push to global queue (only block 0)
     if (blockIdx.x == 0 && threadIdx.x == 0) {
-        store_L2(&d_global_task_queue[0], 0);
+        store_L2(&d_global_task_queue[0], new_tid);
         __threadfence();
         store_L2(&d_queue_head, 0u);
         store_L2(&d_queue_alloc, 1u);
@@ -182,126 +193,137 @@ __device__ __forceinline__ void push_initial_task(
     }
 }
 
+__device__ __forceinline__ void initialize_loop(
+    bool* have_execute_task,
+    bool* prev_get_task,
+    TaskContext* task_context
+#ifdef GTAP_ENABLE_PROFILING
+    , int* working_time_idx
+#endif
+) {
+    if (threadIdx.x == 0) {
+        *have_execute_task = false;
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+        task_context->task_id_resumable = -1;
+#endif
+        task_context->generated_task_count = 0;
+        task_context->id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
+#ifdef GTAP_ENABLE_PROFILING
+        *working_time_idx = 0;
+#endif
+        if (blockIdx.x == 0) {
+            task_context->id_list_alloc_pos = 1;
+            *prev_get_task = true;
+        } else {
+            task_context->id_list_alloc_pos = 0;
+            *prev_get_task = false;
+        }
+    }
+    __syncthreads();
+}
+
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int* execute_task_id,
+    bool* have_execute_task,
+    bool prev_get_task
+) {
+    if (threadIdx.x == 0) {
+        if (!*have_execute_task) {
+            *have_execute_task = pop_global_queue<M>(execute_task_id, prev_get_task);
+        }
+    }
+}
+
+template<TerminationMode M>
+__device__ __forceinline__ bool mark_idle_and_check_termination(
+    bool* prev_get_task
+) {
+    __shared__ bool terminate;
+    if (threadIdx.x == 0) {
+        if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+            if (*prev_get_task) {
+                int active_block_count = atomicSub(&d_active_block_count, 1) - 1;
+                if (active_block_count == 0) {
+                    // Check if queue is empty (unsigned comparison handles wrap-around)
+                    bool all_tasks_finished = 1;
+                    unsigned int head = load_L2(&d_queue_head);
+                    unsigned int tail = load_L2(&d_queue_tail);
+                    if (tail - head > 0) {  // unsigned subtraction
+                        all_tasks_finished = 0;
+                    }
+                    atomicExch(&d_all_tasks_finished, all_tasks_finished);
+                }
+            }
+        }
+        *prev_get_task = false;
+        if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+            terminate = (load_L2(&d_all_tasks_finished) != 0);
+        } else {
+            terminate = (load_L2(&d_root_task_finished) != 0);
+        }
+    }
+    __syncthreads();
+    return terminate;
+}
+
 template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
     __shared__ bool have_execute_task;
     __shared__ bool prev_get_task;
-    __shared__ bool should_continue;
-    __shared__ TaskContext block_ctx;
+    __shared__ TaskContext task_context;
 #ifdef GTAP_ENABLE_PROFILING
     __shared__ int working_time_idx;
 #endif
 
-    if (threadIdx.x == 0) {
-        should_continue = true;
-        have_execute_task = false;
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-        block_ctx.task_id_resumable = -1;
-#endif
-        block_ctx.generated_task_count = 0;
-        block_ctx.id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
+    initialize_loop(
+        &have_execute_task, &prev_get_task, &task_context
 #ifdef GTAP_ENABLE_PROFILING
-        working_time_idx = 0;
+        , &working_time_idx
 #endif
-        if (blockIdx.x == 0) {
-            block_ctx.id_list_alloc_pos = 1;
-            prev_get_task = true;
-        } else {
-            block_ctx.id_list_alloc_pos = 0;
-            prev_get_task = false;
-        }
-    }
-    __syncthreads();
+    );
 
-    while (should_continue) {
-        if (threadIdx.x == 0) {
-            if (!have_execute_task) {
-                // Try to pop from global queue
-                have_execute_task = pop_global_queue<M>(&execute_task_id, prev_get_task);
-            }
-        }
+    while (true) {
+        fill_execution_batch<M>(&execute_task_id, &have_execute_task, prev_get_task);
         __syncthreads();
 
         if (!have_execute_task) {
-            if (threadIdx.x == 0) {
-                if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                    if (prev_get_task) {
-                        int active_block_count = atomicSub(&d_active_block_count, 1) - 1;
-                        if (active_block_count == 0) {
-                            // Check if queue is empty (unsigned comparison handles wrap-around)
-                            bool all_tasks_finished = 1;
-                            unsigned int head = load_L2(&d_queue_head);
-                            unsigned int tail = load_L2(&d_queue_tail);
-                            if (tail - head > 0) {  // unsigned subtraction
-                                all_tasks_finished = 0;
-                            }
-                            atomicExch(&d_all_tasks_finished, all_tasks_finished);
-                        }
-                    }
-                }
-                prev_get_task = false;
-                if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                    should_continue = (load_L2(&d_all_tasks_finished) == 0);
-                } else {
-                    should_continue = (load_L2(&d_first_task_finished) == 0);
-                }
-            }
-            __syncthreads();
+            if (mark_idle_and_check_termination<M>(&prev_get_task))
+                break;
             continue;
         } else {
             if (threadIdx.x == 0) {
                 prev_get_task = true;
-                block_ctx.generated_task_count = 0;
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-                block_ctx.task_id_resumable = -1;
-#endif
             }
             __syncthreads();
         }
 
         if (have_execute_task) {
+            void* task_data = get_task_data(execute_task_id);
+            prefetch_global_L2(task_data);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-            // Copy task header to TaskContext for reuse in task function (using L2 load)
-            if (threadIdx.x == 0) {
-                TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                block_ctx.generation = load_L2(&src_hdr->generation);
-                block_ctx.parent_tid = load_L2(&src_hdr->parent_tid);
-                block_ctx.parent_generation = load_L2(&src_hdr->parent_generation);
-            }
-            __syncthreads();
+            copy_task_header(execute_task_id, &task_context);
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
-            if (threadIdx.x == 0) {
-                if (working_time_idx + 1 < profile_timestamp_capacity()) {
-                    working_time[
-                        blockIdx.x * profile_timestamp_capacity() +
-                        working_time_idx] = get_global_time();
-                    working_time_idx++;
-                } else {
-                    atomicAdd(&profile_dropped_events[blockIdx.x], 1ULL);
-                }
-            }
+            record_execution_start(&working_time_idx);
 #endif
-            void* task_data = get_task_data(execute_task_id);
-            // Read function pointer atomically (64-bit) via L2 cache
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
-            task_func(task_data, execute_task_id, &block_ctx);
-            __threadfence();
+            task_func(task_data, execute_task_id, &task_context);
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+            if (threadIdx.x == 0)
+                printf("executed_task_id: %d in block %d\n", execute_task_id, blockIdx.x);
+#endif
         }
         __syncthreads();
+        __threadfence();
 #ifdef GTAP_ENABLE_PROFILING
-        if (threadIdx.x == 0) {
-            if (working_time_idx < profile_timestamp_capacity()) {
-                working_time[blockIdx.x * profile_timestamp_capacity() + working_time_idx] = get_global_time();
-                working_time_idx++;
-            }
-        }
+        record_execution_end(&working_time_idx);
 #endif
 
-        push_global_queue<M>(&block_ctx, &execute_task_id, &have_execute_task);
+        push_global_queue<M>(&task_context, &execute_task_id, &have_execute_task);
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
     if (threadIdx.x == 0) printf("execute_task_loop: end (block_id = %d)\n", blockIdx.x);

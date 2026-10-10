@@ -3,8 +3,8 @@
 #include "task_ops.cuh"
 
 __device__ inline void __gtap_execute_task_loop() {
-#ifdef GTAP_TERMINATE_ON_FIRST_TASK_FINISH
-    gtap::detail::block::execute_task_loop<gtap::detail::TerminationMode::TERMINATE_ON_FIRST_TASK_FINISH>();
+#ifdef GTAP_TERMINATE_ON_ROOT_TASK_FINISH
+    gtap::detail::block::execute_task_loop<gtap::detail::TerminationMode::TERMINATE_ON_ROOT_TASK_FINISH>();
 #else
     gtap::detail::block::execute_task_loop<gtap::detail::TerminationMode::TERMINATE_ON_ALL_TASKS_FINISH>();
 #endif

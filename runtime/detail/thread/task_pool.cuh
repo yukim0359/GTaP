@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../common/cuda_primitives.cuh"
 #include "../common/device_memory.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"

@@ -9,6 +9,7 @@
 
 #include "../../../profile_buffer.cuh"
 #include "../../../queue_select.cuh"
+#include "../../../scheduler_helpers.cuh"
 #include "../../../shared_layout.cuh"
 #include "../../../task_pool.cuh"
 #include "../../../task_types.cuh"
@@ -18,7 +19,7 @@
 namespace gtap::detail::thread {
 using namespace gtap::detail;
 
-// Whether shared_layout_for reserves per-queue tails. gtap_initialize and the execute loop both pass this.
+// Whether make_shared_layout reserves per-queue tails. gtap_initialize and the execute loop both pass this.
 inline constexpr bool include_queue_tails = false;
 
 extern __shared__ unsigned char dynamic_shared[];
@@ -30,7 +31,7 @@ extern __shared__ unsigned char dynamic_shared[];
 // Keep the common case in warp-local shared memory.  Overflow remains in the
 // private global staging buffer and is not published to the global queue until
 // push_global_queue(), after the spawning lanes have finished task-data setup.
-__device__ __forceinline__ void reserve_unpublished_task_id(
+__device__ __forceinline__ void stage_task_id(
     TaskContext* ctx, int queue_idx, int task_id
 ) {
     int idx = atomicAdd(
@@ -88,9 +89,10 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
     count = __shfl_sync(0xFFFFFFFFu, count, 0);
     base_head = __shfl_sync(0xFFFFFFFFu, base_head, 0);
 
-    // Each lane reads its task (if it has one)
-    if (lane < count) {
-        int idx = (base_head + lane) %
+    // Write into the empty suffix. Existing ids stay in lanes below warp_size - max_count.
+    if (lane >= warp_size - max_count &&
+        lane < warp_size - max_count + count) {
+        int idx = (base_head + (lane - warp_size + max_count)) %
             (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity);
         int tid = load_L2(global_queue_slot(queue_idx, idx));
         *execute_task_id = tid;
@@ -100,6 +102,65 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
     }
 
     return count;
+}
+
+// Fill empty lanes from one global queue.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_batch_from_queue(
+    int* execute_task_id,
+    int* execute_task_count,
+    int queue_idx,
+    bool prev_get_task
+) {
+    if (*execute_task_count >= warp_size) return;
+    int remaining = warp_size - *execute_task_count;
+    *execute_task_count += pop_global_queue<M>(
+        execute_task_id, remaining, queue_idx, prev_get_task);
+}
+
+// Prepare the execution batch. Touch the global queue only when
+// execute_task_count == 0. Popping it hits the device-wide head, so a
+// non-empty batch keeps its local tasks and leaves the queue alone.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int warp_id_in_block,
+    int lane,
+    int* execute_task_id,
+    int* execute_task_count,
+    bool prev_get_task,
+    const shared_layout& layout,
+    TaskContext* task_context
+) {
+    if (*execute_task_count != 0) return;
+    if (d_launch_config.num_queues > 1) {
+        int* queue_lengths = reinterpret_cast<int*>(
+            dynamic_shared + layout.queue_lengths) +
+            warp_id_in_block * d_launch_config.num_queues;
+        if (lane == 0) {
+            for (int k = 0; k < d_launch_config.num_queues; ++k) {
+                int head = load_L2(&d_queue_head[k]);
+                int tail = load_L2(&d_queue_tail[k]);
+                queue_lengths[k] = max(0, tail - head);
+            }
+        }
+        for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
+            int queue_idx;
+            if (lane == 0) {
+                queue_idx = select_next_fullest_queue_idx(
+                    queue_lengths,
+                    d_launch_config.num_queues);
+                task_context->queue_idx = queue_idx;
+            }
+            queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
+            fill_batch_from_queue<M>(
+                execute_task_id, execute_task_count, queue_idx,
+                prev_get_task);
+            if (*execute_task_count != 0) break;
+        }
+    } else {
+        fill_batch_from_queue<M>(
+            execute_task_id, execute_task_count, 0, prev_get_task);
+    }
 }
 
 // Push to global queue
@@ -146,7 +207,6 @@ __device__ __forceinline__ void push_global_queue(
     }
 
     // Push remaining tasks to global queue
-    #pragma unroll
     for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
         int first_idx_to_push = (kind == k_max) ? *execute_task_count : 0;
         int push_cnt = ctx->generated_task_counts[kind] - first_idx_to_push;
@@ -187,6 +247,11 @@ __device__ __forceinline__ void push_global_queue(
             atomicAdd(&d_queue_tail[kind], push_cnt);
         }
     }
+    if (lane == 0) {
+        for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
+            ctx->generated_task_counts[kind] = 0;
+        }
+    }
     __syncwarp();
 }
 
@@ -195,11 +260,11 @@ __device__ __forceinline__ void push_initial_task(
     void (*func)(void*, int, TaskContext*),
     int initial_queue_idx
 ) {
-    int warp_id_global = get_warp_id_global();
-    int lane = get_lane_id();
-    int new_tid = 0;
+    const int warp_id_global = get_warp_id_global();
+    const int lane = get_lane_id();
+    constexpr int new_tid = 0;
 
-    TaskHeader* initial_hdr = &d_task_headers[new_tid];
+    TaskHeader* const initial_hdr = &d_task_headers[new_tid];
     initial_hdr->func = func;
     initial_hdr->queue_idx = initial_queue_idx;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
@@ -220,25 +285,21 @@ __device__ __forceinline__ void push_initial_task(
     }
 }
 
-template<TerminationMode M>
-__device__ __forceinline__ void execute_task_loop() {
-    int warp_id_in_block = get_warp_id_in_block();
-    int warp_id_global = get_warp_id_global();
-    int lane = get_lane_id();
-
-    int execute_task_id = 0;
-    int execute_task_count = 0;
-    bool prev_get_task = (warp_id_global == 0);
-    bool should_continue = true;
-
-    const shared_layout layout = shared_layout_for(
-        d_launch_config.warps_per_block, d_launch_config.num_queues,
-        include_queue_tails);
-    TaskContext* task_context =
+__device__ __forceinline__ void initialize_loop(
+    int warp_id_in_block,
+    int warp_id_global,
+    int lane,
+    const shared_layout& layout,
+    TaskContext*& task_context
+#ifdef GTAP_ENABLE_PROFILING
+    , int*& working_time_idx
+#endif
+) {
+    task_context =
         reinterpret_cast<TaskContext*>(dynamic_shared) + warp_id_in_block;
 
 #ifdef GTAP_ENABLE_PROFILING
-    int* working_time_idx = reinterpret_cast<int*>(
+    working_time_idx = reinterpret_cast<int*>(
         dynamic_shared + layout.working_time_idx);
     if (lane == 0) {
         working_time_idx[warp_id_in_block] = 0;
@@ -254,7 +315,6 @@ __device__ __forceinline__ void execute_task_loop() {
             warp_id_in_block * d_launch_config.num_queues * warp_size;
         task_context->queue_idx = 0;
         task_context->id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
-        #pragma unroll
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
             task_context->generated_task_counts[k] = 0;
         }
@@ -265,133 +325,109 @@ __device__ __forceinline__ void execute_task_loop() {
         }
     }
     __syncwarp();
+}
 
-    while (should_continue) {
-        if (execute_task_count == 0) {
-            if (d_launch_config.num_queues > 1) {
-                int* queue_lengths = reinterpret_cast<int*>(
-                    dynamic_shared + layout.queue_lengths) +
-                    warp_id_in_block * d_launch_config.num_queues;
-                if (lane == 0) {
+template<TerminationMode M>
+__device__ __forceinline__ bool mark_idle_and_check_termination(
+    int lane,
+    bool* prev_get_task
+) {
+    if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+        if (lane == 0) {
+            if (*prev_get_task) {
+                int active_warp_count = atomicSub(&d_active_warp_count, 1) - 1;
+                if (active_warp_count == 0) {
+                    // Check if all queues are empty
+                    bool all_tasks_finished = 1;
                     for (int k = 0; k < d_launch_config.num_queues; ++k) {
                         int head = load_L2(&d_queue_head[k]);
                         int tail = load_L2(&d_queue_tail[k]);
-                        queue_lengths[k] = max(0, tail - head);
-                    }
-                }
-                for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
-                    int queue_idx;
-                    if (lane == 0) {
-                        queue_idx = select_next_fullest_queue_idx(
-                            queue_lengths,
-                            d_launch_config.num_queues);
-                        task_context->queue_idx = queue_idx;
-                    }
-                    queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
-                    int remaining = warp_size - execute_task_count;
-                    int pop_count = pop_global_queue<M>(&execute_task_id, remaining, queue_idx, prev_get_task);
-                    execute_task_count += pop_count;
-                    if (execute_task_count != 0) break;
-                }
-            } else {
-                int remaining = warp_size - execute_task_count;
-                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, 0, prev_get_task);
-                execute_task_count += pop_count;
-            }
-        }
-
-        if (execute_task_count == 0) {
-            if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                if (lane == 0) {
-                    if (prev_get_task) {
-                        int active_warp_count = atomicSub(&d_active_warp_count, 1) - 1;
-                        if (active_warp_count == 0) {
-                            // Check if all queues are empty
-                            bool all_tasks_finished = 1;
-                            #pragma unroll
-                            for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                                int head = load_L2(&d_queue_head[k]);
-                                int tail = load_L2(&d_queue_tail[k]);
-                                if (head < tail) {
-                                    all_tasks_finished = 0;
-                                    break;
-                                }
-                            }
-                            atomicExch(&d_all_tasks_finished, all_tasks_finished);
+                        if (head < tail) {
+                            all_tasks_finished = 0;
+                            break;
                         }
                     }
+                    atomicExch(&d_all_tasks_finished, all_tasks_finished);
                 }
-                __syncwarp();
             }
-            prev_get_task = false;
+        }
+        __syncwarp();
+    }
+    *prev_get_task = false;
+    bool terminate = false;
+    if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+        if (lane == 0) terminate = (load_L2(&d_all_tasks_finished) != 0);
+    } else {
+        if (lane == 0) terminate = (load_L2(&d_root_task_finished) != 0);
+    }
+    return __shfl_sync(0xFFFFFFFFu, terminate, 0);
+}
 
-            // Check termination condition
-            if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                if (lane == 0) should_continue = (load_L2(&d_all_tasks_finished) == 0);
-                should_continue = __shfl_sync(0xFFFFFFFFu, should_continue, 0);
-            } else {
-                if (lane == 0) should_continue = (load_L2(&d_first_task_finished) == 0);
-                should_continue = __shfl_sync(0xFFFFFFFFu, should_continue, 0);
-            }
+template<TerminationMode M>
+__device__ __forceinline__ void execute_task_loop() {
+    const int warp_id_in_block = get_warp_id_in_block();
+    const int warp_id_global = get_warp_id_global();
+    const int lane = get_lane_id();
+
+    int execute_task_id = 0;
+    int execute_task_count = 0;
+    bool prev_get_task = (warp_id_global == 0);
+
+    const shared_layout layout = make_shared_layout(
+        d_launch_config.warps_per_block, d_launch_config.num_queues,
+        include_queue_tails);
+    TaskContext* task_context;
+#ifdef GTAP_ENABLE_PROFILING
+    int* working_time_idx;
+#endif
+    initialize_loop(
+        warp_id_in_block, warp_id_global, lane, layout,
+        task_context
+#ifdef GTAP_ENABLE_PROFILING
+        , working_time_idx
+#endif
+    );
+
+    while (true) {
+        fill_execution_batch<M>(
+            warp_id_in_block, lane,
+            &execute_task_id, &execute_task_count, prev_get_task,
+            layout, task_context);
+
+        if (execute_task_count == 0) {
+            if (mark_idle_and_check_termination<M>(lane, &prev_get_task))
+                break;
             continue;
         } else {
             prev_get_task = true;
-            if (lane == 0) {
-                for (int k = 0; k < d_launch_config.num_queues; ++k) task_context->generated_task_counts[k] = 0;
-            }
             __syncwarp();
         }
 
         if (lane < execute_task_count) {
-            prefetch_global_L2(get_task_data(execute_task_id));
-            // Copy task header to TaskContext for reuse in task function (using L2 load)
+            void* task_data = get_task_data(execute_task_id);
+            prefetch_global_L2(task_data);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-            {
-                TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                uint16_t generation = load_L2(&src_hdr->generation);
-                uint16_t parent_generation =
-                    load_L2(&src_hdr->parent_generation);
-                task_context->task_parent_tids[lane] =
-                    load_L2(&src_hdr->parent_tid);
-                task_context->task_generations[lane] =
-                    static_cast<uint32_t>(generation) |
-                    (static_cast<uint32_t>(parent_generation) << 16);
-            }
+            copy_task_header(lane, execute_task_id, task_context);
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
-            if (lane == 0) {
-                if (working_time_idx[warp_id_in_block] + 1 < profile_timestamp_capacity()) {
-                    const int profile_idx =
-                        warp_id_global * profile_timestamp_capacity() +
-                        working_time_idx[warp_id_in_block];
-                    working_time[profile_idx] = get_global_time();
-                    tasks_processed_count[profile_idx] = execute_task_count;
-                    working_time_idx[warp_id_in_block]++;
-                } else {
-                    atomicAdd(&profile_dropped_events[warp_id_global], 1ULL);
-                }
-            }
+            record_execution_start(
+                warp_id_in_block, warp_id_global, lane,
+                execute_task_count, working_time_idx);
 #endif
-            // Execute task
-            void* task_data = get_task_data(execute_task_id);
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, task_context);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
             printf("executed_task_id: %d in lane %d of warp %d of block %d\n", execute_task_id, lane, warp_id_in_block, blockIdx.x);
 #endif
-            __threadfence();
         }
         __syncwarp();
+        __threadfence();
 #ifdef GTAP_ENABLE_PROFILING
-        if (lane == 0) {
-            if (working_time_idx[warp_id_in_block] < profile_timestamp_capacity()) {
-                working_time[warp_id_global * profile_timestamp_capacity() + working_time_idx[warp_id_in_block]] = get_global_time();
-                tasks_processed_count[warp_id_global * profile_timestamp_capacity() + working_time_idx[warp_id_in_block]] = execute_task_count;
-                working_time_idx[warp_id_in_block]++;
-            }
-        }
+        record_execution_end(
+            warp_id_in_block, warp_id_global, lane,
+            execute_task_count, working_time_idx);
         __syncwarp();
 #endif
 

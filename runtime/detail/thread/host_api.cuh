@@ -66,7 +66,7 @@ inline cudaError_t gtap_initialize(
         config.num_queues,
         config.max_tasks_per_warp / config.num_queues,
         config.profile_capacity_per_warp,
-        gtap::detail::thread::shared_layout_for(
+        gtap::detail::thread::make_shared_layout(
             config.block_size / gtap::detail::warp_size,
             config.num_queues,
             gtap::detail::thread::include_queue_tails).bytes

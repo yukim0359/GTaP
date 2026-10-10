@@ -83,7 +83,7 @@ cudaError_t initialize_runtime() {
 #endif
     int zero = 0;
     GTAP_DETAIL_CUDA_TRY_OR(
-        cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)),
+        cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
         abandon_initialize(&queues, &task_pool, &profile));
     GTAP_DETAIL_CUDA_TRY_OR(
         cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
@@ -95,7 +95,7 @@ cudaError_t initialize_runtime() {
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  cudaMemcpyToSymbol(d_first_task_finished): %.3f ms\n", elapsed);
+    printf("  cudaMemcpyToSymbol(d_root_task_finished): %.3f ms\n", elapsed);
 #endif
     // Initialize d_active_warp_count to 1 to prevent early termination
     // before the initial task is pushed by the master thread
@@ -157,7 +157,7 @@ cudaError_t reset_runtime() {
     GTAP_DETAIL_CUDA_TRY(clear_task_pool(runtime_config, stream));
 
     int zero = 0;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)));
+    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
     int one = 1;
