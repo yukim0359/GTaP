@@ -167,6 +167,7 @@ __device__ __forceinline__ void push(
 #else
         *have_execute_task =
             ctx->task_id_resumable != -1 || ctx->generated_task_count > 0;
+        ctx->task_id_resumable = -1;
 #endif
         store_L2(&myQueue->bottom, publish_bottom);
         ctx->generated_task_count = 0;
@@ -330,9 +331,6 @@ __device__ __forceinline__ void execute_task_loop() {
             if (threadIdx.x == 0) {
                 prev_get_task = true;
                 task_context.queue_bottom = load_L2(&d_block_task_queue_metadata[blockIdx.x].bottom);
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-                task_context.task_id_resumable = -1;
-#endif
             }
             __syncthreads();
         }
@@ -347,11 +345,13 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifdef GTAP_ENABLE_PROFILING
             record_execution_start(&working_time_idx);
 #endif
-            // Read function pointer atomically (64-bit) via L2 cache
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &task_context);
-            // if(threadIdx.x == 0) printf("finish_execute_task: %d\n", tid);
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+            if (threadIdx.x == 0)
+                printf("executed_task_id: %d in block %d\n", execute_task_id, blockIdx.x);
+#endif
         }
         __syncthreads();
         __threadfence();

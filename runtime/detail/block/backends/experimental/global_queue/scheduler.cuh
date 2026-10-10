@@ -113,6 +113,7 @@ __device__ __forceinline__ void push_global_queue(
         } else {
             *have_execute_task = false;
         }
+        ctx->task_id_resumable = -1;
 #endif
         push_cnt = ctx->generated_task_count - first_idx_to_push;
     }
@@ -329,9 +330,6 @@ __device__ __forceinline__ void execute_task_loop() {
         } else {
             if (threadIdx.x == 0) {
                 prev_get_task = true;
-#ifndef GTAP_ASSUME_NO_TASKWAIT
-                task_context.task_id_resumable = -1;
-#endif
             }
             __syncthreads();
         }
@@ -349,6 +347,10 @@ __device__ __forceinline__ void execute_task_loop() {
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &task_context);
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+            if (threadIdx.x == 0)
+                printf("executed_task_id: %d in block %d\n", execute_task_id, blockIdx.x);
+#endif
         }
         __syncthreads();
         __threadfence();
