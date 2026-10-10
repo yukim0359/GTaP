@@ -20,7 +20,7 @@ struct shared_layout {
     size_t bytes;
 };
 
-__host__ __device__ inline shared_layout shared_layout_for(
+__host__ __device__ inline shared_layout make_shared_layout(
     int warps_per_block, int num_queues, bool include_queue_tails
 ) {
     shared_layout layout{};

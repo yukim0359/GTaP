@@ -19,7 +19,7 @@
 namespace gtap::detail::thread {
 using namespace gtap::detail;
 
-// Whether shared_layout_for reserves per-queue tails. gtap_initialize and the execute loop both pass this.
+// Whether make_shared_layout reserves per-queue tails. gtap_initialize and the execute loop both pass this.
 inline constexpr bool include_queue_tails = true;
 
 extern __shared__ unsigned char dynamic_shared[];
@@ -350,7 +350,7 @@ __device__ __forceinline__ void execute_task_loop() {
     bool prev_get_task = (warp_id_global == 0);
     bool should_continue = true;
 
-    const shared_layout layout = shared_layout_for(
+    const shared_layout layout = make_shared_layout(
         d_launch_config.warps_per_block, d_launch_config.num_queues,
         include_queue_tails);
     TaskContext* task_context;
