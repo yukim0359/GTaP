@@ -30,7 +30,6 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
     atomicAdd(&ctx->generated_task_count, 1);
 }
 
-// Chase-Lev pop: owner pops from bottom
 __device__ __forceinline__ int pop(int* taskId) {
     BlockTaskQueueMetadata* myQueue = &d_block_task_queue_metadata[blockIdx.x];
 
@@ -106,7 +105,6 @@ __device__ __forceinline__ int steal(int* taskId, bool prev_get_task) {
     return true;
 }
 
-// Chase-Lev push: owner pushes to bottom
 __device__ __forceinline__ void push(
     TaskContext* ctx,
     int push_total,

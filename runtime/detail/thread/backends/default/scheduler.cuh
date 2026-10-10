@@ -43,7 +43,6 @@ __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, in
         queue_idx, get_warp_id_global(), old_tail % queue_capacity) = task_id;
 }
 
-// define pop_batch, steal_batch, push_batch
 __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_pop, int* tail, int queue_idx) {
     int lane = get_lane_id();
     WarpTaskQueueMetadata* myQueue = warp_queue_metadata_ptr(queue_idx, get_warp_id_global());
@@ -136,7 +135,38 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
     return steal_count;
 }
 
-__device__ __forceinline__ void push_batch (
+__device__ __forceinline__ void push_batch_single_queue(
+    TaskContext* ctx,
+    int* execute_task_id,
+    int* execute_task_count
+) {
+    int warp_id_global = get_warp_id_global();
+    int lane = get_lane_id();
+
+    int count = ctx->generated_task_counts[0];
+    if (count == 0) {
+        *execute_task_count = 0;
+        return;
+    }
+    *execute_task_count = min(count, warp_size);
+    if (lane < *execute_task_count) {
+        *execute_task_id = ctx->staged_task_ids[lane];
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+        printf("push_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", *execute_task_id, 0, lane, get_warp_id_in_block(), blockIdx.x);
+#endif
+    }
+    __syncwarp();
+    if (lane == 0) {
+        if (count > warp_size) {
+            atomicAdd(
+                &warp_queue_metadata_ptr(0, warp_id_global)->count,
+                count - warp_size);
+        }
+        ctx->generated_task_counts[0] = 0;
+    }
+}
+
+__device__ __forceinline__ void push_batch_multi_queue(
     TaskContext* ctx,
     int* execute_task_id,
     int* execute_task_count,
@@ -144,6 +174,7 @@ __device__ __forceinline__ void push_batch (
 ) {
     int warp_id_global = get_warp_id_global();
     int lane = get_lane_id();
+
     int k_max = 0;
     int max_gen = -1;
     int all_generated_count = 0;
@@ -208,6 +239,19 @@ __device__ __forceinline__ void push_batch (
             ctx->generated_task_counts[kind] = 0;
         }
     }
+}
+
+__device__ __forceinline__ void push_batch(
+    TaskContext* ctx,
+    int* execute_task_id,
+    int* execute_task_count,
+    int* queue_tails
+) {
+    if (d_launch_config.num_queues == 1) {
+        push_batch_single_queue(ctx, execute_task_id, execute_task_count);
+        return;
+    }
+    push_batch_multi_queue(ctx, execute_task_id, execute_task_count, queue_tails);
 }
 
 __device__ __forceinline__ void push_initial_task(
