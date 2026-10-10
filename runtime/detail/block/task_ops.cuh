@@ -8,6 +8,8 @@ namespace gtap::detail::block {
 
 using namespace gtap::detail;
 
+// TODO: These functions share the compiler entry points with thread mode. A block-mode lowering could give them their own signatures.
+
 __device__ __forceinline__ int get_task_state(int tid) {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
     return 0;
