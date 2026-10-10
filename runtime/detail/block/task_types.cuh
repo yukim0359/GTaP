@@ -31,18 +31,13 @@ struct TaskHeader {
 };
 
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-// copy_task_header loads the header pair as one 32-bit word and stores that
-// word onto the TaskContext pair. Both pairs must be 4-byte aligned and adjacent.
+// copy_task_header loads both fields as one 32-bit word. That load is valid only
+// when generation is 4-byte aligned and parent_generation is the next half.
 static_assert(offsetof(TaskHeader, generation) % 4 == 0,
               "generation is 4-byte aligned");
 static_assert(offsetof(TaskHeader, parent_generation) ==
                   offsetof(TaskHeader, generation) + sizeof(uint16_t),
               "parent_generation follows generation");
-static_assert(offsetof(TaskContext, generation) % 4 == 0,
-              "TaskContext generation is 4-byte aligned");
-static_assert(offsetof(TaskContext, parent_generation) ==
-                  offsetof(TaskContext, generation) + sizeof(uint16_t),
-              "TaskContext parent_generation follows generation");
 #endif
 
 }  // namespace gtap::detail::block
