@@ -115,9 +115,11 @@ __device__ __forceinline__ void push_global_queue(
         }
 #endif
         push_cnt = ctx->generated_task_count - first_idx_to_push;
-        ctx->generated_task_count = 0;
     }
     __syncthreads();
+
+    if (threadIdx.x == 0)
+        ctx->generated_task_count = 0;
 
     // Push remaining tasks to global queue
     if (push_cnt <= 0) return;
