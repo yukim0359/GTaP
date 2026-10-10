@@ -44,8 +44,11 @@ __device__ __forceinline__ void copy_task_header(
     if (threadIdx.x == 0) {
         TaskHeader* src_hdr = &d_task_headers[execute_task_id];
         task_context->parent_tid = load_L2(&src_hdr->parent_tid);
-        *reinterpret_cast<unsigned int*>(&task_context->generation) =
+        unsigned int generations =
             load_L2(reinterpret_cast<unsigned int*>(&src_hdr->generation));
+        task_context->generation = static_cast<uint16_t>(generations);
+        task_context->parent_generation =
+            static_cast<uint16_t>(generations >> 16);
     }
     __syncthreads();
 }

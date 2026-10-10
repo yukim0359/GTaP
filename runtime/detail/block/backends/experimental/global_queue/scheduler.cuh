@@ -114,14 +114,17 @@ __device__ __forceinline__ void push_global_queue(
         } else {
             *have_execute_task = false;
         }
-        ctx->task_id_resumable = -1;
 #endif
         push_cnt = ctx->generated_task_count - first_idx_to_push;
     }
     __syncthreads();
 
-    if (threadIdx.x == 0)
+    if (threadIdx.x == 0) {
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+        ctx->task_id_resumable = -1;
+#endif
         ctx->generated_task_count = 0;
+    }
 
     // Push remaining tasks to global queue
     if (push_cnt <= 0) return;
