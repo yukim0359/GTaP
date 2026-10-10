@@ -20,10 +20,7 @@ __device__ __forceinline__ int get_task_state(int tid) {
 #endif
 }
 
-// TODO: Rename set_state_for_join_block and __gtap_set_state_for_join_block
-// to a prepare_for_join style name. The function takes the generated child
-// count across the block, then reports whether the task suspends.
-__device__ __forceinline__ bool set_state_for_join_block(
+__device__ __forceinline__ bool prepare_for_join_block(
     int tid,
     TaskContext* ctx,
     int next_state,
@@ -39,7 +36,7 @@ __device__ __forceinline__ bool set_state_for_join_block(
         hdr->waiting_child_count = child_count;
 #endif
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("set_state_for_join_block: tid=%d child_count=%d\n", tid, child_count);
+        printf("prepare_for_join_block: tid=%d child_count=%d\n", tid, child_count);
 #endif
     }
     __syncthreads();

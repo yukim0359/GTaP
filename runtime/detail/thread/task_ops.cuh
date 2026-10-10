@@ -18,10 +18,7 @@ __device__ __forceinline__ int get_task_state(int tid) {
 #endif
 }
 
-// TODO: Rename set_state_for_join and __gtap_set_state_for_join to a
-// prepare_for_join style name. The function stores the resume queue and the
-// child count, then reports whether the task suspends.
-__device__ __forceinline__ bool set_state_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
+__device__ __forceinline__ bool prepare_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
     if (queue_idx_after_join < 0 ||
         queue_idx_after_join >= d_launch_config.num_queues) {
         GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(

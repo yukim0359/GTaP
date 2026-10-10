@@ -14,10 +14,10 @@ __device__ __forceinline__ int __gtap_get_task_state(int tid) {
     return gtap::detail::thread::get_task_state(tid);
 }
 
-__device__ __forceinline__ bool __gtap_set_state_for_join(
+__device__ __forceinline__ bool __gtap_prepare_for_join(
     int tid, int child_count, int next_state, int queue_idx_after_join
 ) {
-    return gtap::detail::thread::set_state_for_join(
+    return gtap::detail::thread::prepare_for_join(
         tid, child_count, next_state, queue_idx_after_join);
 }
 
