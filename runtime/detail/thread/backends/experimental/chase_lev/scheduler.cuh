@@ -358,6 +358,50 @@ __device__ __forceinline__ void initialize_loop(
     __syncwarp();
 }
 
+#ifdef GTAP_ENABLE_PROFILING
+__device__ __forceinline__ void record_execution_start(
+    int warp_id_in_block,
+    int warp_id_global,
+    int lane,
+    int execute_task_count,
+    int* working_time_idx
+) {
+    if (lane == 0) {
+        if (working_time_idx[warp_id_in_block] + 1 <
+            profile_timestamp_capacity()) {
+            const int profile_idx =
+                warp_id_global * profile_timestamp_capacity() +
+                working_time_idx[warp_id_in_block];
+            working_time[profile_idx] = get_global_time();
+            tasks_processed_count[profile_idx] = execute_task_count;
+            working_time_idx[warp_id_in_block]++;
+        } else {
+            atomicAdd(&profile_dropped_events[warp_id_global], 1ULL);
+        }
+    }
+}
+
+__device__ __forceinline__ void record_execution_end(
+    int warp_id_in_block,
+    int warp_id_global,
+    int lane,
+    int execute_task_count,
+    int* working_time_idx
+) {
+    if (lane == 0) {
+        if (working_time_idx[warp_id_in_block] < profile_timestamp_capacity()) {
+            const int profile_idx =
+                warp_id_global * profile_timestamp_capacity() +
+                working_time_idx[warp_id_in_block];
+            working_time[profile_idx] = get_global_time();
+            tasks_processed_count[profile_idx] = execute_task_count;
+            working_time_idx[warp_id_in_block]++;
+        }
+    }
+    __syncwarp();
+}
+#endif
+
 template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     const int warp_id_in_block = get_warp_id_in_block();
@@ -486,18 +530,9 @@ __device__ __forceinline__ void execute_task_loop() {
             // __syncwarp(active_mask);
 
 #ifdef GTAP_ENABLE_PROFILING
-            if (lane == 0) {
-                if (working_time_idx[warp_id_in_block] + 1 < profile_timestamp_capacity()) {
-                    const int profile_idx =
-                        warp_id_global * profile_timestamp_capacity() +
-                        working_time_idx[warp_id_in_block];
-                    working_time[profile_idx] = get_global_time();
-                    tasks_processed_count[profile_idx] = execute_task_count;
-                    working_time_idx[warp_id_in_block]++;
-                } else {
-                    atomicAdd(&profile_dropped_events[warp_id_global], 1ULL);
-                }
-            }
+            record_execution_start(
+                warp_id_in_block, warp_id_global, lane,
+                execute_task_count, working_time_idx);
 #endif
             // Use non-template version to avoid TaskType dependency
             void* task_data = get_task_data(execute_task_id);
@@ -516,14 +551,9 @@ __device__ __forceinline__ void execute_task_loop() {
         }
         __syncwarp();
 #ifdef GTAP_ENABLE_PROFILING
-        if (lane == 0) {
-            if (working_time_idx[warp_id_in_block] < profile_timestamp_capacity()) {
-                working_time[warp_id_global * profile_timestamp_capacity() + working_time_idx[warp_id_in_block]] = get_global_time();
-                tasks_processed_count[warp_id_global * profile_timestamp_capacity() + working_time_idx[warp_id_in_block]] = execute_task_count;
-                working_time_idx[warp_id_in_block]++;
-            }
-        }
-        __syncwarp();
+        record_execution_end(
+            warp_id_in_block, warp_id_global, lane,
+            execute_task_count, working_time_idx);
 #endif
 
         push_batch<M>(

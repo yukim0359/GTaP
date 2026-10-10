@@ -226,6 +226,32 @@ __device__ __forceinline__ void fill_execution_batch(
     }
 }
 
+#ifdef GTAP_ENABLE_PROFILING
+__device__ __forceinline__ void record_execution_start(int* working_time_idx) {
+    if (threadIdx.x == 0) {
+        if (*working_time_idx + 1 < profile_timestamp_capacity()) {
+            working_time[
+                blockIdx.x * profile_timestamp_capacity() +
+                *working_time_idx] = get_global_time();
+            (*working_time_idx)++;
+        } else {
+            atomicAdd(&profile_dropped_events[blockIdx.x], 1ULL);
+        }
+    }
+}
+
+__device__ __forceinline__ void record_execution_end(int* working_time_idx) {
+    if (threadIdx.x == 0) {
+        if (*working_time_idx < profile_timestamp_capacity()) {
+            working_time[
+                blockIdx.x * profile_timestamp_capacity() +
+                *working_time_idx] = get_global_time();
+            (*working_time_idx)++;
+        }
+    }
+}
+#endif
+
 template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
@@ -298,16 +324,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
-            if (threadIdx.x == 0) {
-                if (working_time_idx + 1 < profile_timestamp_capacity()) {
-                    working_time[
-                        blockIdx.x * profile_timestamp_capacity() +
-                        working_time_idx] = get_global_time();
-                    working_time_idx++;
-                } else {
-                    atomicAdd(&profile_dropped_events[blockIdx.x], 1ULL);
-                }
-            }
+            record_execution_start(&working_time_idx);
 #endif
             void* task_data = get_task_data(execute_task_id);
             // Read function pointer atomically (64-bit) via L2 cache
@@ -318,12 +335,7 @@ __device__ __forceinline__ void execute_task_loop() {
         }
         __syncthreads();
 #ifdef GTAP_ENABLE_PROFILING
-        if (threadIdx.x == 0) {
-            if (working_time_idx < profile_timestamp_capacity()) {
-                working_time[blockIdx.x * profile_timestamp_capacity() + working_time_idx] = get_global_time();
-                working_time_idx++;
-            }
-        }
+        record_execution_end(&working_time_idx);
 #endif
 
         push_global_queue<M>(&task_context, &execute_task_id, &have_execute_task);
