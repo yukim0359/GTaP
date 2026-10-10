@@ -8,6 +8,7 @@
 #include "task_types.cuh"
 
 extern const size_t __gtap_auto_task_data_size;
+extern const size_t __gtap_auto_task_data_align;
 
 namespace gtap::detail::thread {
 
@@ -16,9 +17,7 @@ using namespace gtap::detail;
 __constant__ size_t d_task_data_stride;
 
 inline size_t compute_task_data_stride() {
-    // TODO: 16 stands in for the task-record alignment. Have the compiler
-    // publish that alignment and use align_up(size, alignment).
-    return align_up(__gtap_auto_task_data_size, 16);
+    return align_up(__gtap_auto_task_data_size, __gtap_auto_task_data_align);
 }
 
 inline cudaError_t publish_task_data_stride() {

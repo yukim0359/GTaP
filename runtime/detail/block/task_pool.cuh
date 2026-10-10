@@ -9,6 +9,7 @@
 
 extern const size_t __gtap_auto_block_task_data_sizes[
     GTAP_MAX_THREADS_PER_BLOCK / gtap::detail::warp_size + 1];
+extern const size_t __gtap_auto_task_data_align;
 extern const size_t __gtap_auto_entry_result_size;
 
 namespace gtap::detail::block {
@@ -18,11 +19,9 @@ using namespace gtap::detail;
 __constant__ size_t d_task_data_stride;
 
 inline size_t compute_task_data_stride(const launch_config& config) {
-    // TODO: 16 stands in for the task-record alignment. Have the compiler
-    // publish that alignment and use align_up(size, alignment).
     return align_up(
         __gtap_auto_block_task_data_sizes[config.block_size / warp_size],
-        16);
+        __gtap_auto_task_data_align);
 }
 
 inline cudaError_t publish_task_data_stride() {
