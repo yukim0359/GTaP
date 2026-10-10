@@ -175,6 +175,8 @@ __device__ __forceinline__ void push(
     }
 }
 
+// TODO: Clarify which of the block task ops and push_initial_task are thread 0
+// only and which run on every thread in the block.
 __device__ __forceinline__ void push_initial_task(
     void (*func)(void*, int, TaskContext*),
     int unused_value

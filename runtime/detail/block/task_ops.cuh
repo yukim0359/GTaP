@@ -9,6 +9,8 @@ namespace gtap::detail::block {
 using namespace gtap::detail;
 
 // TODO: These functions share the compiler entry points with thread mode. A block-mode lowering could give them their own signatures.
+// TODO: Clarify which of the block task ops and push_initial_task are thread 0
+// only and which run on every thread in the block.
 
 __device__ __forceinline__ int get_task_state(int tid) {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
@@ -18,6 +20,9 @@ __device__ __forceinline__ int get_task_state(int tid) {
 #endif
 }
 
+// TODO: Rename set_state_for_join_block and __gtap_set_state_for_join_block
+// to a prepare_for_join style name. The function takes the generated child
+// count across the block, then reports whether the task suspends.
 __device__ __forceinline__ bool set_state_for_join_block(
     int tid,
     TaskContext* ctx,
