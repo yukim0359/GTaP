@@ -103,9 +103,9 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
     return count;
 }
 
-// Pop from one global queue into the lanes that still have no task.
+// Fill empty lanes from one global queue.
 template<TerminationMode M>
-__device__ __forceinline__ void fill_execution_batch(
+__device__ __forceinline__ void fill_batch_from_queue(
     int* execute_task_id,
     int* execute_task_count,
     int queue_idx,
@@ -115,6 +115,51 @@ __device__ __forceinline__ void fill_execution_batch(
     int remaining = warp_size - *execute_task_count;
     *execute_task_count += pop_global_queue<M>(
         execute_task_id, remaining, queue_idx, prev_get_task);
+}
+
+// Prepare the execution batch. Touch the global queue only when
+// execute_task_count == 0. Popping it hits the device-wide head, so a
+// non-empty batch keeps its local tasks and leaves the queue alone.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int warp_id_in_block,
+    int lane,
+    int* execute_task_id,
+    int* execute_task_count,
+    bool prev_get_task,
+    const shared_layout& layout,
+    TaskContext* task_context
+) {
+    if (*execute_task_count != 0) return;
+    if (d_launch_config.num_queues > 1) {
+        int* queue_lengths = reinterpret_cast<int*>(
+            dynamic_shared + layout.queue_lengths) +
+            warp_id_in_block * d_launch_config.num_queues;
+        if (lane == 0) {
+            for (int k = 0; k < d_launch_config.num_queues; ++k) {
+                int head = load_L2(&d_queue_head[k]);
+                int tail = load_L2(&d_queue_tail[k]);
+                queue_lengths[k] = max(0, tail - head);
+            }
+        }
+        for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
+            int queue_idx;
+            if (lane == 0) {
+                queue_idx = select_next_fullest_queue_idx(
+                    queue_lengths,
+                    d_launch_config.num_queues);
+                task_context->queue_idx = queue_idx;
+            }
+            queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
+            fill_batch_from_queue<M>(
+                execute_task_id, execute_task_count, queue_idx,
+                prev_get_task);
+            if (*execute_task_count != 0) break;
+        }
+    } else {
+        fill_batch_from_queue<M>(
+            execute_task_id, execute_task_count, 0, prev_get_task);
+    }
 }
 
 // Push to global queue
@@ -401,40 +446,10 @@ __device__ __forceinline__ void execute_task_loop() {
     );
 
     while (true) {
-        // Touch the global queue only when execute_task_count == 0. Popping it
-        // hits the device-wide head, so a non-empty batch keeps its local tasks
-        // and leaves the queue alone.
-        if (execute_task_count == 0) {
-            if (d_launch_config.num_queues > 1) {
-                int* queue_lengths = reinterpret_cast<int*>(
-                    dynamic_shared + layout.queue_lengths) +
-                    warp_id_in_block * d_launch_config.num_queues;
-                if (lane == 0) {
-                    for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                        int head = load_L2(&d_queue_head[k]);
-                        int tail = load_L2(&d_queue_tail[k]);
-                        queue_lengths[k] = max(0, tail - head);
-                    }
-                }
-                for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
-                    int queue_idx;
-                    if (lane == 0) {
-                        queue_idx = select_next_fullest_queue_idx(
-                            queue_lengths,
-                            d_launch_config.num_queues);
-                        task_context->queue_idx = queue_idx;
-                    }
-                    queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
-                    fill_execution_batch<M>(
-                        &execute_task_id, &execute_task_count, queue_idx,
-                        prev_get_task);
-                    if (execute_task_count != 0) break;
-                }
-            } else {
-                fill_execution_batch<M>(
-                    &execute_task_id, &execute_task_count, 0, prev_get_task);
-            }
-        }
+        fill_execution_batch<M>(
+            warp_id_in_block, lane,
+            &execute_task_id, &execute_task_count, prev_get_task,
+            layout, task_context);
 
         if (execute_task_count == 0) {
             if (mark_idle_and_check_termination<M>(lane, &prev_get_task))

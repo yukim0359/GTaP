@@ -160,9 +160,9 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
     return steal_count;
 }
 
-// Pop from one queue, then steal if the batch is still short of a warp.
+// Fill empty lanes from one queue, then steal if the batch is still short of a warp.
 template<TerminationMode M>
-__device__ __forceinline__ void fill_execution_batch(
+__device__ __forceinline__ void fill_batch_from_queue(
     int* execute_task_id,
     int* execute_task_count,
     int queue_idx,
@@ -178,6 +178,58 @@ __device__ __forceinline__ void fill_execution_batch(
         int remaining = warp_size - *execute_task_count;
         *execute_task_count += steal_chase_lev<M>(
             execute_task_id, remaining, queue_idx, prev_get_task);
+    }
+}
+
+// Prepare the execution batch, including which queue to take it from.
+// A short batch is topped up from the queue it already uses.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int warp_id_in_block,
+    int warp_id_global,
+    int lane,
+    int* execute_task_id,
+    int* execute_task_count,
+    bool prev_get_task,
+    const shared_layout& layout,
+    TaskContext* task_context
+) {
+    if (d_launch_config.num_queues == 1) {
+        fill_batch_from_queue<M>(
+            execute_task_id, execute_task_count, 0, prev_get_task);
+    } else if (*execute_task_count < warp_size) {
+        if (*execute_task_count == 0) {
+            int* queue_lengths = reinterpret_cast<int*>(
+                dynamic_shared + layout.queue_lengths) +
+                warp_id_in_block * d_launch_config.num_queues;
+            if (lane == 0) {
+                for (int k = 0; k < d_launch_config.num_queues; ++k) {
+                    WarpTaskQueueMetadata* q = warp_queue_metadata(k, warp_id_global);
+                    queue_lengths[k] =
+                        load_L2(&q->bottom) - load_L2(&q->top);
+                }
+            }
+            for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
+                int queue_idx;
+                if (lane == 0) {
+                    queue_idx = select_next_fullest_queue_idx(
+                        queue_lengths,
+                        d_launch_config.num_queues);
+                    task_context->queue_idx = queue_idx;
+                }
+                queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
+                fill_batch_from_queue<M>(
+                    execute_task_id, execute_task_count, queue_idx,
+                    prev_get_task);
+                if (*execute_task_count != 0) break;
+            }
+        } else {
+            int queue_idx = __shfl_sync(
+                0xFFFFFFFFu, task_context->queue_idx, 0);
+            fill_batch_from_queue<M>(
+                execute_task_id, execute_task_count, queue_idx,
+                prev_get_task);
+        }
     }
 }
 
@@ -483,43 +535,10 @@ __device__ __forceinline__ void execute_task_loop() {
     );
 
     while (true) {
-        if (d_launch_config.num_queues == 1) {
-            fill_execution_batch<M>(
-                &execute_task_id, &execute_task_count, 0, prev_get_task);
-        } else if (execute_task_count < warp_size) {
-            if (execute_task_count == 0) {
-                int* queue_lengths = reinterpret_cast<int*>(
-                    dynamic_shared + layout.queue_lengths) +
-                    warp_id_in_block * d_launch_config.num_queues;
-                if (lane == 0) {
-                    for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                        WarpTaskQueueMetadata* q = warp_queue_metadata(k, warp_id_global);
-                        queue_lengths[k] =
-                            load_L2(&q->bottom) - load_L2(&q->top);
-                    }
-                }
-                for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
-                    int queue_idx;
-                    if (lane == 0) {
-                        queue_idx = select_next_fullest_queue_idx(
-                            queue_lengths,
-                            d_launch_config.num_queues);
-                        task_context->queue_idx = queue_idx;
-                    }
-                    queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
-                    fill_execution_batch<M>(
-                        &execute_task_id, &execute_task_count, queue_idx,
-                        prev_get_task);
-                    if (execute_task_count != 0) break;
-                }
-            } else {
-                int queue_idx = __shfl_sync(
-                    0xFFFFFFFFu, task_context->queue_idx, 0);
-                fill_execution_batch<M>(
-                    &execute_task_id, &execute_task_count, queue_idx,
-                    prev_get_task);
-            }
-        }
+        fill_execution_batch<M>(
+            warp_id_in_block, warp_id_global, lane,
+            &execute_task_id, &execute_task_count, prev_get_task,
+            layout, task_context);
 
         if (execute_task_count == 0) {
             if (mark_idle_and_check_termination<M>(
