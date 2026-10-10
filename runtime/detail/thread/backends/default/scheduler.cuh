@@ -501,6 +501,7 @@ __device__ __forceinline__ void execute_task_loop() {
                     &queue_tails[queue_idx], queue_idx, prev_get_task);
             }
         }
+
         if (execute_task_count == 0) {
             if (mark_idle_and_check_termination<M>(
                     warp_id_global, lane, &prev_get_task, queue_tails))
@@ -508,12 +509,6 @@ __device__ __forceinline__ void execute_task_loop() {
             continue;
         } else {
             prev_get_task = true;
-            // TODO: remove this
-            if (lane == 0) {
-                for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                    task_context->generated_task_counts[k] = 0;
-                }
-            }
             __syncwarp();
         }
 

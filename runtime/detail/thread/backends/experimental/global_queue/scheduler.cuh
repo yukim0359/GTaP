@@ -200,6 +200,11 @@ __device__ __forceinline__ void push_global_queue(
             atomicAdd(&d_queue_tail[kind], push_cnt);
         }
     }
+    if (lane == 0) {
+        for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
+            ctx->generated_task_counts[kind] = 0;
+        }
+    }
     __syncwarp();
 }
 
@@ -419,9 +424,6 @@ __device__ __forceinline__ void execute_task_loop() {
             continue;
         } else {
             prev_get_task = true;
-            if (lane == 0) {
-                for (int k = 0; k < d_launch_config.num_queues; ++k) task_context->generated_task_counts[k] = 0;
-            }
             __syncwarp();
         }
 

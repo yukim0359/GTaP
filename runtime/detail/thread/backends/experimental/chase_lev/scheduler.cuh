@@ -278,6 +278,11 @@ __device__ __forceinline__ void push_batch (
             store_L2(&q->bottom, ctx->queue_tails[kind]);
         }
     }
+    if (lane == 0) {
+        for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
+            ctx->generated_task_counts[kind] = 0;
+        }
+    }
 }
 
 // push_initial_task: Device function to push initial task
@@ -511,8 +516,6 @@ __device__ __forceinline__ void execute_task_loop() {
             prev_get_task = true;
             if (lane == 0) {
                 for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                    task_context->
-                        generated_task_counts[k] = 0;
                     task_context->queue_tails[k] =
                         load_L2(&warp_queue_metadata(k, warp_id_global)->bottom);
                 }

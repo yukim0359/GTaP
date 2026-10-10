@@ -164,6 +164,7 @@ __device__ __forceinline__ void push(
     __syncthreads();
     if (threadIdx.x == 0) {
         store_L2(&myQueue->bottom, publish_bottom);
+        ctx->generated_task_count = 0;
     }
 }
 
@@ -307,7 +308,6 @@ __device__ __forceinline__ void execute_task_loop() {
         } else {
             if (threadIdx.x == 0) {
                 prev_get_task = true;
-                task_context.generated_task_count = 0;
                 task_context.queue_tail = load_L2(&d_block_task_queue_metadata[blockIdx.x].bottom);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
                 task_context.task_id_resumable = -1;
