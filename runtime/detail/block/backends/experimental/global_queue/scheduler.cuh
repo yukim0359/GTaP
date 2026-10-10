@@ -349,9 +349,9 @@ __device__ __forceinline__ void execute_task_loop() {
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &task_context);
-            __threadfence();
         }
         __syncthreads();
+        __threadfence();
 #ifdef GTAP_ENABLE_PROFILING
         record_execution_end(&working_time_idx);
 #endif

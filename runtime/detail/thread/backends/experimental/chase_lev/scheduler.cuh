@@ -556,9 +556,9 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
             printf("executed_task_id: %d in lane %d of warp %d of block %d\n", execute_task_id, lane, warp_id_in_block, blockIdx.x);
 #endif
-            __threadfence();
         }
         __syncwarp();
+        __threadfence();
 #ifdef GTAP_ENABLE_PROFILING
         record_execution_end(
             warp_id_in_block, warp_id_global, lane,

@@ -88,9 +88,10 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
     count = __shfl_sync(0xFFFFFFFFu, count, 0);
     base_head = __shfl_sync(0xFFFFFFFFu, base_head, 0);
 
-    // Each lane reads its task (if it has one)
-    if (lane < count) {
-        int idx = (base_head + lane) %
+    // Write into the empty suffix. Existing ids stay in lanes below warp_size - max_count.
+    if (lane >= warp_size - max_count &&
+        lane < warp_size - max_count + count) {
+        int idx = (base_head + (lane - warp_size + max_count)) %
             (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity);
         int tid = load_L2(global_queue_slot(queue_idx, idx));
         *execute_task_id = tid;
@@ -400,6 +401,9 @@ __device__ __forceinline__ void execute_task_loop() {
     );
 
     while (true) {
+        // Touch the global queue only when execute_task_count == 0. Popping it
+        // hits the device-wide head, so a non-empty batch keeps its local tasks
+        // and leaves the queue alone.
         if (execute_task_count == 0) {
             if (d_launch_config.num_queues > 1) {
                 int* queue_lengths = reinterpret_cast<int*>(
@@ -459,9 +463,9 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
             printf("executed_task_id: %d in lane %d of warp %d of block %d\n", execute_task_id, lane, warp_id_in_block, blockIdx.x);
 #endif
-            __threadfence();
         }
         __syncwarp();
+        __threadfence();
 #ifdef GTAP_ENABLE_PROFILING
         record_execution_end(
             warp_id_in_block, warp_id_global, lane,
