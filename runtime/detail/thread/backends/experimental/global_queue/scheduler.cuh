@@ -31,7 +31,7 @@ extern __shared__ unsigned char dynamic_shared[];
 // Keep the common case in warp-local shared memory.  Overflow remains in the
 // private global staging buffer and is not published to the global queue until
 // push_global_queue(), after the spawning lanes have finished task-data setup.
-__device__ __forceinline__ void reserve_unpublished_task_id(
+__device__ __forceinline__ void stage_task_id(
     TaskContext* ctx, int queue_idx, int task_id
 ) {
     int idx = atomicAdd(

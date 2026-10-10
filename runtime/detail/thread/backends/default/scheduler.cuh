@@ -25,7 +25,7 @@ inline constexpr bool include_queue_tails = true;
 
 extern __shared__ unsigned char dynamic_shared[];
 
-__device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int queue_idx, int task_id) {
+__device__ __forceinline__ void stage_task_id(TaskContext* ctx, int queue_idx, int task_id) {
     int gen_idx = atomicAdd(&ctx->generated_task_counts[queue_idx], 1);
     if (gen_idx < warp_size) {
         ctx->staged_task_ids[queue_idx * warp_size + gen_idx] = task_id;

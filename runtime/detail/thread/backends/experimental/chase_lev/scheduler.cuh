@@ -236,7 +236,7 @@ __device__ __forceinline__ void fill_execution_batch(
 
 // Chase-Lev pushBottom (multiple items)
 // NOTE: the template parameter is not used
-__device__ __forceinline__ void reserve_unpublished_task_id(
+__device__ __forceinline__ void stage_task_id(
     TaskContext* ctx, int queue_idx, int task_id
 ) {
     int gen_idx = atomicAdd(

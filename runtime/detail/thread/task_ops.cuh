@@ -50,7 +50,7 @@ __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
 #endif
     if (rem == 1) {
         int parent_queue_idx = load_L2(&parent_hdr->queue_idx);
-        reserve_unpublished_task_id(ctx, parent_queue_idx, parentId);
+        stage_task_id(ctx, parent_queue_idx, parentId);
     }
     return rem;
 }
@@ -121,7 +121,7 @@ __device__ __forceinline__ void* spawn_task(
     new_hdr->waiting_child_count = 0;
 #endif
 
-    reserve_unpublished_task_id(ctx, child_queue_idx, new_tid);
+    stage_task_id(ctx, child_queue_idx, new_tid);
 
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     (*child_count)++;

@@ -103,7 +103,7 @@ __device__ __forceinline__ void* spawn_task(
     new_hdr->waiting_child_count = 0;
 #endif
 
-    reserve_unpublished_task_id(ctx, new_tid);
+    stage_task_id(ctx, new_tid);
     (void)child_count;
     return get_task_data(new_tid);
 }

@@ -16,7 +16,7 @@
 namespace gtap::detail::block {
 using namespace gtap::detail;
 
-__device__ __forceinline__ void reserve_unpublished_task_id(
+__device__ __forceinline__ void stage_task_id(
     TaskContext* ctx, int task_id
 ) {
     int gen_idx = atomicAdd(&ctx->generated_task_count, 1);

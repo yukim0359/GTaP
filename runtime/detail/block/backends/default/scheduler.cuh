@@ -17,7 +17,7 @@
 namespace gtap::detail::block {
 using namespace gtap::detail;
 
-__device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int task_id) {
+__device__ __forceinline__ void stage_task_id(TaskContext* ctx, int task_id) {
     BlockTaskQueueMetadata* q = &d_block_task_queue_metadata[blockIdx.x];
     int old_bottom = atomicAdd(&ctx->queue_bottom, 1);
     int top = load_L2(&q->top);
@@ -266,6 +266,8 @@ __device__ __forceinline__ bool mark_idle_and_check_termination(
 template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
+    // TODO: have_execute_task can be removed. Store -1 in execute_task_id on the
+    // no-task paths and test that instead.
     __shared__ bool have_execute_task;
     __shared__ bool prev_get_task;
     __shared__ TaskContext task_context;
