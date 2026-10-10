@@ -7,8 +7,8 @@
 
 #include "task_types.cuh"
 
-extern const size_t __gtap_auto_task_data_size;
-extern const size_t __gtap_auto_task_data_align;
+// The compiler sets this stride after rounding the task records up to their alignment.
+extern const size_t __gtap_task_data_stride;
 
 namespace gtap::detail::thread {
 
@@ -16,13 +16,9 @@ using namespace gtap::detail;
 
 __constant__ size_t d_task_data_stride;
 
-inline size_t compute_task_data_stride() {
-    return align_up(__gtap_auto_task_data_size, __gtap_auto_task_data_align);
-}
-
 inline cudaError_t publish_task_data_stride() {
-    size_t stride = compute_task_data_stride();
-    return cudaMemcpyToSymbol(d_task_data_stride, &stride, sizeof(size_t));
+    return cudaMemcpyToSymbol(
+        d_task_data_stride, &__gtap_task_data_stride, sizeof(size_t));
 }
 
 __constant__ TaskHeader* d_task_headers;         // TaskHeader[num_warps * tasks_per_warp]
@@ -105,7 +101,7 @@ inline size_t task_pool_allocation_bytes(const launch_config& config) {
     const size_t tasks =
         scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
     return sizeof(TaskHeader) * tasks
-        + compute_task_data_stride() * tasks
+        + __gtap_task_data_stride * tasks
         + sizeof(int) * scheduling_units
         + sizeof(int) * tasks
         + sizeof(uint8_t) * tasks;
@@ -124,7 +120,7 @@ inline cudaError_t stage_task_pool(
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
 
-    const size_t task_data_size = compute_task_data_stride() * tasks;
+    const size_t task_data_size = __gtap_task_data_stride * tasks;
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->task_data, task_data_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->task_data, 0, task_data_size, stream));
@@ -183,7 +179,7 @@ inline cudaError_t clear_task_pool(
     }
     if (task_data != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            task_data, 0, compute_task_data_stride() * tasks, stream));
+            task_data, 0, __gtap_task_data_stride * tasks, stream));
     }
     if (id_list_free_positions != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(

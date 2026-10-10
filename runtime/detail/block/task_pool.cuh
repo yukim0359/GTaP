@@ -7,10 +7,11 @@
 
 #include "task_types.cuh"
 
-extern const size_t __gtap_auto_block_task_data_sizes[
+// The compiler sets these strides after rounding the task records up to their alignment.
+// The index is the number of warps in the block.
+extern const size_t __gtap_block_task_data_strides[
     GTAP_MAX_THREADS_PER_BLOCK / gtap::detail::warp_size + 1];
-extern const size_t __gtap_auto_task_data_align;
-extern const size_t __gtap_auto_entry_result_size;
+extern const size_t __gtap_entry_result_size;
 
 namespace gtap::detail::block {
 
@@ -19,9 +20,7 @@ using namespace gtap::detail;
 __constant__ size_t d_task_data_stride;
 
 inline size_t compute_task_data_stride(const launch_config& config) {
-    return align_up(
-        __gtap_auto_block_task_data_sizes[config.block_size / warp_size],
-        __gtap_auto_task_data_align);
+    return __gtap_block_task_data_strides[config.block_size / warp_size];
 }
 
 inline cudaError_t publish_task_data_stride() {
@@ -31,7 +30,7 @@ inline cudaError_t publish_task_data_stride() {
 
 __constant__ TaskHeader* d_task_headers;         // TaskHeader[num_blocks * tasks_per_block]
 __constant__ char* d_task_data_bytes;            // char[num_blocks * tasks_per_block * task_data_stride]
-__constant__ char* d_entry_result_bytes;         // char[block_size * __gtap_auto_entry_result_size]
+__constant__ char* d_entry_result_bytes;         // char[block_size * __gtap_entry_result_size]
 __constant__ int* d_task_id_list_free_positions; // int[num_blocks]
 __constant__ int* d_task_id_storage;             // int[num_blocks * tasks_per_block]
 
@@ -108,7 +107,7 @@ inline size_t task_pool_allocation_bytes(const launch_config& config) {
         + sizeof(int) * tasks
         + sizeof(TaskHeader) * tasks
         + compute_task_data_stride(config) * tasks
-        + __gtap_auto_entry_result_size * static_cast<size_t>(config.block_size);
+        + __gtap_entry_result_size * static_cast<size_t>(config.block_size);
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
@@ -138,7 +137,7 @@ inline cudaError_t stage_task_pool(
         buffers->task_data, 0, task_data_size, stream));
 
     const size_t entry_result_size =
-        __gtap_auto_entry_result_size * static_cast<size_t>(config.block_size);
+        __gtap_entry_result_size * static_cast<size_t>(config.block_size);
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->entry_result, entry_result_size));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->entry_result, 0, entry_result_size, stream));
@@ -197,7 +196,7 @@ inline cudaError_t clear_task_pool(
     if (entry_result != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
             entry_result, 0,
-            __gtap_auto_entry_result_size * static_cast<size_t>(config.block_size),
+            __gtap_entry_result_size * static_cast<size_t>(config.block_size),
             stream));
     }
     return cudaSuccess;
