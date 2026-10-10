@@ -287,25 +287,21 @@ __device__ __forceinline__ void push_initial_task(
     // atomicExch(&d_active_warp_count, 1);
 }
 
-template<TerminationMode M>
-__device__ __forceinline__ void execute_task_loop() {
-    int warp_id_in_block = get_warp_id_in_block();
-    int warp_id_global = get_warp_id_global();
-    int lane = get_lane_id();
-
-    int execute_task_id = 0;
-    int execute_task_count = 0;
-    bool prev_get_task = (warp_id_global == 0);
-    bool should_continue = true;
-
-    const shared_layout layout = shared_layout_for(
-        d_launch_config.warps_per_block, d_launch_config.num_queues,
-        include_queue_tails);
-    TaskContext* task_context =
+__device__ __forceinline__ void initialize_loop(
+    int warp_id_in_block,
+    int warp_id_global,
+    int lane,
+    const shared_layout& layout,
+    TaskContext*& task_context
+#ifdef GTAP_ENABLE_PROFILING
+    , int*& working_time_idx
+#endif
+) {
+    task_context =
         reinterpret_cast<TaskContext*>(dynamic_shared) + warp_id_in_block;
 
 #ifdef GTAP_ENABLE_PROFILING
-    int* working_time_idx = reinterpret_cast<int*>(
+    working_time_idx = reinterpret_cast<int*>(
         dynamic_shared + layout.working_time_idx);
     if (lane == 0) {
         working_time_idx[warp_id_in_block] = 0;
@@ -341,6 +337,33 @@ __device__ __forceinline__ void execute_task_loop() {
         }
     }
     __syncwarp();
+}
+
+template<TerminationMode M>
+__device__ __forceinline__ void execute_task_loop() {
+    const int warp_id_in_block = get_warp_id_in_block();
+    const int warp_id_global = get_warp_id_global();
+    const int lane = get_lane_id();
+
+    int execute_task_id = 0;
+    int execute_task_count = 0;
+    bool prev_get_task = (warp_id_global == 0);
+    bool should_continue = true;
+
+    const shared_layout layout = shared_layout_for(
+        d_launch_config.warps_per_block, d_launch_config.num_queues,
+        include_queue_tails);
+    TaskContext* task_context;
+#ifdef GTAP_ENABLE_PROFILING
+    int* working_time_idx;
+#endif
+    initialize_loop(
+        warp_id_in_block, warp_id_global, lane, layout,
+        task_context
+#ifdef GTAP_ENABLE_PROFILING
+        , working_time_idx
+#endif
+    );
 
     while (should_continue) {
         if (execute_task_count == 0) {
