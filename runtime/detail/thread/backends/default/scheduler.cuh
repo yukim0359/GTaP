@@ -135,6 +135,28 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
     return steal_count;
 }
 
+// Pop from one queue, then steal if the batch is still short of a warp.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int* execute_task_id,
+    int* execute_task_count,
+    int* queue_tail,
+    int queue_idx,
+    bool prev_get_task
+) {
+    if (*execute_task_count >= warp_size) return;
+    if (prev_get_task) {
+        int remaining = warp_size - *execute_task_count;
+        *execute_task_count += pop_batch(
+            execute_task_id, remaining, queue_tail, queue_idx);
+    }
+    if (*execute_task_count < warp_size) {
+        int remaining = warp_size - *execute_task_count;
+        *execute_task_count += steal_batch<M>(
+            execute_task_id, remaining, queue_idx, prev_get_task);
+    }
+}
+
 __device__ __forceinline__ void push_batch_single_queue(
     TaskContext* ctx,
     int* execute_task_id,
@@ -360,89 +382,45 @@ __device__ __forceinline__ void execute_task_loop() {
     while (should_continue) {
         if (d_launch_config.num_queues == 1) {
             // Single-queue fast path: skip DAQ count collection and selection.
-            if (execute_task_count < warp_size) {
-                if (prev_get_task) {
-                    int remaining = warp_size - execute_task_count;
-                    int pop_count = pop_batch(
-                        &execute_task_id, remaining, &queue_tails[0], 0
-                    );
-                    execute_task_count += pop_count;
-                }
-                if (execute_task_count < warp_size) {
-                    int remaining = warp_size - execute_task_count;
-                    int steal_count = steal_batch<M>(
-                        &execute_task_id, remaining, 0, prev_get_task
-                    );
-                    execute_task_count += steal_count;
-                }
-            }
-        } else {
+            fill_execution_batch<M>(
+                &execute_task_id, &execute_task_count, &queue_tails[0], 0,
+                prev_get_task);
+        } else if (execute_task_count < warp_size) {
             // Multi-queue DAQ path.
-            if (execute_task_count < warp_size) {
-                if (execute_task_count == 0) {
-                    int* queue_lengths = reinterpret_cast<int*>(
-                        dynamic_shared + layout.queue_lengths) +
-                        warp_id_in_block * d_launch_config.num_queues;
+            if (execute_task_count == 0) {
+                int* queue_lengths = reinterpret_cast<int*>(
+                    dynamic_shared + layout.queue_lengths) +
+                    warp_id_in_block * d_launch_config.num_queues;
+                if (lane == 0) {
+                    for (int k = 0; k < d_launch_config.num_queues; ++k) {
+                        queue_lengths[k] = load_L2(
+                            &warp_queue_metadata_ptr(k, warp_id_global)->count);
+                    }
+                }
+                for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
+                    int queue_idx;
                     if (lane == 0) {
-                        for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                            queue_lengths[k] = load_L2(
-                                &warp_queue_metadata_ptr(k, warp_id_global)->count);
-                        }
+                        queue_idx = select_next_fullest_queue_idx(
+                            queue_lengths, d_launch_config.num_queues);
+                        task_context->queue_idx = queue_idx;
                     }
-                    for (int attempt = 0; attempt < d_launch_config.num_queues; ++attempt) {
-                        int queue_idx;
-                        if (lane == 0) {
-                            queue_idx = select_next_fullest_queue_idx(
-                                queue_lengths, d_launch_config.num_queues);
-                            task_context->queue_idx = queue_idx;
-                        }
-                        queue_idx = __shfl_sync(
-                            0xFFFFFFFFu,
-                            task_context->queue_idx,
-                            0);
-                        if (prev_get_task &&
-                            execute_task_count < warp_size) {
-                            int remaining =
-                                warp_size - execute_task_count;
-                            int pop_count = pop_batch(
-                                &execute_task_id, remaining,
-                                &queue_tails[queue_idx], queue_idx
-                            );
-                            execute_task_count += pop_count;
-                        }
-                        if (execute_task_count < warp_size) {
-                            int remaining =
-                                warp_size - execute_task_count;
-                            int steal_count = steal_batch<M>(
-                                &execute_task_id, remaining, queue_idx,
-                                prev_get_task
-                            );
-                            execute_task_count += steal_count;
-                        }
-                        if (execute_task_count != 0) break;
-                    }
-                } else {
-                    int queue_idx = __shfl_sync(
+                    queue_idx = __shfl_sync(
                         0xFFFFFFFFu,
                         task_context->queue_idx,
-                        0
-                    );
-                    if (prev_get_task) {
-                        int remaining = warp_size - execute_task_count;
-                        int pop_count = pop_batch(
-                            &execute_task_id, remaining,
-                            &queue_tails[queue_idx], queue_idx
-                        );
-                        execute_task_count += pop_count;
-                    }
-                    if (execute_task_count < warp_size) {
-                        int remaining = warp_size - execute_task_count;
-                        int steal_count = steal_batch<M>(
-                            &execute_task_id, remaining, queue_idx, prev_get_task
-                        );
-                        execute_task_count += steal_count;
-                    }
+                        0);
+                    fill_execution_batch<M>(
+                        &execute_task_id, &execute_task_count,
+                        &queue_tails[queue_idx], queue_idx, prev_get_task);
+                    if (execute_task_count != 0) break;
                 }
+            } else {
+                int queue_idx = __shfl_sync(
+                    0xFFFFFFFFu,
+                    task_context->queue_idx,
+                    0);
+                fill_execution_batch<M>(
+                    &execute_task_id, &execute_task_count,
+                    &queue_tails[queue_idx], queue_idx, prev_get_task);
             }
         }
         if (execute_task_count == 0) {

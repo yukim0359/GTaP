@@ -214,6 +214,19 @@ __device__ __forceinline__ void initialize_loop(
 }
 
 template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int* execute_task_id,
+    bool* have_execute_task,
+    bool prev_get_task
+) {
+    if (threadIdx.x == 0) {
+        if (!*have_execute_task) {
+            *have_execute_task = pop_global_queue<M>(execute_task_id, prev_get_task);
+        }
+    }
+}
+
+template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
     __shared__ bool have_execute_task;
@@ -232,12 +245,7 @@ __device__ __forceinline__ void execute_task_loop() {
     );
 
     while (should_continue) {
-        if (threadIdx.x == 0) {
-            if (!have_execute_task) {
-                // Try to pop from global queue
-                have_execute_task = pop_global_queue<M>(&execute_task_id, prev_get_task);
-            }
-        }
+        fill_execution_batch<M>(&execute_task_id, &have_execute_task, prev_get_task);
         __syncthreads();
 
         if (!have_execute_task) {

@@ -102,6 +102,20 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
     return count;
 }
 
+// Pop from one global queue into the lanes that still have no task.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int* execute_task_id,
+    int* execute_task_count,
+    int queue_idx,
+    bool prev_get_task
+) {
+    if (*execute_task_count >= warp_size) return;
+    int remaining = warp_size - *execute_task_count;
+    *execute_task_count += pop_global_queue<M>(
+        execute_task_id, remaining, queue_idx, prev_get_task);
+}
+
 // Push to global queue
 template<TerminationMode M>
 __device__ __forceinline__ void push_global_queue(
@@ -146,7 +160,6 @@ __device__ __forceinline__ void push_global_queue(
     }
 
     // Push remaining tasks to global queue
-    #pragma unroll
     for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
         int first_idx_to_push = (kind == k_max) ? *execute_task_count : 0;
         int push_cnt = ctx->generated_task_counts[kind] - first_idx_to_push;
@@ -250,7 +263,6 @@ __device__ __forceinline__ void initialize_loop(
             warp_id_in_block * d_launch_config.num_queues * warp_size;
         task_context->queue_idx = 0;
         task_context->id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
-        #pragma unroll
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
             task_context->generated_task_counts[k] = 0;
         }
@@ -311,15 +323,14 @@ __device__ __forceinline__ void execute_task_loop() {
                         task_context->queue_idx = queue_idx;
                     }
                     queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
-                    int remaining = warp_size - execute_task_count;
-                    int pop_count = pop_global_queue<M>(&execute_task_id, remaining, queue_idx, prev_get_task);
-                    execute_task_count += pop_count;
+                    fill_execution_batch<M>(
+                        &execute_task_id, &execute_task_count, queue_idx,
+                        prev_get_task);
                     if (execute_task_count != 0) break;
                 }
             } else {
-                int remaining = warp_size - execute_task_count;
-                int pop_count = pop_global_queue<M>(&execute_task_id, remaining, 0, prev_get_task);
-                execute_task_count += pop_count;
+                fill_execution_batch<M>(
+                    &execute_task_id, &execute_task_count, 0, prev_get_task);
             }
         }
 
@@ -331,7 +342,6 @@ __device__ __forceinline__ void execute_task_loop() {
                         if (active_warp_count == 0) {
                             // Check if all queues are empty
                             bool all_tasks_finished = 1;
-                            #pragma unroll
                             for (int k = 0; k < d_launch_config.num_queues; ++k) {
                                 int head = load_L2(&d_queue_head[k]);
                                 int tail = load_L2(&d_queue_tail[k]);

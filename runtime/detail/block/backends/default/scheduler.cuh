@@ -105,6 +105,25 @@ __device__ __forceinline__ int steal(int* taskId, bool prev_get_task) {
     return true;
 }
 
+// Pop from this block's queue, then steal if it is still empty.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int* execute_task_id,
+    bool* have_execute_task,
+    bool prev_get_task
+) {
+    if (threadIdx.x == 0) {
+        if (!*have_execute_task) {
+            if (prev_get_task) {
+                *have_execute_task = pop(execute_task_id);
+            }
+        }
+        if (!*have_execute_task) {
+            *have_execute_task = steal<M>(execute_task_id, prev_get_task);
+        }
+    }
+}
+
 __device__ __forceinline__ void push(
     TaskContext* ctx,
     int push_total,
@@ -220,16 +239,7 @@ __device__ __forceinline__ void execute_task_loop() {
     );
 
     while (should_continue) {
-        if (threadIdx.x == 0) {
-            if (!have_execute_task) {
-                if (prev_get_task) {
-                    have_execute_task = pop(&execute_task_id);
-                }
-            }
-            if (!have_execute_task) {
-                have_execute_task = steal<M>(&execute_task_id, prev_get_task);
-            }
-        }
+        fill_execution_batch<M>(&execute_task_id, &have_execute_task, prev_get_task);
         __syncthreads();
 
         if (!have_execute_task) {

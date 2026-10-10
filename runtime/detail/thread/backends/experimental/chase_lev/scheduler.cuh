@@ -160,6 +160,27 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
     return steal_count;
 }
 
+// Pop from one queue, then steal if the batch is still short of a warp.
+template<TerminationMode M>
+__device__ __forceinline__ void fill_execution_batch(
+    int* execute_task_id,
+    int* execute_task_count,
+    int queue_idx,
+    bool prev_get_task
+) {
+    if (*execute_task_count >= warp_size) return;
+    if (prev_get_task) {
+        int remaining = warp_size - *execute_task_count;
+        *execute_task_count += pop_chase_lev(
+            execute_task_id, remaining, queue_idx);
+    }
+    if (*execute_task_count < warp_size) {
+        int remaining = warp_size - *execute_task_count;
+        *execute_task_count += steal_chase_lev<M>(
+            execute_task_id, remaining, queue_idx, prev_get_task);
+    }
+}
+
 // Chase-Lev pushBottom (multiple items)
 // NOTE: the template parameter is not used
 __device__ __forceinline__ void reserve_unpublished_task_id(
@@ -227,7 +248,6 @@ __device__ __forceinline__ void push_batch (
 #endif
     }
 
-    #pragma unroll
     for (int kind = 0; kind < d_launch_config.num_queues; ++kind) {
         int first_idx_to_push = (kind == k_max) ? *execute_task_count : 0;
         int push_cnt = ctx->generated_task_counts[kind] - first_idx_to_push;
@@ -321,7 +341,6 @@ __device__ __forceinline__ void initialize_loop(
             warp_id_in_block * d_launch_config.num_queues * warp_size;
         task_context->queue_idx = 0;
         task_context->id_list_free_pos_stale = d_launch_config.tasks_per_scheduling_unit;
-        #pragma unroll
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
             task_context->generated_task_counts[k] = 0;
             queue_tails[k] = 0;
@@ -366,8 +385,11 @@ __device__ __forceinline__ void execute_task_loop() {
     );
 
     while (should_continue) {
-        if (execute_task_count == 0) {
-            if (d_launch_config.num_queues > 1) {
+        if (d_launch_config.num_queues == 1) {
+            fill_execution_batch<M>(
+                &execute_task_id, &execute_task_count, 0, prev_get_task);
+        } else if (execute_task_count < warp_size) {
+            if (execute_task_count == 0) {
                 int* queue_lengths = reinterpret_cast<int*>(
                     dynamic_shared + layout.queue_lengths) +
                     warp_id_in_block * d_launch_config.num_queues;
@@ -387,29 +409,17 @@ __device__ __forceinline__ void execute_task_loop() {
                         task_context->queue_idx = queue_idx;
                     }
                     queue_idx = __shfl_sync(0xFFFFFFFFu, task_context->queue_idx, 0);
-                    if (prev_get_task && execute_task_count < warp_size) {
-                        int remaining = warp_size - execute_task_count;
-                        int pop_count = pop_chase_lev(&execute_task_id, remaining, queue_idx);
-                        execute_task_count += pop_count;
-                    }
-                    if (execute_task_count < warp_size) {
-                        int remaining = warp_size - execute_task_count;
-                        int steal_count = steal_chase_lev<M>(&execute_task_id, remaining, queue_idx, prev_get_task);
-                        execute_task_count += steal_count;
-                    }
+                    fill_execution_batch<M>(
+                        &execute_task_id, &execute_task_count, queue_idx,
+                        prev_get_task);
                     if (execute_task_count != 0) break;
                 }
             } else {
-                if (prev_get_task && execute_task_count < warp_size) {
-                    int remaining = warp_size - execute_task_count;
-                    int pop_count = pop_chase_lev(&execute_task_id, remaining, 0);
-                    execute_task_count += pop_count;
-                }
-                if (execute_task_count < warp_size) {
-                    int remaining = warp_size - execute_task_count;
-                    int steal_count = steal_chase_lev<M>(&execute_task_id, remaining, 0, prev_get_task);
-                    execute_task_count += steal_count;
-                }
+                int queue_idx = __shfl_sync(
+                    0xFFFFFFFFu, task_context->queue_idx, 0);
+                fill_execution_batch<M>(
+                    &execute_task_id, &execute_task_count, queue_idx,
+                    prev_get_task);
             }
         }
 
@@ -420,7 +430,6 @@ __device__ __forceinline__ void execute_task_loop() {
                         int active_warp_count = atomicSub(&d_active_warp_count, 1) - 1;
                         if (active_warp_count == 0) {
                             bool all_tasks_finished = 1;
-                            #pragma unroll
                             for (int k = 0; k < d_launch_config.num_queues; ++k) {
                                 // Chase-Lev: check if queue is empty (top >= bottom)
                                 WarpTaskQueueMetadata* q = warp_queue_metadata(k, warp_id_global);
