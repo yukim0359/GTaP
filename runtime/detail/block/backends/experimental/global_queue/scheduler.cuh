@@ -172,7 +172,8 @@ __device__ __forceinline__ void push_initial_task(
     int unused_value
 ) {
     (void)unused_value;
-    TaskHeader* initial_hdr = &d_task_headers[0];
+    constexpr int new_tid = 0;
+    TaskHeader* const initial_hdr = &d_task_headers[new_tid];
     initial_hdr->func = func;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     initial_hdr->state = 0;
@@ -183,7 +184,7 @@ __device__ __forceinline__ void push_initial_task(
 
     // Push to global queue (only block 0)
     if (blockIdx.x == 0 && threadIdx.x == 0) {
-        store_L2(&d_global_task_queue[0], 0);
+        store_L2(&d_global_task_queue[0], new_tid);
         __threadfence();
         store_L2(&d_queue_head, 0u);
         store_L2(&d_queue_alloc, 1u);

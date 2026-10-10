@@ -31,9 +31,9 @@ __device__ __forceinline__ bool set_state_for_join_block(
 ) {
     (void)unused_value;
     __syncthreads();
-    int child_count = ctx->generated_task_count;
+    const int child_count = ctx->generated_task_count;
     if (threadIdx.x == 0) {
-        TaskHeader* hdr = &d_task_headers[tid];
+        TaskHeader* const hdr = &d_task_headers[tid];
 #ifndef GTAP_ASSUME_NO_TASKWAIT
         hdr->state = next_state;
         hdr->waiting_child_count = child_count;
@@ -48,9 +48,9 @@ __device__ __forceinline__ bool set_state_for_join_block(
 
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
-    TaskHeader* parent_hdr = &d_task_headers[parentId];
+    TaskHeader* const parent_hdr = &d_task_headers[parentId];
     __threadfence();
-    int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
+    const int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
     if (rem == 1) {
         ctx->task_id_resumable = parentId;
     }
@@ -67,7 +67,7 @@ __device__ void finish_task(int tid, TaskContext* ctx) {
 #ifdef GTAP_ASSUME_NO_TASKWAIT
         release_task_id_to_block_pool(tid);
 #else
-        int parent_tid = ctx->parent_tid;
+        const int parent_tid = ctx->parent_tid;
         d_task_headers[tid].generation = ctx->generation + 1;
 
         if (tid != 0 && load_L2(&d_task_headers[parent_tid].generation) == ctx->parent_generation) {
@@ -90,11 +90,11 @@ __device__ __forceinline__ void* spawn_task(
     int unused_value
 ) {
     (void)unused_value;
-    int new_tid = get_task_id_from_block_pool(
+    const int new_tid = get_task_id_from_block_pool(
         &d_task_id_list_free_positions[blockIdx.x],
         &ctx->id_list_alloc_pos,
         &ctx->id_list_free_pos_stale);
-    TaskHeader* new_hdr = &d_task_headers[new_tid];
+    TaskHeader* const new_hdr = &d_task_headers[new_tid];
     new_hdr->func = func;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     new_hdr->parent_tid = self_tid;

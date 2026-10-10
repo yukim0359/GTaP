@@ -182,7 +182,8 @@ __device__ __forceinline__ void push_initial_task(
     int unused_value
 ) {
     (void)unused_value;
-    TaskHeader* initial_hdr = &d_task_headers[0];
+    constexpr int new_tid = 0;
+    TaskHeader* const initial_hdr = &d_task_headers[new_tid];
     initial_hdr->func = func;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     initial_hdr->state = 0;
@@ -193,8 +194,8 @@ __device__ __forceinline__ void push_initial_task(
 
     // Task data is copied from the compiler-generated code (out of this function)
 
-    BlockTaskQueueMetadata* bq = &d_block_task_queue_metadata[blockIdx.x];
-    store_L2(block_queue_slot(blockIdx.x, 0), 0);
+    BlockTaskQueueMetadata* const bq = &d_block_task_queue_metadata[blockIdx.x];
+    store_L2(block_queue_slot(blockIdx.x, 0), new_tid);
     __threadfence();
     store_L2(&bq->bottom, 1);
 }

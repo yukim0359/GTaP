@@ -340,10 +340,10 @@ __device__ __forceinline__ void push_initial_task(
     void (*func)(void*, int, TaskContext*),
     int initial_queue_idx
 ) {
-    int warp_id_global = get_warp_id_global();
-    int new_tid = 0;
+    const int warp_id_global = get_warp_id_global();
+    constexpr int new_tid = 0;
 
-    TaskHeader* initial_hdr = &d_task_headers[new_tid];
+    TaskHeader* const initial_hdr = &d_task_headers[new_tid];
     initial_hdr->func = func;
     initial_hdr->queue_idx = initial_queue_idx;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
