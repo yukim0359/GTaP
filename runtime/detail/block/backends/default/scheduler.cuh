@@ -280,6 +280,22 @@ __device__ __forceinline__ bool mark_idle_and_check_termination(
     return terminate;
 }
 
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+// Copy task header to TaskContext for reuse in task function (using L2 load)
+__device__ __forceinline__ void copy_task_header(
+    int execute_task_id,
+    TaskContext* task_context
+) {
+    if (threadIdx.x == 0) {
+        TaskHeader* src_hdr = &d_task_headers[execute_task_id];
+        task_context->generation = load_L2(&src_hdr->generation);
+        task_context->parent_tid = load_L2(&src_hdr->parent_tid);
+        task_context->parent_generation = load_L2(&src_hdr->parent_generation);
+    }
+    __syncthreads();
+}
+#endif
+
 template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
@@ -318,14 +334,7 @@ __device__ __forceinline__ void execute_task_loop() {
 
         if (have_execute_task) {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-            // Copy task header to TaskContext for reuse in task function (using L2 load)
-            if (threadIdx.x == 0) {
-                TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                task_context.generation = load_L2(&src_hdr->generation);
-                task_context.parent_tid = load_L2(&src_hdr->parent_tid);
-                task_context.parent_generation = load_L2(&src_hdr->parent_generation);
-            }
-            __syncthreads();
+            copy_task_header(execute_task_id, &task_context);
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING

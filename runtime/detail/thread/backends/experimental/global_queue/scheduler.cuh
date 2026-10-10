@@ -360,6 +360,23 @@ __device__ __forceinline__ bool mark_idle_and_check_termination(
     return __shfl_sync(0xFFFFFFFFu, terminate, 0);
 }
 
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+// Copy task header to TaskContext for reuse in task function (using L2 load)
+__device__ __forceinline__ void copy_task_header(
+    int lane,
+    int execute_task_id,
+    TaskContext* task_context
+) {
+    TaskHeader* src_hdr = &d_task_headers[execute_task_id];
+    uint16_t generation = load_L2(&src_hdr->generation);
+    uint16_t parent_generation = load_L2(&src_hdr->parent_generation);
+    task_context->task_parent_tids[lane] = load_L2(&src_hdr->parent_tid);
+    task_context->task_generations[lane] =
+        static_cast<uint32_t>(generation) |
+        (static_cast<uint32_t>(parent_generation) << 16);
+}
+#endif
+
 template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     const int warp_id_in_block = get_warp_id_in_block();
@@ -429,19 +446,8 @@ __device__ __forceinline__ void execute_task_loop() {
 
         if (lane < execute_task_count) {
             prefetch_global_L2(get_task_data(execute_task_id));
-            // Copy task header to TaskContext for reuse in task function (using L2 load)
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-            {
-                TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-                uint16_t generation = load_L2(&src_hdr->generation);
-                uint16_t parent_generation =
-                    load_L2(&src_hdr->parent_generation);
-                task_context->task_parent_tids[lane] =
-                    load_L2(&src_hdr->parent_tid);
-                task_context->task_generations[lane] =
-                    static_cast<uint32_t>(generation) |
-                    (static_cast<uint32_t>(parent_generation) << 16);
-            }
+            copy_task_header(lane, execute_task_id, task_context);
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
