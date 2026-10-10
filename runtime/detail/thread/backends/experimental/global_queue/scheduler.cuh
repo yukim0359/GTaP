@@ -320,6 +320,43 @@ __device__ __forceinline__ void record_execution_end(
 #endif
 
 template<TerminationMode M>
+__device__ __forceinline__ void mark_idle_and_check_termination(
+    int lane,
+    bool* prev_get_task,
+    bool* should_continue
+) {
+    if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+        if (lane == 0) {
+            if (*prev_get_task) {
+                int active_warp_count = atomicSub(&d_active_warp_count, 1) - 1;
+                if (active_warp_count == 0) {
+                    // Check if all queues are empty
+                    bool all_tasks_finished = 1;
+                    for (int k = 0; k < d_launch_config.num_queues; ++k) {
+                        int head = load_L2(&d_queue_head[k]);
+                        int tail = load_L2(&d_queue_tail[k]);
+                        if (head < tail) {
+                            all_tasks_finished = 0;
+                            break;
+                        }
+                    }
+                    atomicExch(&d_all_tasks_finished, all_tasks_finished);
+                }
+            }
+        }
+        __syncwarp();
+    }
+    *prev_get_task = false;
+    if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+        if (lane == 0) *should_continue = (load_L2(&d_all_tasks_finished) == 0);
+        *should_continue = __shfl_sync(0xFFFFFFFFu, *should_continue, 0);
+    } else {
+        if (lane == 0) *should_continue = (load_L2(&d_first_task_finished) == 0);
+        *should_continue = __shfl_sync(0xFFFFFFFFu, *should_continue, 0);
+    }
+}
+
+template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     const int warp_id_in_block = get_warp_id_in_block();
     const int warp_id_global = get_warp_id_global();
@@ -379,37 +416,7 @@ __device__ __forceinline__ void execute_task_loop() {
         }
 
         if (execute_task_count == 0) {
-            if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                if (lane == 0) {
-                    if (prev_get_task) {
-                        int active_warp_count = atomicSub(&d_active_warp_count, 1) - 1;
-                        if (active_warp_count == 0) {
-                            // Check if all queues are empty
-                            bool all_tasks_finished = 1;
-                            for (int k = 0; k < d_launch_config.num_queues; ++k) {
-                                int head = load_L2(&d_queue_head[k]);
-                                int tail = load_L2(&d_queue_tail[k]);
-                                if (head < tail) {
-                                    all_tasks_finished = 0;
-                                    break;
-                                }
-                            }
-                            atomicExch(&d_all_tasks_finished, all_tasks_finished);
-                        }
-                    }
-                }
-                __syncwarp();
-            }
-            prev_get_task = false;
-
-            // Check termination condition
-            if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                if (lane == 0) should_continue = (load_L2(&d_all_tasks_finished) == 0);
-                should_continue = __shfl_sync(0xFFFFFFFFu, should_continue, 0);
-            } else {
-                if (lane == 0) should_continue = (load_L2(&d_first_task_finished) == 0);
-                should_continue = __shfl_sync(0xFFFFFFFFu, should_continue, 0);
-            }
+            mark_idle_and_check_termination<M>(lane, &prev_get_task, &should_continue);
             continue;
         } else {
             prev_get_task = true;

@@ -247,6 +247,40 @@ __device__ __forceinline__ void record_execution_end(int* working_time_idx) {
 #endif
 
 template<TerminationMode M>
+__device__ __forceinline__ void mark_idle_and_check_termination(
+    bool* prev_get_task,
+    bool* should_continue
+) {
+    if (threadIdx.x == 0) {
+        if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+            if (*prev_get_task) {
+                int active_block_count = atomicSub(&d_active_block_count, 1) - 1;
+                if (active_block_count == 0) {
+                    bool all_tasks_finished = 1;
+                    BlockTaskQueueMetadata* q = &d_block_task_queue_metadata[blockIdx.x];
+                    int t = load_L2(&q->top);
+                    int b = load_L2(&q->bottom);
+                    if (t < b) {
+                        all_tasks_finished = 0;
+                    }
+                    atomicExch(&d_all_tasks_finished, all_tasks_finished);
+                }
+            }
+        }
+        *prev_get_task = false;
+        if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
+            *should_continue = (load_L2(&d_all_tasks_finished) == 0);
+            // if (active_block_count == 0) consecutive_idle_count++;
+            // else consecutive_idle_count = 0;
+            // should_continue = (consecutive_idle_count != NUMBER_OF_CONSECUTIVE_IDLE_COUNTS_TO_TERMINATE);
+        } else {
+            *should_continue = (load_L2(&d_first_task_finished) == 0);
+        }
+    }
+    __syncthreads();
+}
+
+template<TerminationMode M>
 __device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
     __shared__ bool have_execute_task;
@@ -269,33 +303,7 @@ __device__ __forceinline__ void execute_task_loop() {
         __syncthreads();
 
         if (!have_execute_task) {
-            if (threadIdx.x == 0) {
-                if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                    if (prev_get_task) {
-                        int active_block_count = atomicSub(&d_active_block_count, 1) - 1;
-                        if (active_block_count == 0) {
-                            bool all_tasks_finished = 1;
-                            BlockTaskQueueMetadata* q = &d_block_task_queue_metadata[blockIdx.x];
-                            int t = load_L2(&q->top);
-                            int b = load_L2(&q->bottom);
-                            if (t < b) {
-                                all_tasks_finished = 0;
-                            }
-                            atomicExch(&d_all_tasks_finished, all_tasks_finished);
-                        }
-                    }
-                }
-                prev_get_task = false;
-                if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-                    should_continue = (load_L2(&d_all_tasks_finished) == 0);
-                    // if (active_block_count == 0) consecutive_idle_count++;
-                    // else consecutive_idle_count = 0;
-                    // should_continue = (consecutive_idle_count != NUMBER_OF_CONSECUTIVE_IDLE_COUNTS_TO_TERMINATE);
-                } else {
-                    should_continue = (load_L2(&d_first_task_finished) == 0);
-                }
-            }
-            __syncthreads();
+            mark_idle_and_check_termination<M>(&prev_get_task, &should_continue);
             continue;
         } else {
             if (threadIdx.x == 0) {
