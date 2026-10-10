@@ -291,9 +291,9 @@ __device__ __forceinline__ void copy_task_header(
 ) {
     if (threadIdx.x == 0) {
         TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-        task_context->generation = load_L2(&src_hdr->generation);
         task_context->parent_tid = load_L2(&src_hdr->parent_tid);
-        task_context->parent_generation = load_L2(&src_hdr->parent_generation);
+        *reinterpret_cast<unsigned int*>(&task_context->generation) =
+            load_L2(reinterpret_cast<unsigned int*>(&src_hdr->generation));
     }
     __syncthreads();
 }

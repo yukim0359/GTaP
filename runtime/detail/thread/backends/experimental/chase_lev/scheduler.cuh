@@ -451,12 +451,9 @@ __device__ __forceinline__ void copy_task_header(
     TaskContext* task_context
 ) {
     TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-    uint16_t generation = load_L2(&src_hdr->generation);
-    uint16_t parent_generation = load_L2(&src_hdr->parent_generation);
     task_context->task_parent_tids[lane] = load_L2(&src_hdr->parent_tid);
     task_context->task_generations[lane] =
-        static_cast<uint32_t>(generation) |
-        (static_cast<uint32_t>(parent_generation) << 16);
+        load_L2(reinterpret_cast<unsigned int*>(&src_hdr->generation));
 }
 #endif
 
