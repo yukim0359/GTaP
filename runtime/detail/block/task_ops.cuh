@@ -73,7 +73,7 @@ __device__ void finish_task(int tid, TaskContext* ctx) {
         }
         release_task_id_to_block_pool(tid);
 #endif
-        if (tid == 0) store_L2(&d_first_task_finished, 1);
+        if (tid == 0) store_L2(&d_root_task_finished, 1);
     }
 }
 

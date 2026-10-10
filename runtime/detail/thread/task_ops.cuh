@@ -79,10 +79,10 @@ __device__ __forceinline__ void finish_task(int tid, TaskContext* ctx) {
 #endif
 
     if (tid == 0) {
-        store_L2(&d_first_task_finished, 1);
+        store_L2(&d_root_task_finished, 1);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
         int lane = get_lane_id();
-        printf("first task finished in lane %d of warp %d of block %d\n", lane, get_warp_id_in_block(), blockIdx.x);
+        printf("root task finished in lane %d of warp %d of block %d\n", lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     }
 }

@@ -426,7 +426,7 @@ __device__ __forceinline__ bool mark_idle_and_check_termination(
     if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
         if (lane == 0) terminate = (load_L2(&d_all_tasks_finished) != 0);
     } else {
-        if (lane == 0) terminate = (load_L2(&d_first_task_finished) != 0);
+        if (lane == 0) terminate = (load_L2(&d_root_task_finished) != 0);
     }
     return __shfl_sync(0xFFFFFFFFu, terminate, 0);
 }

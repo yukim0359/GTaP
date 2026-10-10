@@ -276,7 +276,7 @@ __device__ __forceinline__ bool mark_idle_and_check_termination(
         if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
             terminate = (load_L2(&d_all_tasks_finished) != 0);
         } else {
-            terminate = (load_L2(&d_first_task_finished) != 0);
+            terminate = (load_L2(&d_root_task_finished) != 0);
         }
     }
     __syncthreads();

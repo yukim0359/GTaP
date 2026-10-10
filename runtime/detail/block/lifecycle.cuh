@@ -73,7 +73,7 @@ cudaError_t initialize_runtime() {
 
     int zero = 0;
     GTAP_DETAIL_CUDA_TRY_OR(
-        cudaMemcpyToSymbol(d_first_task_finished, &zero, sizeof(int)),
+        cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
         abandon_initialize(&queues, &task_pool, &profile));
     GTAP_DETAIL_CUDA_TRY_OR(
         cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
@@ -124,7 +124,7 @@ cudaError_t reset_runtime() {
 
     int zero = 0;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_first_task_finished, &zero, sizeof(int)));
+        d_root_task_finished, &zero, sizeof(int)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         d_all_tasks_finished, &zero, sizeof(int)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(

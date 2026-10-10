@@ -273,7 +273,7 @@ __device__ __forceinline__ bool mark_idle_and_check_termination(
             // else consecutive_idle_count = 0;
             // should_continue = (consecutive_idle_count != NUMBER_OF_CONSECUTIVE_IDLE_COUNTS_TO_TERMINATE);
         } else {
-            terminate = (load_L2(&d_first_task_finished) != 0);
+            terminate = (load_L2(&d_root_task_finished) != 0);
         }
     }
     __syncthreads();
