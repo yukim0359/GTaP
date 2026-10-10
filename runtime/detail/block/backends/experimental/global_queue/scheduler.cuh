@@ -335,6 +335,8 @@ __device__ __forceinline__ void execute_task_loop() {
         }
 
         if (have_execute_task) {
+            void* task_data = get_task_data(execute_task_id);
+            prefetch_global_L2(task_data);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             copy_task_header(execute_task_id, &task_context);
 #endif
@@ -342,8 +344,6 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifdef GTAP_ENABLE_PROFILING
             record_execution_start(&working_time_idx);
 #endif
-            void* task_data = get_task_data(execute_task_id);
-            // Read function pointer atomically (64-bit) via L2 cache
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, &task_context);

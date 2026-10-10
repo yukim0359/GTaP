@@ -445,7 +445,8 @@ __device__ __forceinline__ void execute_task_loop() {
         }
 
         if (lane < execute_task_count) {
-            prefetch_global_L2(get_task_data(execute_task_id));
+            void* task_data = get_task_data(execute_task_id);
+            prefetch_global_L2(task_data);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             copy_task_header(lane, execute_task_id, task_context);
 #endif
@@ -455,8 +456,6 @@ __device__ __forceinline__ void execute_task_loop() {
                 warp_id_in_block, warp_id_global, lane,
                 execute_task_count, working_time_idx);
 #endif
-            // Execute task
-            void* task_data = get_task_data(execute_task_id);
             void* func_ptr = load_L2(reinterpret_cast<void**>(&d_task_headers[execute_task_id].func));
             void (*task_func)(void*, int, TaskContext*) = reinterpret_cast<void (*)(void*, int, TaskContext*)>(func_ptr);
             task_func(task_data, execute_task_id, task_context);
