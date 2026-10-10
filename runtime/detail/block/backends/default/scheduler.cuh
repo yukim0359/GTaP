@@ -18,15 +18,15 @@ using namespace gtap::detail;
 
 __device__ __forceinline__ void reserve_unpublished_task_id(TaskContext* ctx, int task_id) {
     BlockTaskQueueMetadata* q = &d_block_task_queue_metadata[blockIdx.x];
-    int old_tail = atomicAdd(&ctx->queue_tail, 1);
+    int old_bottom = atomicAdd(&ctx->queue_bottom, 1);
     int top = load_L2(&q->top);
     const int queue_capacity = d_launch_config.queue_capacity;
-    if (old_tail + 1 - top > queue_capacity - GTAP_DETAIL_QUEUE_MARGIN) {
+    if (old_bottom + 1 - top > queue_capacity - GTAP_DETAIL_QUEUE_MARGIN) {
         GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
-            task_id, -1, old_tail + 1 - top, queue_capacity - GTAP_DETAIL_QUEUE_MARGIN);
+            task_id, -1, old_bottom + 1 - top, queue_capacity - GTAP_DETAIL_QUEUE_MARGIN);
     }
     store_L2(
-        block_queue_slot(blockIdx.x, old_tail % queue_capacity), task_id);
+        block_queue_slot(blockIdx.x, old_bottom % queue_capacity), task_id);
     atomicAdd(&ctx->generated_task_count, 1);
 }
 
@@ -126,16 +126,15 @@ __device__ __forceinline__ void fill_execution_batch(
 
 __device__ __forceinline__ void push(
     TaskContext* ctx,
-    int push_total,
-    int* execute_task_id
+    int* execute_task_id,
+    bool* have_execute_task
 ) {
     BlockTaskQueueMetadata* myQueue = &d_block_task_queue_metadata[blockIdx.x];
-    (void)push_total;
 
 #ifdef GTAP_ASSUME_NO_TASKWAIT
-    int publish_bottom = ctx->queue_tail;
+    int publish_bottom = ctx->queue_bottom;
     if (ctx->generated_task_count > 0) {
-        publish_bottom = ctx->queue_tail - 1;
+        publish_bottom = ctx->queue_bottom - 1;
         if (threadIdx.x == 0) {
             *execute_task_id = load_L2(block_queue_slot(
                 blockIdx.x,
@@ -143,7 +142,7 @@ __device__ __forceinline__ void push(
         }
     }
 #else
-    int publish_bottom = ctx->queue_tail;
+    int publish_bottom = ctx->queue_bottom;
     if (ctx->task_id_resumable != -1) {
         if (threadIdx.x == 0) {
             *execute_task_id = ctx->task_id_resumable;
@@ -152,7 +151,7 @@ __device__ __forceinline__ void push(
 #endif
         }
     } else if (ctx->generated_task_count > 0) {
-        publish_bottom = ctx->queue_tail - 1;
+        publish_bottom = ctx->queue_bottom - 1;
         if (threadIdx.x == 0) {
             *execute_task_id = load_L2(block_queue_slot(
                 blockIdx.x,
@@ -163,6 +162,12 @@ __device__ __forceinline__ void push(
     __threadfence();
     __syncthreads();
     if (threadIdx.x == 0) {
+#ifdef GTAP_ASSUME_NO_TASKWAIT
+        *have_execute_task = ctx->generated_task_count > 0;
+#else
+        *have_execute_task =
+            ctx->task_id_resumable != -1 || ctx->generated_task_count > 0;
+#endif
         store_L2(&myQueue->bottom, publish_bottom);
         ctx->generated_task_count = 0;
     }
@@ -324,7 +329,7 @@ __device__ __forceinline__ void execute_task_loop() {
         } else {
             if (threadIdx.x == 0) {
                 prev_get_task = true;
-                task_context.queue_tail = load_L2(&d_block_task_queue_metadata[blockIdx.x].bottom);
+                task_context.queue_bottom = load_L2(&d_block_task_queue_metadata[blockIdx.x].bottom);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
                 task_context.task_id_resumable = -1;
 #endif
@@ -354,18 +359,7 @@ __device__ __forceinline__ void execute_task_loop() {
         record_execution_end(&working_time_idx);
 #endif
 
-        int total_count =
-#ifdef GTAP_ASSUME_NO_TASKWAIT
-            task_context.generated_task_count;
-#else
-            (task_context.task_id_resumable != -1 ? 1 : 0) + task_context.generated_task_count;
-#endif
-        int push_total = max(total_count - 1, 0);
-        push(&task_context, push_total, &execute_task_id);
-        if (threadIdx.x == 0) {
-            // printf("total_count: %d\n", total_count);
-            have_execute_task = (total_count > 0);
-        }
+        push(&task_context, &execute_task_id, &have_execute_task);
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
     if (threadIdx.x == 0) printf("execute_task_loop: end (block_id = %d)\n", blockIdx.x);

@@ -6,7 +6,7 @@ namespace gtap::detail::block {
 
 struct TaskContext {
     int generated_task_count;
-    int queue_tail;
+    int queue_bottom;
     int id_list_alloc_pos;
     int id_list_free_pos_stale;
     int task_id_resumable; // -1 when empty. Task id 0 is the root.
