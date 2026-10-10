@@ -397,11 +397,10 @@ __device__ __forceinline__ void record_execution_end(
 #endif
 
 template<TerminationMode M>
-__device__ __forceinline__ void mark_idle_and_check_termination(
+__device__ __forceinline__ bool mark_idle_and_check_termination(
     int warp_id_global,
     int lane,
     bool* prev_get_task,
-    bool* should_continue,
     int* queue_tails
 ) {
     if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
@@ -423,13 +422,13 @@ __device__ __forceinline__ void mark_idle_and_check_termination(
         __syncwarp();
     }
     *prev_get_task = false;
+    bool terminate = false;
     if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-        if (lane == 0) *should_continue = (load_L2(&d_all_tasks_finished) == 0);
-        *should_continue = __shfl_sync(0xFFFFFFFFu, *should_continue, 0);
+        if (lane == 0) terminate = (load_L2(&d_all_tasks_finished) != 0);
     } else {
-        if (lane == 0) *should_continue = (load_L2(&d_first_task_finished) == 0);
-        *should_continue = __shfl_sync(0xFFFFFFFFu, *should_continue, 0);
+        if (lane == 0) terminate = (load_L2(&d_first_task_finished) != 0);
     }
+    return __shfl_sync(0xFFFFFFFFu, terminate, 0);
 }
 
 template<TerminationMode M>
@@ -441,7 +440,6 @@ __device__ __forceinline__ void execute_task_loop() {
     int execute_task_id = 0;
     int execute_task_count = 0;
     bool prev_get_task = (warp_id_global == 0);
-    bool should_continue = true;
 
     const shared_layout layout = make_shared_layout(
         d_launch_config.warps_per_block, d_launch_config.num_queues,
@@ -459,7 +457,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #endif
     );
 
-    while (should_continue) {
+    while (true) {
         if (d_launch_config.num_queues == 1) {
             // Single-queue fast path: skip DAQ count collection and selection.
             fill_execution_batch<M>(
@@ -504,9 +502,9 @@ __device__ __forceinline__ void execute_task_loop() {
             }
         }
         if (execute_task_count == 0) {
-            mark_idle_and_check_termination<M>(
-                warp_id_global, lane, &prev_get_task, &should_continue,
-                queue_tails);
+            if (mark_idle_and_check_termination<M>(
+                    warp_id_global, lane, &prev_get_task, queue_tails))
+                break;
             continue;
         } else {
             prev_get_task = true;

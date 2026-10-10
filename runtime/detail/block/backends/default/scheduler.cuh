@@ -192,14 +192,12 @@ __device__ __forceinline__ void push_initial_task(
 __device__ __forceinline__ void initialize_loop(
     bool* have_execute_task,
     bool* prev_get_task,
-    bool* should_continue,
     TaskContext* task_context
 #ifdef GTAP_ENABLE_PROFILING
     , int* working_time_idx
 #endif
 ) {
     if (threadIdx.x == 0) {
-        *should_continue = true;
         *have_execute_task = false;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
         task_context->task_id_resumable = -1;
@@ -247,10 +245,10 @@ __device__ __forceinline__ void record_execution_end(int* working_time_idx) {
 #endif
 
 template<TerminationMode M>
-__device__ __forceinline__ void mark_idle_and_check_termination(
-    bool* prev_get_task,
-    bool* should_continue
+__device__ __forceinline__ bool mark_idle_and_check_termination(
+    bool* prev_get_task
 ) {
+    __shared__ bool terminate;
     if (threadIdx.x == 0) {
         if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
             if (*prev_get_task) {
@@ -269,15 +267,16 @@ __device__ __forceinline__ void mark_idle_and_check_termination(
         }
         *prev_get_task = false;
         if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
-            *should_continue = (load_L2(&d_all_tasks_finished) == 0);
+            terminate = (load_L2(&d_all_tasks_finished) != 0);
             // if (active_block_count == 0) consecutive_idle_count++;
             // else consecutive_idle_count = 0;
             // should_continue = (consecutive_idle_count != NUMBER_OF_CONSECUTIVE_IDLE_COUNTS_TO_TERMINATE);
         } else {
-            *should_continue = (load_L2(&d_first_task_finished) == 0);
+            terminate = (load_L2(&d_first_task_finished) != 0);
         }
     }
     __syncthreads();
+    return terminate;
 }
 
 template<TerminationMode M>
@@ -285,25 +284,25 @@ __device__ __forceinline__ void execute_task_loop() {
     __shared__ int execute_task_id;
     __shared__ bool have_execute_task;
     __shared__ bool prev_get_task;
-    __shared__ bool should_continue;
     __shared__ TaskContext task_context;
 #ifdef GTAP_ENABLE_PROFILING
     __shared__ int working_time_idx;
 #endif
 
     initialize_loop(
-        &have_execute_task, &prev_get_task, &should_continue, &task_context
+        &have_execute_task, &prev_get_task, &task_context
 #ifdef GTAP_ENABLE_PROFILING
         , &working_time_idx
 #endif
     );
 
-    while (should_continue) {
+    while (true) {
         fill_execution_batch<M>(&execute_task_id, &have_execute_task, prev_get_task);
         __syncthreads();
 
         if (!have_execute_task) {
-            mark_idle_and_check_termination<M>(&prev_get_task, &should_continue);
+            if (mark_idle_and_check_termination<M>(&prev_get_task))
+                break;
             continue;
         } else {
             if (threadIdx.x == 0) {
