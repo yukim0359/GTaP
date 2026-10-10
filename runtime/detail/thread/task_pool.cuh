@@ -16,6 +16,8 @@ using namespace gtap::detail;
 __constant__ size_t d_task_data_stride;
 
 inline size_t compute_task_data_stride() {
+    // TODO: 16 stands in for the task-record alignment. Have the compiler
+    // publish that alignment and use align_up(size, alignment).
     return align_up(__gtap_auto_task_data_size, 16);
 }
 
@@ -28,7 +30,7 @@ __constant__ TaskHeader* d_task_headers;         // TaskHeader[num_warps * tasks
 __constant__ char* d_task_data_bytes;            // char[num_warps * tasks_per_warp * task_data_stride]
 __constant__ int* d_task_id_list_free_positions; // int[num_warps]
 __constant__ int* d_task_id_storage;             // int[num_warps * tasks_per_warp]
-__constant__ int* d_task_id_valid;               // int[num_warps * tasks_per_warp]
+__constant__ uint8_t* d_task_id_valid;           // uint8_t[num_warps * tasks_per_warp]
 
 __global__ void init_warp_id_pools_metadata() {
     int warp_id_in_block = get_warp_id_in_block();
@@ -96,7 +98,7 @@ struct task_pool_buffers {
     char* task_data = nullptr;
     int* id_list_free_positions = nullptr;
     int* id_storage = nullptr;
-    int* id_valid = nullptr;
+    uint8_t* id_valid = nullptr;
 };
 
 inline size_t task_pool_allocation_bytes(const launch_config& config) {
@@ -106,7 +108,8 @@ inline size_t task_pool_allocation_bytes(const launch_config& config) {
     return sizeof(TaskHeader) * tasks
         + compute_task_data_stride() * tasks
         + sizeof(int) * scheduling_units
-        + 2 * sizeof(int) * tasks;
+        + sizeof(int) * tasks
+        + sizeof(uint8_t) * tasks;
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
@@ -133,9 +136,9 @@ inline cudaError_t stage_task_pool(
         buffers->id_list_free_positions, 0, sizeof(int) * scheduling_units,
         stream));
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_storage, sizeof(int) * tasks));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_valid, sizeof(int) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_valid, sizeof(uint8_t) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->id_valid, 0, sizeof(int) * tasks, stream));
+        buffers->id_valid, 0, sizeof(uint8_t) * tasks, stream));
     return cudaSuccess;
 }
 
@@ -151,7 +154,7 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         d_task_id_storage, &buffers.id_storage, sizeof(int*)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_task_id_valid, &buffers.id_valid, sizeof(int*)));
+        d_task_id_valid, &buffers.id_valid, sizeof(uint8_t*)));
     return cudaSuccess;
 }
 
@@ -171,9 +174,9 @@ inline cudaError_t clear_task_pool(
     int* id_list_free_positions = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &id_list_free_positions, d_task_id_list_free_positions, sizeof(int*)));
-    int* id_valid = nullptr;
+    uint8_t* id_valid = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_valid, d_task_id_valid, sizeof(int*)));
+        &id_valid, d_task_id_valid, sizeof(uint8_t*)));
 
     if (headers != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -189,7 +192,7 @@ inline cudaError_t clear_task_pool(
     }
     if (id_valid != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_valid, 0, sizeof(int) * tasks, stream));
+            id_valid, 0, sizeof(uint8_t) * tasks, stream));
     }
     return cudaSuccess;
 }
@@ -207,9 +210,9 @@ inline cudaError_t free_task_pool() {
     int* id_storage = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &id_storage, d_task_id_storage, sizeof(int*)));
-    int* id_valid = nullptr;
+    uint8_t* id_valid = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_valid, d_task_id_valid, sizeof(int*)));
+        &id_valid, d_task_id_valid, sizeof(uint8_t*)));
 
     if (headers != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(headers));
     if (task_data != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(task_data));
@@ -231,7 +234,7 @@ inline void release_staged_task_pool(task_pool_buffers* buffers) {
     char* task_data = nullptr;
     int* id_list_free_positions = nullptr;
     int* id_storage = nullptr;
-    int* id_valid = nullptr;
+    uint8_t* id_valid = nullptr;
     size_t stride = 0;
     cudaMemcpyToSymbol(d_task_headers, &headers, sizeof(TaskHeader*));
     cudaMemcpyToSymbol(d_task_data_bytes, &task_data, sizeof(task_data));

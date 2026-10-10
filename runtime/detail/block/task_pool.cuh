@@ -18,6 +18,8 @@ using namespace gtap::detail;
 __constant__ size_t d_task_data_stride;
 
 inline size_t compute_task_data_stride(const launch_config& config) {
+    // TODO: 16 stands in for the task-record alignment. Have the compiler
+    // publish that alignment and use align_up(size, alignment).
     return align_up(
         __gtap_auto_block_task_data_sizes[config.block_size / warp_size],
         16);
