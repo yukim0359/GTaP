@@ -39,6 +39,9 @@ __device__ __forceinline__ bool prepare_for_join(int tid, int child_count, int n
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
     TaskHeader* const parent_hdr = &d_task_headers[parentId];
+    // Fence before the decrement. Another worker can bring waiting_child_count
+    // to zero and resume the parent before this worker's global stores are
+    // visible.
     __threadfence();
     const int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
