@@ -29,13 +29,11 @@ __constant__ int* d_task_id_list_free_positions; // int[num_warps]
 // High bit is the ring lap. The low 31 bits are the task id.
 __constant__ int* d_task_id_storage;             // int[num_warps * tasks_per_warp]
 
+// Launched as <<<number_of_warps, 1>>>.
 __global__ void init_warp_id_pools_metadata() {
-    int warp_id_in_block = get_warp_id_in_block();
-    int lane = get_lane_id();
-    if (warp_id_in_block < d_launch_config.warps_per_block && lane == 0) {
-        int qid =
-            blockIdx.x * d_launch_config.warps_per_block + warp_id_in_block;
-        d_task_id_list_free_positions[qid] = d_launch_config.tasks_per_scheduling_unit;
+    if (threadIdx.x == 0) {
+        d_task_id_list_free_positions[blockIdx.x] =
+            d_launch_config.tasks_per_scheduling_unit;
     }
     __threadfence();
 }
@@ -45,46 +43,45 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
     int* id_list_alloc_pos,
     int* id_list_free_pos_stale
 ) {
-    int old_alloc = atomicAdd(id_list_alloc_pos, 1);
-    int warp_id_global = id_list_free_pos - d_task_id_list_free_positions;
-    int id = 0;
-    const int task_ids_per_warp = d_launch_config.tasks_per_scheduling_unit;
-    bool first_use = (old_alloc < task_ids_per_warp);
+    const int warp_id_global = get_warp_id_global();
+    const int old_alloc = atomicAdd(id_list_alloc_pos, 1);
+    const int tasks_per_warp = d_launch_config.tasks_per_scheduling_unit;
+    const bool first_use = (old_alloc < tasks_per_warp);
+    int task_id = 0;
     if (first_use) {
-        id = warp_id_global * task_ids_per_warp + old_alloc;
+        task_id = warp_id_global * tasks_per_warp + old_alloc;
     } else {
-        int idx = old_alloc % task_ids_per_warp;
-        const int storage_idx = warp_id_global * task_ids_per_warp + idx;
+        const int storage_idx = warp_id_global * tasks_per_warp + old_alloc % tasks_per_warp;
         const int packed = load_relaxed(&d_task_id_storage[storage_idx]);
-        if (ring_lap_matches(packed, old_alloc, task_ids_per_warp)) {
-            id = unpack_task_id_slot(packed);
+        if (ring_lap_matches(packed, old_alloc, tasks_per_warp)) {
+            task_id = unpack_task_id_slot(packed);
         } else {
-            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(id, old_alloc, task_ids_per_warp);
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(task_id, old_alloc, tasks_per_warp);
         }
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
     if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
-        int new_free_pos = load_L2(id_list_free_pos);
+        const int new_free_pos = load_L2(id_list_free_pos);
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
             GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(
-                id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
+                task_id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
         }
     }
-    return id;
+    return task_id;
 }
 
-__device__ __forceinline__ void release_task_id_to_warp_pool(int id) {
-    int warp_id_global = get_warp_id_global();
-    int* id_list_free_pos = &d_task_id_list_free_positions[warp_id_global];
-    int old_free = atomicAdd(id_list_free_pos, 1);
-    const int task_ids_per_warp = d_launch_config.tasks_per_scheduling_unit;
+__device__ __forceinline__ void release_task_id_to_warp_pool(int tid) {
+    const int tasks_per_warp = d_launch_config.tasks_per_scheduling_unit;
+    const int return_warp_id = get_warp_id_global();
+    int* const id_list_free_pos = &d_task_id_list_free_positions[return_warp_id];
+    const int old_free = atomicAdd(id_list_free_pos, 1);
     const int storage_idx =
-        warp_id_global * task_ids_per_warp + old_free % task_ids_per_warp;
+        return_warp_id * tasks_per_warp + old_free % tasks_per_warp;
     store_relaxed(
         &d_task_id_storage[storage_idx],
-        pack_task_id_slot(id, old_free, task_ids_per_warp));
+        pack_task_id_slot(tid, old_free, tasks_per_warp));
 }
 
 __device__ __forceinline__ void* get_task_data(int tid) {

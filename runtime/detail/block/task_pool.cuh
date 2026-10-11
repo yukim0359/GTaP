@@ -36,6 +36,7 @@ __constant__ int* d_task_id_list_free_positions; // int[num_blocks]
 // High bit is the ring lap. The low 31 bits are the task id.
 __constant__ int* d_task_id_storage;             // int[num_blocks * tasks_per_block]
 
+// Launched as <<<grid_size, 1>>>.
 __global__ void init_block_id_pools_metadata() {
     if (threadIdx.x == 0) {
         d_task_id_list_free_positions[blockIdx.x] =
@@ -49,47 +50,44 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
     int* id_list_alloc_pos,
     int* id_list_free_pos_stale
 ) {
-    int old_alloc = atomicAdd(id_list_alloc_pos, 1);
+    const int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     const int tasks_per_block = d_launch_config.tasks_per_scheduling_unit;
-    int idx = old_alloc % tasks_per_block;
-    int block_id = static_cast<int>(
-        id_list_free_pos - d_task_id_list_free_positions);
-    int id = 0;
-    bool first_use = (old_alloc < tasks_per_block);
+    const bool first_use = (old_alloc < tasks_per_block);
+    int task_id = 0;
     if (first_use) {
-        id = block_id * tasks_per_block + idx;
+        task_id = blockIdx.x * tasks_per_block + old_alloc;
     } else {
-        const int storage_idx = block_id * tasks_per_block + idx;
+        const int storage_idx = blockIdx.x * tasks_per_block + old_alloc % tasks_per_block;
         const int packed = load_relaxed(&d_task_id_storage[storage_idx]);
         if (ring_lap_matches(packed, old_alloc, tasks_per_block)) {
-            id = unpack_task_id_slot(packed);
+            task_id = unpack_task_id_slot(packed);
         } else {
-            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(id, old_alloc, tasks_per_block);
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(task_id, old_alloc, tasks_per_block);
         }
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
     if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
-        int new_free_pos = load_L2(id_list_free_pos);
+        const int new_free_pos = load_L2(id_list_free_pos);
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
             GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(
-                id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
+                task_id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
         }
     }
-    return id;
+    return task_id;
 }
 
-__device__ __forceinline__ void release_task_id_to_block_pool(int id) {
+__device__ __forceinline__ void release_task_id_to_block_pool(int tid) {
     const int tasks_per_block = d_launch_config.tasks_per_scheduling_unit;
-    int block_id = id / tasks_per_block;
-    int* id_list_free_pos = &d_task_id_list_free_positions[block_id];
-    int old_free = atomicAdd(id_list_free_pos, 1);
+    const int return_block_id = tid / tasks_per_block;
+    int* const id_list_free_pos = &d_task_id_list_free_positions[return_block_id];
+    const int old_free = atomicAdd(id_list_free_pos, 1);
     const int storage_idx =
-        block_id * tasks_per_block + old_free % tasks_per_block;
+        return_block_id * tasks_per_block + old_free % tasks_per_block;
     store_relaxed(
         &d_task_id_storage[storage_idx],
-        pack_task_id_slot(id, old_free, tasks_per_block));
+        pack_task_id_slot(tid, old_free, tasks_per_block));
 }
 
 __device__ __forceinline__ void* get_task_data(int tid) {

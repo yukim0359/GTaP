@@ -114,7 +114,7 @@ cudaError_t initialize_runtime() {
     cudaEventRecord(start, stream);
 #endif
     init_warp_id_pools_metadata<<<
-        runtime_config.grid_size, runtime_config.block_size, 0, stream>>>();
+        runtime_config.total_scheduling_units, 1, 0, stream>>>();
     GTAP_DETAIL_CUDA_TRY_OR(
         cudaGetLastError(),
         abandon_initialize(&queues, &task_pool, &profile));
@@ -167,7 +167,7 @@ cudaError_t reset_runtime() {
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
 
     init_warp_id_pools_metadata<<<
-        runtime_config.grid_size, runtime_config.block_size, 0, stream>>>();
+        runtime_config.total_scheduling_units, 1, 0, stream>>>();
     // TODO: cudaDeviceSynchronize waits for every stream.
     GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
     return cudaGetLastError();
