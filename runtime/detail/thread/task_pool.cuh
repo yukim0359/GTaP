@@ -4,6 +4,7 @@
 #include "../common/device_memory.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
+#include "../common/task_pool.cuh"
 #include "../common/warp_index.cuh"
 
 #include "task_types.cuh"
@@ -25,8 +26,8 @@ inline cudaError_t publish_task_data_stride() {
 __constant__ TaskHeader* d_task_headers;         // TaskHeader[num_warps * tasks_per_warp]
 __constant__ char* d_task_data_bytes;            // char[num_warps * tasks_per_warp * task_data_stride]
 __constant__ int* d_task_id_list_free_positions; // int[num_warps]
+// High bit is the ring lap. The low 31 bits are the task id.
 __constant__ int* d_task_id_storage;             // int[num_warps * tasks_per_warp]
-__constant__ uint8_t* d_task_id_valid;           // uint8_t[num_warps * tasks_per_warp]
 
 __global__ void init_warp_id_pools_metadata() {
     int warp_id_in_block = get_warp_id_in_block();
@@ -54,9 +55,9 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
     } else {
         int idx = old_alloc % task_ids_per_warp;
         const int storage_idx = warp_id_global * task_ids_per_warp + idx;
-        if (load_L2_acquire(&d_task_id_valid[storage_idx]) == 1) {
-            id = load_L2(&d_task_id_storage[storage_idx]);
-            store_L2(&d_task_id_valid[storage_idx], 0);
+        const int packed = load_relaxed(&d_task_id_storage[storage_idx]);
+        if (ring_lap_matches(packed, old_alloc, task_ids_per_warp)) {
+            id = unpack_task_id_slot(packed);
         } else {
             GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(id, old_alloc, task_ids_per_warp);
         }
@@ -81,8 +82,9 @@ __device__ __forceinline__ void release_task_id_to_warp_pool(int id) {
     const int task_ids_per_warp = d_launch_config.tasks_per_scheduling_unit;
     const int storage_idx =
         warp_id_global * task_ids_per_warp + old_free % task_ids_per_warp;
-    store_L2(&d_task_id_storage[storage_idx], id);
-    store_L2(&d_task_id_valid[storage_idx], 1);
+    store_relaxed(
+        &d_task_id_storage[storage_idx],
+        pack_task_id_slot(id, old_free, task_ids_per_warp));
 }
 
 __device__ __forceinline__ void* get_task_data(int tid) {
@@ -94,7 +96,6 @@ struct task_pool_buffers {
     char* task_data = nullptr;
     int* id_list_free_positions = nullptr;
     int* id_storage = nullptr;
-    uint8_t* id_valid = nullptr;
 };
 
 inline size_t task_pool_allocation_bytes(const launch_config& config) {
@@ -104,8 +105,7 @@ inline size_t task_pool_allocation_bytes(const launch_config& config) {
     return sizeof(TaskHeader) * tasks
         + __gtap_task_data_stride * tasks
         + sizeof(int) * scheduling_units
-        + sizeof(int) * tasks
-        + sizeof(uint8_t) * tasks;
+        + sizeof(int) * tasks;
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
@@ -132,9 +132,8 @@ inline cudaError_t stage_task_pool(
         buffers->id_list_free_positions, 0, sizeof(int) * scheduling_units,
         stream));
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_storage, sizeof(int) * tasks));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_valid, sizeof(uint8_t) * tasks));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->id_valid, 0, sizeof(uint8_t) * tasks, stream));
+        buffers->id_storage, 0, sizeof(int) * tasks, stream));
     return cudaSuccess;
 }
 
@@ -149,8 +148,6 @@ inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
         sizeof(int*)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         d_task_id_storage, &buffers.id_storage, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_task_id_valid, &buffers.id_valid, sizeof(uint8_t*)));
     return cudaSuccess;
 }
 
@@ -170,9 +167,9 @@ inline cudaError_t clear_task_pool(
     int* id_list_free_positions = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &id_list_free_positions, d_task_id_list_free_positions, sizeof(int*)));
-    uint8_t* id_valid = nullptr;
+    int* id_storage = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_valid, d_task_id_valid, sizeof(uint8_t*)));
+        &id_storage, d_task_id_storage, sizeof(int*)));
 
     if (headers != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -186,9 +183,9 @@ inline cudaError_t clear_task_pool(
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
             id_list_free_positions, 0, sizeof(int) * scheduling_units, stream));
     }
-    if (id_valid != nullptr) {
+    if (id_storage != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_valid, 0, sizeof(uint8_t) * tasks, stream));
+            id_storage, 0, sizeof(int) * tasks, stream));
     }
     return cudaSuccess;
 }
@@ -206,9 +203,6 @@ inline cudaError_t free_task_pool() {
     int* id_storage = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &id_storage, d_task_id_storage, sizeof(int*)));
-    uint8_t* id_valid = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_valid, d_task_id_valid, sizeof(uint8_t*)));
 
     if (headers != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(headers));
     if (task_data != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(task_data));
@@ -216,7 +210,6 @@ inline cudaError_t free_task_pool() {
         GTAP_DETAIL_CUDA_TRY(cudaFree(id_list_free_positions));
     }
     if (id_storage != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(id_storage));
-    if (id_valid != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(id_valid));
     return cudaSuccess;
 }
 
@@ -225,12 +218,10 @@ inline void release_staged_task_pool(task_pool_buffers* buffers) {
     free_device(buffers->task_data);
     free_device(buffers->id_list_free_positions);
     free_device(buffers->id_storage);
-    free_device(buffers->id_valid);
     TaskHeader* headers = nullptr;
     char* task_data = nullptr;
     int* id_list_free_positions = nullptr;
     int* id_storage = nullptr;
-    uint8_t* id_valid = nullptr;
     size_t stride = 0;
     cudaMemcpyToSymbol(d_task_headers, &headers, sizeof(TaskHeader*));
     cudaMemcpyToSymbol(d_task_data_bytes, &task_data, sizeof(task_data));
@@ -239,7 +230,6 @@ inline void release_staged_task_pool(task_pool_buffers* buffers) {
         d_task_id_list_free_positions, &id_list_free_positions,
         sizeof(id_list_free_positions));
     cudaMemcpyToSymbol(d_task_id_storage, &id_storage, sizeof(id_storage));
-    cudaMemcpyToSymbol(d_task_id_valid, &id_valid, sizeof(id_valid));
 }
 
 }  // namespace gtap::detail::thread

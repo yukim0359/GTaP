@@ -37,21 +37,16 @@ __device__ __forceinline__ void* load_L2(void** ptr) {
     return val;
 }
 
-__device__ __forceinline__ uint8_t load_L2_acquire(uint8_t *ptr) {
-    unsigned int val;
-    asm volatile("ld.global.acquire.gpu.u8 %0, [%1];\n" : "=r"(val) : "l"(ptr));
-    return static_cast<uint8_t>(val);
-}
-
 __device__ __forceinline__ int load_L2_acquire(int *ptr) {
     int val;
     asm volatile("ld.global.acquire.gpu.s32 %0, [%1];\n" : "=r"(val) : "l"(ptr));
     return val;
 }
 
-__device__ __forceinline__ void store_L2(uint8_t *ptr, uint8_t val) {
-    unsigned int wide = val;
-    asm volatile("st.global.cg.u8 [%0], %1;\n" :: "l"(ptr), "r"(wide));
+__device__ __forceinline__ int load_relaxed(int *ptr) {
+    int val;
+    asm volatile("ld.global.relaxed.gpu.s32 %0, [%1];\n" : "=r"(val) : "l"(ptr));
+    return val;
 }
 
 __device__ __forceinline__ void store_L2(uint16_t *ptr, uint16_t val) {
@@ -73,6 +68,10 @@ __device__ __forceinline__ void store_L2(void** ptr, void* val) {
 
 __device__ __forceinline__ void store_L2_release(int *ptr, int val) {
     asm volatile("st.global.release.gpu.s32 [%0], %1;\n" :: "l"(ptr), "r"(val));
+}
+
+__device__ __forceinline__ void store_relaxed(int *ptr, int val) {
+    asm volatile("st.global.relaxed.gpu.s32 [%0], %1;\n" :: "l"(ptr), "r"(val));
 }
 
 __device__ __forceinline__ void prefetch_global_L2(const void* ptr) {
