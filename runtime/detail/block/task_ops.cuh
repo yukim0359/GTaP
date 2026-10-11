@@ -73,15 +73,18 @@ __device__ __forceinline__ void finish_task(int tid, TaskContext* ctx) {
 #endif
 #ifdef GTAP_ASSUME_NO_TASKWAIT
         (void)ctx;
-        release_task_id_to_block_pool(tid);
 #else
         const int parent_tid = ctx->parent_tid;
-        d_task_headers[tid].generation = ctx->generation + 1;
+        const uint16_t next_generation =
+            static_cast<uint16_t>(ctx->generation + 1);
+        d_task_headers[tid].generation = next_generation;
+        // prepare_for_join leaves this unchanged, so the execute loop can tell
+        // a finished task from one that suspended at taskwait.
+        ctx->generation = next_generation;
 
         if (tid != 0 && load_L2(&d_task_headers[parent_tid].generation) == ctx->parent_generation) {
             notify_parent(parent_tid, ctx);
         }
-        release_task_id_to_block_pool(tid);
 #endif
         if (tid == 0) {
             store_L2(&d_root_task_finished, 1);

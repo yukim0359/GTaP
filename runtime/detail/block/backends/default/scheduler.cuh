@@ -307,11 +307,17 @@ __device__ __forceinline__ void execute_task_loop() {
             __syncthreads();
         }
 
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+        uint16_t generation_before = 0;
+#endif
         if (have_execute_task) {
             void* task_data = get_task_data(execute_task_id);
             prefetch_global_L2(task_data);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             copy_task_header(execute_task_id, &task_context);
+            if (threadIdx.x == 0) {
+                generation_before = task_context.generation;
+            }
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
@@ -330,6 +336,13 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifdef GTAP_ENABLE_PROFILING
         record_execution_end(&working_time_idx);
 #endif
+        release_task_id(
+            execute_task_id
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+            , generation_before
+            , &task_context
+#endif
+        );
 
         push(&task_context, &execute_task_id, &have_execute_task);
     }
