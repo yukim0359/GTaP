@@ -35,6 +35,26 @@ __device__ __forceinline__ void record_execution_end(int* working_time_idx) {
 }
 #endif
 
+// finish_task advances the context generation only when the task finishes.
+// A taskwait suspension leaves it unchanged. The id is released after the
+// execute loop's threadfence, before push replaces the executed id.
+__device__ __forceinline__ void release_task_id(
+    int executed_tid
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+    , uint16_t generation_before
+    , const TaskContext* task_context
+#endif
+) {
+    if (threadIdx.x != 0) return;
+#ifdef GTAP_ASSUME_NO_TASKWAIT
+    release_task_id_to_block_pool(executed_tid);
+#else
+    if (task_context->generation != generation_before) {
+        release_task_id_to_block_pool(executed_tid);
+    }
+#endif
+}
+
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 // Copy task header to TaskContext for reuse in task function (using L2 load)
 __device__ __forceinline__ void copy_task_header(

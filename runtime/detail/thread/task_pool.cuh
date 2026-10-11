@@ -72,11 +72,25 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
     return task_id;
 }
 
-__device__ __forceinline__ void release_task_id_to_warp_pool(int tid) {
+// Every lane in the warp calls this. One lane claims a ticket for each
+// releasing lane, then each releasing lane stores its own id.
+__device__ __forceinline__ void release_task_id_to_warp_pool(int tid, bool returns_id) {
+    const unsigned mask = __ballot_sync(0xffffffffu, returns_id);
+    if (mask == 0) return;
+
+    const unsigned lane = get_lane_id();
+    const int leader = __ffs(mask) - 1;
     const int tasks_per_warp = d_launch_config.tasks_per_scheduling_unit;
     const int return_warp_id = get_warp_id_global();
     int* const id_list_free_pos = &d_task_id_list_free_positions[return_warp_id];
-    const int old_free = atomicAdd(id_list_free_pos, 1);
+    int base = 0;
+    if (static_cast<int>(lane) == leader) {
+        base = atomicAdd(id_list_free_pos, __popc(mask));
+    }
+    base = __shfl_sync(0xffffffffu, base, leader);
+    if (!returns_id) return;
+
+    const int old_free = base + __popc(mask & ((1u << lane) - 1u));
     const int storage_idx =
         return_warp_id * tasks_per_warp + old_free % tasks_per_warp;
     store_relaxed(

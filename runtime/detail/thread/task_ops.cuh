@@ -66,7 +66,6 @@ __device__ __forceinline__ void finish_task(int tid, TaskContext* ctx) {
 
 #ifdef GTAP_ASSUME_NO_TASKWAIT
     (void)ctx;
-    release_task_id_to_warp_pool(tid);
 #else
     const int lane = get_lane_id();
     const int parent_tid = ctx->task_parent_tids[lane];
@@ -74,14 +73,18 @@ __device__ __forceinline__ void finish_task(int tid, TaskContext* ctx) {
     const uint16_t generation = static_cast<uint16_t>(cached_generations);
     const uint16_t parent_generation =
         static_cast<uint16_t>(cached_generations >> 16);
-    d_task_headers[tid].generation = generation + 1;
+    const uint16_t next_generation = static_cast<uint16_t>(generation + 1);
+    d_task_headers[tid].generation = next_generation;
+    // prepare_for_join leaves the low half unchanged, so the execute loop can
+    // tell a finished task from one that suspended at taskwait.
+    ctx->task_generations[lane] =
+        (cached_generations & 0xffff0000u) | next_generation;
 
     if (tid != 0 &&
         load_L2(&d_task_headers[parent_tid].generation) ==
             parent_generation) {
         notify_parent(parent_tid, ctx);
     }
-    release_task_id_to_warp_pool(tid);
 #endif
 
     if (tid == 0) {

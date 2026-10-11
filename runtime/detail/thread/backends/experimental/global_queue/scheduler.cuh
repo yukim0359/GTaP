@@ -403,11 +403,16 @@ __device__ __forceinline__ void execute_task_loop() {
             __syncwarp();
         }
 
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+        uint16_t generation_before = 0;
+#endif
         if (lane < execute_task_count) {
             void* task_data = get_task_data(execute_task_id);
             prefetch_global_L2(task_data);
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             copy_task_header(lane, execute_task_id, task_context);
+            generation_before = static_cast<uint16_t>(
+                task_context->task_generations[lane]);
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
@@ -430,6 +435,12 @@ __device__ __forceinline__ void execute_task_loop() {
             execute_task_count, working_time_idx);
         __syncwarp();
 #endif
+        release_task_ids(
+            lane, execute_task_count, execute_task_id
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+            , generation_before, task_context
+#endif
+        );
 
         push_global_queue<M>(
             task_context, &execute_task_id,

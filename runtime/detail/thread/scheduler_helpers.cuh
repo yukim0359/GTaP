@@ -52,6 +52,29 @@ __device__ __forceinline__ void record_execution_end(
 }
 #endif
 
+// finish_task advances the low half of task_generations[lane] only when the
+// task finishes. A taskwait suspension leaves it unchanged. The id is released
+// after the execute loop's threadfence, before push replaces the executed id.
+__device__ __forceinline__ void release_task_ids(
+    int lane,
+    int execute_task_count,
+    int executed_tid
+#ifndef GTAP_ASSUME_NO_TASKWAIT
+    , uint16_t generation_before
+    , const TaskContext* task_context
+#endif
+) {
+#ifdef GTAP_ASSUME_NO_TASKWAIT
+    release_task_id_to_warp_pool(executed_tid, lane < execute_task_count);
+#else
+    const bool returns_id =
+        lane < execute_task_count &&
+        static_cast<uint16_t>(task_context->task_generations[lane]) !=
+            generation_before;
+    release_task_id_to_warp_pool(executed_tid, returns_id);
+#endif
+}
+
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 // Copy task header to TaskContext for reuse in task function (using L2 load)
 __device__ __forceinline__ void copy_task_header(
