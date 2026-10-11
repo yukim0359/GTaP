@@ -20,7 +20,7 @@ __device__ __forceinline__ bool __gtap_prepare_for_join(
     return gtap::detail::block::prepare_for_join(tid, ctx, next_state);
 }
 
-__device__ void __gtap_finish_task(int tid, gtap::detail::block::TaskContext* ctx) {
+__device__ __forceinline__ void __gtap_finish_task(int tid, gtap::detail::block::TaskContext* ctx) {
     gtap::detail::block::finish_task(tid, ctx);
 }
 

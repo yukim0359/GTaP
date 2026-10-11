@@ -58,7 +58,7 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
         int idx = head % (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit);
         *execute_task_id = load_L2(&d_global_task_queue[idx]);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("pop_global: tid=%d in block %d\n", *execute_task_id, blockIdx.x);
+        printf("pop_global: %d in block %d\n", *execute_task_id, blockIdx.x);
 #endif
     } else {
         *execute_task_id = -1;
@@ -97,6 +97,10 @@ __device__ __forceinline__ void push_global_queue(
             *execute_task_id = get_task_id_generated(blockIdx.x, 0);
             *have_execute_task = true;
             first_idx_to_push = 1;
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+            printf("execute_immediately: %d in block %d\n",
+                   *execute_task_id, blockIdx.x);
+#endif
         } else {
             *have_execute_task = false;
         }
@@ -109,7 +113,7 @@ __device__ __forceinline__ void push_global_queue(
             *have_execute_task = true;
             first_idx_to_push = 1;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-            printf("execute_immediately: tid=%d in block %d\n", *execute_task_id, blockIdx.x);
+            printf("execute_immediately: %d in block %d\n", *execute_task_id, blockIdx.x);
 #endif
         } else {
             *have_execute_task = false;
@@ -148,10 +152,7 @@ __device__ __forceinline__ void push_global_queue(
         int tid = get_task_id_generated(blockIdx.x, first_idx_to_push + j);
         unsigned int pos = (base_pos + (unsigned int)j) % (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit);
         store_L2(&d_global_task_queue[pos], tid);
-#ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("push_global: tid=%d to pos %d in block %d\n", tid, pos, blockIdx.x);
-#endif
-        }
+    }
     __threadfence();
     __syncthreads();
 
@@ -159,14 +160,13 @@ __device__ __forceinline__ void push_global_queue(
     if (threadIdx.x == 0) {
         while (load_L2(&d_queue_tail) != base_pos) {
             // spin - wait for prior pushers to commit
-    }
+        }
         atomicAdd(&d_queue_tail, (unsigned int)push_cnt);
     }
     __syncthreads();
 }
 
-// TODO: Clarify which of the block task ops and push_initial_task are thread 0
-// only and which run on every thread in the block.
+// Called only by the grid master. Sema emits the call under that check.
 __device__ __forceinline__ void push_initial_task(
     void (*func)(void*, int, TaskContext*)
 ) {
@@ -324,7 +324,7 @@ __device__ __forceinline__ void execute_task_loop() {
         push_global_queue<M>(&task_context, &execute_task_id, &have_execute_task);
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    if (threadIdx.x == 0) printf("execute_task_loop: end (block_id = %d)\n", blockIdx.x);
+    if (threadIdx.x == 0) printf("execute_task_loop: end in block %d\n", blockIdx.x);
 #endif
 }
 

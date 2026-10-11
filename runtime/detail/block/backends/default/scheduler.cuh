@@ -53,7 +53,7 @@ __device__ __forceinline__ int pop(int* taskId) {
     if (size > 0) {
         *taskId = task_id;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("pop: %d (block: %d)\n", task_id, blockIdx.x);
+        printf("pop: %d in block %d\n", task_id, blockIdx.x);
 #endif
         return true;
     }
@@ -67,7 +67,7 @@ __device__ __forceinline__ int pop(int* taskId) {
     *taskId = task_id;
     store_L2(&myQueue->bottom, t + 1);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    printf("pop: %d (block: %d)\n", task_id, blockIdx.x);
+    printf("pop: %d in block %d\n", task_id, blockIdx.x);
 #endif
     return true;
 }
@@ -101,7 +101,8 @@ __device__ __forceinline__ int steal(int* taskId, bool prev_get_task) {
 
     *taskId = task_id;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    printf("steal: %d (block: %d -> %d)\n", task_id, targetBlock, blockIdx.x);
+    printf("steal: %d from block %d to block %d\n",
+           task_id, targetBlock, blockIdx.x);
 #endif
     return true;
 }
@@ -140,6 +141,10 @@ __device__ __forceinline__ void push(
             *execute_task_id = load_L2(block_queue_slot(
                 blockIdx.x,
                 publish_bottom % d_launch_config.queue_capacity));
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+            printf("execute_immediately: %d in block %d\n",
+                   *execute_task_id, blockIdx.x);
+#endif
         }
     }
 #else
@@ -148,7 +153,7 @@ __device__ __forceinline__ void push(
         if (threadIdx.x == 0) {
             *execute_task_id = ctx->task_id_resumable;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-            printf("resume: %d (block: %d)\n", *execute_task_id, blockIdx.x);
+            printf("resume: %d in block %d\n", *execute_task_id, blockIdx.x);
 #endif
         }
     } else if (ctx->generated_task_count > 0) {
@@ -157,6 +162,10 @@ __device__ __forceinline__ void push(
             *execute_task_id = load_L2(block_queue_slot(
                 blockIdx.x,
                 publish_bottom % d_launch_config.queue_capacity));
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+            printf("execute_immediately: %d in block %d\n",
+                   *execute_task_id, blockIdx.x);
+#endif
         }
     }
 #endif
@@ -175,8 +184,7 @@ __device__ __forceinline__ void push(
     }
 }
 
-// TODO: Clarify which of the block task ops and push_initial_task are thread 0
-// only and which run on every thread in the block.
+// Called only by the grid master. Sema emits the call under that check.
 __device__ __forceinline__ void push_initial_task(
     void (*func)(void*, int, TaskContext*)
 ) {
@@ -324,7 +332,7 @@ __device__ __forceinline__ void execute_task_loop() {
         push(&task_context, &execute_task_id, &have_execute_task);
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    if (threadIdx.x == 0) printf("execute_task_loop: end (block_id = %d)\n", blockIdx.x);
+    if (threadIdx.x == 0) printf("execute_task_loop: end in block %d\n", blockIdx.x);
 #endif
 }
 

@@ -97,7 +97,8 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
         int tid = load_L2(global_queue_slot(queue_idx, idx));
         *execute_task_id = tid;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("pop_global: tid=%d (queue %d) in lane %d\n", tid, queue_idx, lane);
+        printf("pop_global: %d (queue: %d) in lane %d of warp %d of block %d\n",
+               tid, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     }
 
@@ -202,7 +203,8 @@ __device__ __forceinline__ void push_global_queue(
     if (lane < *execute_task_count) {
         *execute_task_id = get_unpublished_task_id(ctx, k_max, lane);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("execute_immediately: tid=%d (queue %d) in lane %d\n", *execute_task_id, k_max, lane);
+        printf("execute_immediately: %d (queue: %d) in lane %d of warp %d of block %d\n",
+               *execute_task_id, k_max, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     }
 
@@ -232,9 +234,6 @@ __device__ __forceinline__ void push_global_queue(
                 ctx, kind, first_idx_to_push + j);
             int pos = (base_pos + j) % (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity);
             store_L2(global_queue_slot(kind, pos), tid);
-#ifdef GTAP_DETAIL_INTERNAL_DEBUG
-            printf("push_global: tid=%d to queue %d, pos %d in lane %d\n", tid, kind, pos, lane);
-#endif
         }
         __threadfence();
         __syncwarp();
@@ -437,7 +436,8 @@ __device__ __forceinline__ void execute_task_loop() {
         );
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    if (lane == 0) printf("execute_task_loop: end (warp_id_global = %d)\n", warp_id_global);
+    if (lane == 0) printf("execute_task_loop: end in lane %d of warp %d of block %d\n",
+                          lane, warp_id_in_block, blockIdx.x);
 #endif
 }
 

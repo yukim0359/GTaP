@@ -29,8 +29,11 @@ __device__ __forceinline__ bool prepare_for_join(int tid, int child_count, int n
     hdr->queue_idx = queue_idx_after_join;
     hdr->state = next_state;
     hdr->waiting_child_count = child_count;
+#ifdef GTAP_DETAIL_INTERNAL_DEBUG
+    printf("prepare_for_join: %d (child count: %d) in lane %d of warp %d of block %d\n",
+           tid, child_count, get_lane_id(), get_warp_id_in_block(), blockIdx.x);
+#endif
 #else
-    d_task_headers[tid].queue_idx = queue_idx_after_join;
     (void)next_state;
 #endif
     return child_count != 0;

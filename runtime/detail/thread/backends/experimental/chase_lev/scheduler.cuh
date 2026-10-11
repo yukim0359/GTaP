@@ -80,7 +80,7 @@ __device__ __forceinline__ int pop_chase_lev(int* execute_task_id, int max_count
         if (lane == target_lane) {
             *execute_task_id = task_id;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-            printf("pop_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
+            printf("pop: %d (queue: %d) in lane %d of warp %d of block %d\n", task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         }
         pop_count++;
@@ -152,7 +152,11 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
         if (lane == target_lane) {
             *execute_task_id = task_id;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-            printf("steal_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
+            printf("steal: %d (queue: %d) from warp %d of block %d to lane %d of warp %d of block %d\n",
+                   task_id, queue_idx,
+                   target_warp_id_global % d_launch_config.warps_per_block,
+                   target_warp_id_global / d_launch_config.warps_per_block,
+                   lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         }
         steal_count++;
@@ -297,7 +301,7 @@ __device__ __forceinline__ void push_batch (
         *execute_task_id =
             ctx->staged_task_ids[k_max * warp_size + lane];
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("push_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", *execute_task_id, k_max, lane, get_warp_id_in_block(), blockIdx.x);
+        printf("execute_immediately: %d (queue: %d) in lane %d of warp %d of block %d\n", *execute_task_id, k_max, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     }
 
@@ -318,9 +322,6 @@ __device__ __forceinline__ void push_batch (
                     ctx->staged_task_ids[kind * warp_size + j];
                 *chaselev_queue_slot(
                     kind, warp_id_global, idx_to_push) = val;
-#ifdef GTAP_DETAIL_INTERNAL_DEBUG
-                printf("push_task_id: %d to %d (kind %d) in lane %d of warp %d of block %d\n", val, idx_to_push, kind, lane, get_warp_id_in_block(), blockIdx.x);
-#endif
             }
             if (lane == 0)
                 ctx->queue_tails[kind] += staged_n;
@@ -534,7 +535,8 @@ __device__ __forceinline__ void execute_task_loop() {
         );
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    if (lane == 0) printf("execute_task_loop: end (warp_id_global = %d)\n", warp_id_global);
+    if (lane == 0) printf("execute_task_loop: end in lane %d of warp %d of block %d\n",
+                          lane, warp_id_in_block, blockIdx.x);
 #endif
 }
 

@@ -68,7 +68,7 @@ __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_
             (*tail + (lane - warp_size + max_count_to_pop)) %
                 d_launch_config.queue_capacity));
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("pop_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", pop_task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
+        printf("pop: %d (queue: %d) in lane %d of warp %d of block %d\n", pop_task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         *execute_task_id = pop_task_id;
     }
@@ -123,7 +123,11 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
             (old_head + (lane - warp_size + max_count_to_steal)) %
                 d_launch_config.queue_capacity));
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("steal_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", steal_task_id, queue_idx, lane, get_warp_id_in_block(), blockIdx.x);
+        printf("steal: %d (queue: %d) from warp %d of block %d to lane %d of warp %d of block %d\n",
+               steal_task_id, queue_idx,
+               target_warp_id_global % d_launch_config.warps_per_block,
+               target_warp_id_global / d_launch_config.warps_per_block,
+               lane, get_warp_id_in_block(), blockIdx.x);
 #endif
         *execute_task_id = steal_task_id;
     }
@@ -234,7 +238,7 @@ __device__ __forceinline__ void push_batch_single_queue(
     if (lane < *execute_task_count) {
         *execute_task_id = ctx->staged_task_ids[lane];
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("push_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", *execute_task_id, 0, lane, get_warp_id_in_block(), blockIdx.x);
+        printf("execute_immediately: %d (queue: %d) in lane %d of warp %d of block %d\n", *execute_task_id, 0, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     }
     __syncwarp();
@@ -283,7 +287,7 @@ __device__ __forceinline__ void push_batch_multi_queue(
     if (lane < *execute_task_count) {
         *execute_task_id = ctx->staged_task_ids[k_max * warp_size + lane];
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("push_task_id: %d (kind %d) in lane %d of warp %d of block %d\n", *execute_task_id, k_max, lane, get_warp_id_in_block(), blockIdx.x);
+        printf("execute_immediately: %d (queue: %d) in lane %d of warp %d of block %d\n", *execute_task_id, k_max, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     }
     __syncwarp();
@@ -522,7 +526,8 @@ __device__ __forceinline__ void execute_task_loop() {
         );
     }
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    if (lane == 0) printf("execute_task_loop: end (warp_id_global = %d)\n", warp_id_global);
+    if (lane == 0) printf("execute_task_loop: end in lane %d of warp %d of block %d\n",
+                          lane, warp_id_in_block, blockIdx.x);
 #endif
 }
 
