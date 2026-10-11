@@ -87,8 +87,8 @@ __device__ __forceinline__ void finish_task(int tid, TaskContext* ctx) {
     if (tid == 0) {
         store_L2(&d_root_task_finished, 1);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        const int lane = get_lane_id();
-        printf("root task finished in lane %d of warp %d of block %d\n", lane, get_warp_id_in_block(), blockIdx.x);
+        printf("root task finished in lane %d of warp %d of block %d\n",
+               get_lane_id(), get_warp_id_in_block(), blockIdx.x);
 #endif
     }
 }
@@ -122,15 +122,12 @@ __device__ __forceinline__ void* spawn_task(
         static_cast<uint16_t>(ctx->task_generations[lane]);
     new_hdr->state = 0;
     new_hdr->waiting_child_count = 0;
-#endif
-
-    stage_task_id(ctx, child_queue_idx, new_tid);
-
-#ifndef GTAP_ASSUME_NO_TASKWAIT
     (*child_count)++;
 #else
     (void)child_count;
 #endif
+
+    stage_task_id(ctx, child_queue_idx, new_tid);
     return get_task_data(new_tid);
 }
 
