@@ -314,6 +314,7 @@ __device__ __forceinline__ void push_batch_multi_queue(
             if (lane == 0) {
                 queue_tails[kind] += staged_n;
             }
+            __threadfence();
             __syncwarp();
         }
         if (lane == 0) {
