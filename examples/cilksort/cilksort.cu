@@ -204,7 +204,6 @@ std::vector<int> load_array(const char* filename, size_t& n) {
     }
     
     fclose(fp);
-    printf("Loaded %zu elements from %s\n", n, filename);
     return data;
 }
 
@@ -213,7 +212,6 @@ int main(int argc, char** argv) {
     std::vector<int> h;
     if (argc >= 2) {
         const char* data_file = argv[1];
-        const char* reference_file = (argc > 2) ? argv[2] : nullptr;
         h = load_array(data_file, N);
         if (h.empty()) return 1;
         printf("Loaded %zu elements from %s\n", N, data_file);
@@ -228,9 +226,9 @@ int main(int argc, char** argv) {
     std::sort(gold.begin(), gold.end());
 
     gtap_thread_config config{
-        .grid_size = 2000,
+        .grid_size = 3000,
         .block_size = 32,
-        .max_tasks_per_warp = 80000,
+        .max_tasks_per_warp = 100000,
         .num_queues = 1,
     };
     cudaError_t err = gtap_initialize(config);
@@ -257,12 +255,8 @@ int main(int argc, char** argv) {
 
     float ms = 0.f;
     cudaEventElapsedTime(&ms, start, stop);
-    // Copy back and verify
     cudaMemcpy(h.data(), d_data, sizeof(int) * N, cudaMemcpyDeviceToHost);
-    std::sort(gold.begin(), gold.end());
-    bool ok = std::is_sorted(h.begin(), h.end()) && (h == gold);
-
-    // Match mergesort.cu output style
+    bool ok = (h == gold);
     printf("Cilksort(%zu) = %s\n", N, ok ? "Correct" : "Incorrect");
     printf("Execution time: %.3f ms\n", ms);
 
