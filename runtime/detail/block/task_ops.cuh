@@ -8,7 +8,6 @@ namespace gtap::detail::block {
 
 using namespace gtap::detail;
 
-// TODO: These functions share the compiler entry points with thread mode. A block-mode lowering could give them their own signatures.
 // TODO: Clarify which of the block task ops and push_initial_task are thread 0
 // only and which run on every thread in the block.
 
@@ -20,13 +19,11 @@ __device__ __forceinline__ int get_task_state(int tid) {
 #endif
 }
 
-__device__ __forceinline__ bool prepare_for_join_block(
+__device__ __forceinline__ bool prepare_for_join(
     int tid,
     TaskContext* ctx,
-    int next_state,
-    int unused_value
+    int next_state
 ) {
-    (void)unused_value;
     __syncthreads();
     const int child_count = ctx->generated_task_count;
     if (threadIdx.x == 0) {
@@ -36,7 +33,7 @@ __device__ __forceinline__ bool prepare_for_join_block(
         hdr->waiting_child_count = child_count;
 #endif
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("prepare_for_join_block: tid=%d child_count=%d\n", tid, child_count);
+        printf("prepare_for_join: tid=%d child_count=%d\n", tid, child_count);
 #endif
     }
     __syncthreads();
@@ -82,11 +79,8 @@ __device__ void finish_task(int tid, TaskContext* ctx) {
 __device__ __forceinline__ void* spawn_task(
     TaskContext* ctx,
     int self_tid,
-    int* child_count,
-    void (*func)(void*, int, TaskContext*),
-    int unused_value
+    void (*func)(void*, int, TaskContext*)
 ) {
-    (void)unused_value;
     const int new_tid = get_task_id_from_block_pool(
         &d_task_id_list_free_positions[blockIdx.x],
         &ctx->id_list_alloc_pos,
@@ -101,7 +95,6 @@ __device__ __forceinline__ void* spawn_task(
 #endif
 
     stage_task_id(ctx, new_tid);
-    (void)child_count;
     return get_task_data(new_tid);
 }
 

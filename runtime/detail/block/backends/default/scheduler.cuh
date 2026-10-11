@@ -178,10 +178,8 @@ __device__ __forceinline__ void push(
 // TODO: Clarify which of the block task ops and push_initial_task are thread 0
 // only and which run on every thread in the block.
 __device__ __forceinline__ void push_initial_task(
-    void (*func)(void*, int, TaskContext*),
-    int unused_value
+    void (*func)(void*, int, TaskContext*)
 ) {
-    (void)unused_value;
     constexpr int new_tid = 0;
     TaskHeader* const initial_hdr = &d_task_headers[new_tid];
     initial_hdr->func = func;

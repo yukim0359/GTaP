@@ -14,10 +14,10 @@ __device__ __forceinline__ int __gtap_get_task_state(int tid) {
     return gtap::detail::block::get_task_state(tid);
 }
 
-__device__ __forceinline__ bool __gtap_prepare_for_join_block(
-    int tid, gtap::detail::block::TaskContext* ctx, int next_state, int unused_value
+__device__ __forceinline__ bool __gtap_prepare_for_join(
+    int tid, gtap::detail::block::TaskContext* ctx, int next_state
 ) {
-    return gtap::detail::block::prepare_for_join_block(tid, ctx, next_state, unused_value);
+    return gtap::detail::block::prepare_for_join(tid, ctx, next_state);
 }
 
 __device__ void __gtap_finish_task(int tid, gtap::detail::block::TaskContext* ctx) {
@@ -27,18 +27,15 @@ __device__ void __gtap_finish_task(int tid, gtap::detail::block::TaskContext* ct
 __device__ __forceinline__ void* __gtap_spawn_task(
     gtap::detail::block::TaskContext* ctx,
     int self_tid,
-    int* child_count,
-    void (*func)(void*, int, gtap::detail::block::TaskContext*),
-    int unused_value
+    void (*func)(void*, int, gtap::detail::block::TaskContext*)
 ) {
-    return gtap::detail::block::spawn_task(ctx, self_tid, child_count, func, unused_value);
+    return gtap::detail::block::spawn_task(ctx, self_tid, func);
 }
 
 __device__ __forceinline__ void __gtap_push_initial_task(
-    void (*func)(void*, int, gtap::detail::block::TaskContext*),
-    int unused_value
+    void (*func)(void*, int, gtap::detail::block::TaskContext*)
 ) {
-    gtap::detail::block::push_initial_task(func, unused_value);
+    gtap::detail::block::push_initial_task(func);
 }
 
 __device__ __forceinline__ void* __gtap_get_task_data(int tid) {
