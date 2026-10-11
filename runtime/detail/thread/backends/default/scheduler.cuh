@@ -221,6 +221,8 @@ __device__ __forceinline__ void fill_execution_batch(
     }
 }
 
+// Selects tasks to execute directly next, publishes the remainder, and
+// clears staging.
 __device__ __forceinline__ void push_batch_single_queue(
     TaskContext* ctx,
     int* execute_task_id,

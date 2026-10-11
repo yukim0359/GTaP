@@ -7,6 +7,7 @@ namespace gtap::detail::thread {
 using namespace gtap::detail;
 
 struct TaskContext {
+    // Counts tasks staged since the last push, including parents resumed by notify_parent.
     int* generated_task_counts; // int[num_queues] for each warp
     int* queue_tails;           // int[num_queues] for each warp
     int* staged_task_ids;       // int[num_queues * warp_size] for each warp

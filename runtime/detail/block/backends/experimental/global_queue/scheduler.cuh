@@ -66,7 +66,8 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
     return pop_success;
 }
 
-// Push to global queue
+// Selects tasks to execute directly next, publishes the remainder, and
+// clears staging.
 template<TerminationMode M>
 __device__ __forceinline__ void push_global_queue(
     TaskContext* ctx,

@@ -266,6 +266,8 @@ __device__ __forceinline__ void stage_task_id(
         queue_idx, get_warp_id_global(), old_tail % capacity) = task_id;
 }
 
+// Selects tasks to execute directly next, publishes the remainder, and
+// clears staging.
 template<TerminationMode M>
 __device__ __forceinline__ void push_batch (
     TaskContext* ctx,

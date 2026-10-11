@@ -164,7 +164,8 @@ __device__ __forceinline__ void fill_execution_batch(
     }
 }
 
-// Push to global queue
+// Selects tasks to execute directly next, publishes the remainder, and
+// clears staging.
 template<TerminationMode M>
 __device__ __forceinline__ void push_global_queue(
     TaskContext* ctx,
