@@ -412,7 +412,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             copy_task_header(lane, execute_task_id, task_context);
             generation_before = static_cast<uint16_t>(
-                task_context->task_generations[lane]);
+                task_context->generations[lane]);
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING

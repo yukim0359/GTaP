@@ -31,67 +31,67 @@ __device__ __forceinline__ void stage_task_id(TaskContext* ctx, int task_id) {
     atomicAdd(&ctx->generated_task_count, 1);
 }
 
-__device__ __forceinline__ int pop(int* taskId) {
-    BlockTaskQueueMetadata* myQueue = &d_block_task_queue_metadata[blockIdx.x];
+__device__ __forceinline__ int pop(int* task_id) {
+    BlockTaskQueueMetadata* my_queue = &d_block_task_queue_metadata[blockIdx.x];
 
-    int b = myQueue->bottom - 1;
-    store_L2(&myQueue->bottom, b);
+    int b = my_queue->bottom - 1;
+    store_L2(&my_queue->bottom, b);
     __threadfence();
 
-    int t = load_L2(&myQueue->top);
+    int t = load_L2(&my_queue->top);
     int size = b - t;
 
     if (size < 0) {
-        store_L2(&myQueue->bottom, t);
-        *taskId = -1;
+        store_L2(&my_queue->bottom, t);
+        *task_id = -1;
         return false;
     }
 
-    int task_id = load_L2(block_queue_slot(
+    int loaded_task_id = load_L2(block_queue_slot(
         blockIdx.x, b % d_launch_config.queue_capacity));
 
     if (size > 0) {
-        *taskId = task_id;
+        *task_id = loaded_task_id;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-        printf("pop: %d in block %d\n", task_id, blockIdx.x);
+        printf("pop: %d in block %d\n", loaded_task_id, blockIdx.x);
 #endif
         return true;
     }
 
-    if (atomicCAS(&myQueue->top, t, t + 1) != t) {
-        *taskId = -1;
-        store_L2(&myQueue->bottom, t + 1);
+    if (atomicCAS(&my_queue->top, t, t + 1) != t) {
+        *task_id = -1;
+        store_L2(&my_queue->bottom, t + 1);
         return false;
     }
 
-    *taskId = task_id;
-    store_L2(&myQueue->bottom, t + 1);
+    *task_id = loaded_task_id;
+    store_L2(&my_queue->bottom, t + 1);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
-    printf("pop: %d in block %d\n", task_id, blockIdx.x);
+    printf("pop: %d in block %d\n", loaded_task_id, blockIdx.x);
 #endif
     return true;
 }
 
 template<TerminationMode M>
-__device__ __forceinline__ int steal(int* taskId, bool prev_get_task) {
-    int targetBlock = get_random_block_id(blockIdx.x);
-    BlockTaskQueueMetadata* targetBq = &d_block_task_queue_metadata[targetBlock];
+__device__ __forceinline__ int steal(int* task_id, bool prev_get_task) {
+    int target_block = get_random_block_id(blockIdx.x);
+    BlockTaskQueueMetadata* target_queue = &d_block_task_queue_metadata[target_block];
 
-    int t = load_L2(&targetBq->top);
+    int t = load_L2(&target_queue->top);
     __threadfence();
-    int b = load_L2(&targetBq->bottom);
+    int b = load_L2(&target_queue->bottom);
 
     int size = b - t;
     if (size <= 0) {
-        *taskId = -1;
+        *task_id = -1;
         return false;
     }
 
-    int task_id = load_L2(block_queue_slot(
-        targetBlock, t % d_launch_config.queue_capacity));
+    int loaded_task_id = load_L2(block_queue_slot(
+        target_block, t % d_launch_config.queue_capacity));
 
-    if (atomicCAS(&targetBq->top, t, t + 1) != t) {
-        *taskId = -1;
+    if (atomicCAS(&target_queue->top, t, t + 1) != t) {
+        *task_id = -1;
         return false;
     }
 
@@ -99,10 +99,10 @@ __device__ __forceinline__ int steal(int* taskId, bool prev_get_task) {
         if (!prev_get_task) atomicAdd(&d_active_block_count, 1);
     }
 
-    *taskId = task_id;
+    *task_id = loaded_task_id;
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
     printf("steal: %d from block %d to block %d\n",
-           task_id, targetBlock, blockIdx.x);
+           loaded_task_id, target_block, blockIdx.x);
 #endif
     return true;
 }
@@ -133,7 +133,7 @@ __device__ __forceinline__ void push(
     int* execute_task_id,
     bool* have_execute_task
 ) {
-    BlockTaskQueueMetadata* myQueue = &d_block_task_queue_metadata[blockIdx.x];
+    BlockTaskQueueMetadata* my_queue = &d_block_task_queue_metadata[blockIdx.x];
 
 #ifdef GTAP_ASSUME_NO_TASKWAIT
     int publish_bottom = ctx->queue_bottom;
@@ -181,7 +181,7 @@ __device__ __forceinline__ void push(
             ctx->task_id_resumable != -1 || ctx->generated_task_count > 0;
         ctx->task_id_resumable = -1;
 #endif
-        store_L2(&myQueue->bottom, publish_bottom);
+        store_L2(&my_queue->bottom, publish_bottom);
         ctx->generated_task_count = 0;
     }
 }

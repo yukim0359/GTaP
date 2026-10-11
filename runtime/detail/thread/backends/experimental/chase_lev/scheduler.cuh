@@ -62,14 +62,14 @@ __device__ __forceinline__ int pop_single_chase_lev(
 // Sequential pop using chase-lev (repeats single pops)
 __device__ __forceinline__ int pop_chase_lev(int* execute_task_id, int max_count_to_pop, int queue_idx) {
     int lane = get_lane_id();
-    WarpTaskQueueMetadata* myQueue = warp_queue_metadata(queue_idx, get_warp_id_global());
+    WarpTaskQueueMetadata* my_queue = warp_queue_metadata(queue_idx, get_warp_id_global());
     int pop_count = 0;
 
     for (int i = 0; i < max_count_to_pop; i++) {
         int task_id = -1;
         if (lane == 0) {
             task_id = pop_single_chase_lev(
-                myQueue, queue_idx, get_warp_id_global());
+                my_queue, queue_idx, get_warp_id_global());
         }
         task_id = __shfl_sync(0xFFFFFFFFu, task_id, 0);
 
@@ -118,24 +118,24 @@ __device__ __forceinline__ int steal_chase_lev(int* execute_task_id, int max_cou
     int warp_id_global = get_warp_id_global();
     int lane = get_lane_id();
     int target_warp_id_global = 0;
-    WarpTaskQueueMetadata* targetWq = nullptr;
+    WarpTaskQueueMetadata* target_queue = nullptr;
     int steal_count = 0;
     bool active_count_incremented = false;
 
     // Select a random victim (lane 0 only)
     if (lane == 0) {
         target_warp_id_global = get_random_warp_id_global(warp_id_global);
-        targetWq = warp_queue_metadata(queue_idx, target_warp_id_global);
+        target_queue = warp_queue_metadata(queue_idx, target_warp_id_global);
     }
     target_warp_id_global = __shfl_sync(0xFFFFFFFFu, target_warp_id_global, 0);
-    targetWq = warp_queue_metadata(queue_idx, target_warp_id_global);
+    target_queue = warp_queue_metadata(queue_idx, target_warp_id_global);
 
     // Sequential steals using chase-lev
     for (int i = 0; i < max_count_to_steal; i++) {
         int task_id = -1;
         if (lane == 0) {
             task_id = steal_single_chase_lev(
-                targetWq, queue_idx, target_warp_id_global);
+                target_queue, queue_idx, target_warp_id_global);
         }
         task_id = __shfl_sync(0xFFFFFFFFu, task_id, 0);
 
@@ -511,7 +511,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             copy_task_header(lane, execute_task_id, task_context);
             generation_before = static_cast<uint16_t>(
-                task_context->task_generations[lane]);
+                task_context->generations[lane]);
 #endif
             // __syncwarp(active_mask);
 

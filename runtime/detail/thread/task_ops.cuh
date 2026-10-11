@@ -40,8 +40,8 @@ __device__ __forceinline__ bool prepare_for_join(int tid, int child_count, int n
 }
 
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-__device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
-    TaskHeader* const parent_hdr = &d_task_headers[parentId];
+__device__ __forceinline__ int notify_parent(int parent_tid, TaskContext* ctx) {
+    TaskHeader* const parent_hdr = &d_task_headers[parent_tid];
     // Fence before the decrement. Another worker can bring waiting_child_count
     // to zero and resume the parent before this worker's global stores are
     // visible.
@@ -49,11 +49,11 @@ __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
     const int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
     const int lane = get_lane_id();
-    printf("notify_parent: %d (remaining child count: %d) in lane %d of warp %d of block %d\n", parentId, rem, lane, get_warp_id_in_block(), blockIdx.x);
+    printf("notify_parent: %d (remaining child count: %d) in lane %d of warp %d of block %d\n", parent_tid, rem, lane, get_warp_id_in_block(), blockIdx.x);
 #endif
     if (rem == 1) {
         const int parent_queue_idx = load_L2(&parent_hdr->queue_idx);
-        stage_task_id(ctx, parent_queue_idx, parentId);
+        stage_task_id(ctx, parent_queue_idx, parent_tid);
     }
     return rem;
 }
@@ -68,8 +68,8 @@ __device__ __forceinline__ void finish_task(int tid, TaskContext* ctx) {
     (void)ctx;
 #else
     const int lane = get_lane_id();
-    const int parent_tid = ctx->task_parent_tids[lane];
-    const uint32_t cached_generations = ctx->task_generations[lane];
+    const int parent_tid = ctx->parent_tids[lane];
+    const uint32_t cached_generations = ctx->generations[lane];
     const uint16_t generation = static_cast<uint16_t>(cached_generations);
     const uint16_t parent_generation =
         static_cast<uint16_t>(cached_generations >> 16);
@@ -77,7 +77,7 @@ __device__ __forceinline__ void finish_task(int tid, TaskContext* ctx) {
     d_task_headers[tid].generation = next_generation;
     // prepare_for_join leaves the low half unchanged, so the execute loop can
     // tell a finished task from one that suspended at taskwait.
-    ctx->task_generations[lane] =
+    ctx->generations[lane] =
         (cached_generations & 0xffff0000u) | next_generation;
 
     if (tid != 0 &&
@@ -122,7 +122,7 @@ __device__ __forceinline__ void* spawn_task(
     const int lane = get_lane_id();
     new_hdr->parent_tid = self_tid;
     new_hdr->parent_generation =
-        static_cast<uint16_t>(ctx->task_generations[lane]);
+        static_cast<uint16_t>(ctx->generations[lane]);
     new_hdr->state = 0;
     new_hdr->waiting_child_count = 0;
     (*child_count)++;

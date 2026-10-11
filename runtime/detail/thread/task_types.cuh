@@ -16,8 +16,8 @@ struct TaskContext {
     // TODO: Task functions do not read queue_idx. Move it to its own per-warp shared slot.
     int queue_idx;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
-    int task_parent_tids[warp_size];
-    uint32_t task_generations[warp_size];
+    int parent_tids[warp_size];
+    uint32_t generations[warp_size];
 #endif
 };
 

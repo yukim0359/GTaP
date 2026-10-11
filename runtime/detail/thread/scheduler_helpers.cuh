@@ -52,7 +52,7 @@ __device__ __forceinline__ void record_execution_end(
 }
 #endif
 
-// finish_task advances the low half of task_generations[lane] only when the
+// finish_task advances the low half of generations[lane] only when the
 // task finishes. A taskwait suspension leaves it unchanged. Every lane calls
 // this after the execute loop's threadfence.
 __device__ __forceinline__ void release_task_ids(
@@ -69,7 +69,7 @@ __device__ __forceinline__ void release_task_ids(
 #else
     const bool returns_id =
         lane < execute_task_count &&
-        static_cast<uint16_t>(task_context->task_generations[lane]) !=
+        static_cast<uint16_t>(task_context->generations[lane]) !=
             generation_before;
 #endif
     const unsigned mask = __ballot_sync(0xffffffffu, returns_id);
@@ -96,8 +96,8 @@ __device__ __forceinline__ void copy_task_header(
     TaskContext* task_context
 ) {
     TaskHeader* src_hdr = &d_task_headers[execute_task_id];
-    task_context->task_parent_tids[lane] = load_L2(&src_hdr->parent_tid);
-    task_context->task_generations[lane] =
+    task_context->parent_tids[lane] = load_L2(&src_hdr->parent_tid);
+    task_context->generations[lane] =
         load_L2(reinterpret_cast<unsigned int*>(&src_hdr->generation));
 }
 #endif

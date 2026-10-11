@@ -46,14 +46,14 @@ __device__ __forceinline__ void stage_task_id(TaskContext* ctx, int queue_idx, i
 
 __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_pop, int* tail, int queue_idx) {
     int lane = get_lane_id();
-    WarpTaskQueueMetadata* myQueue = warp_queue_metadata_ptr(queue_idx, get_warp_id_global());
+    WarpTaskQueueMetadata* my_queue = warp_queue_metadata_ptr(queue_idx, get_warp_id_global());
     int pop_count = 0;
     if (lane == 0) {
         while (true) {
-            int old_queue_count = load_L2(&myQueue->count);
+            int old_queue_count = load_L2(&my_queue->count);
             if (old_queue_count <= 0) break;
             int claim = min(max_count_to_pop, old_queue_count);
-            if (atomicCAS(&myQueue->count, old_queue_count, old_queue_count - claim) == old_queue_count) {
+            if (atomicCAS(&my_queue->count, old_queue_count, old_queue_count - claim) == old_queue_count) {
                 pop_count = claim;
                 *tail -= claim;
                 break;
@@ -82,41 +82,41 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
     int target_warp_id_global = 0;
     int old_head = 0;
     int steal_count = 0;
-    WarpTaskQueueMetadata* targetWq = nullptr;
+    WarpTaskQueueMetadata* target_queue = nullptr;
     if (lane == 0) {
         unsigned lock_backoff_ns = 32;
         while (true) {
             target_warp_id_global = get_random_warp_id_global(warp_id_global);
-            targetWq = warp_queue_metadata_ptr(queue_idx, target_warp_id_global);
-            if (atomicCAS(&targetWq->lock, 0, 1) == 0) break;
+            target_queue = warp_queue_metadata_ptr(queue_idx, target_warp_id_global);
+            if (atomicCAS(&target_queue->lock, 0, 1) == 0) break;
             __nanosleep(lock_backoff_ns);
             if (lock_backoff_ns < (1u << 12)) {
                 lock_backoff_ns <<= 1u;
             }
         }
         while (true) {
-            int old_queue_count = load_L2(&targetWq->count);
+            int old_queue_count = load_L2(&target_queue->count);
             if (old_queue_count <= 0) break;
             int claim = min(max_count_to_steal, old_queue_count);
-            if (atomicCAS(&targetWq->count, old_queue_count, old_queue_count - claim) == old_queue_count) {
+            if (atomicCAS(&target_queue->count, old_queue_count, old_queue_count - claim) == old_queue_count) {
                 if (M == TERMINATE_ON_ALL_TASKS_FINISH) {
                     if (!prev_get_task) atomicAdd(&d_active_warp_count, 1);
                 }
                 steal_count = claim;
-                old_head = load_L2(&targetWq->head);
+                old_head = load_L2(&target_queue->head);
                 break;
             }
         }
     }
     steal_count = __shfl_sync(0xFFFFFFFFu, steal_count, 0);
     if (steal_count == 0) {
-        if (lane == 0) atomicExch(&targetWq->lock, 0);
+        if (lane == 0) atomicExch(&target_queue->lock, 0);
         return 0;
     }
     target_warp_id_global = __shfl_sync(0xFFFFFFFFu, target_warp_id_global, 0);
     old_head = __shfl_sync(0xFFFFFFFFu, old_head, 0);
     if (lane >= warp_size - max_count_to_steal && lane < warp_size - max_count_to_steal + steal_count) {
-        targetWq = warp_queue_metadata_ptr(queue_idx, target_warp_id_global);
+        target_queue = warp_queue_metadata_ptr(queue_idx, target_warp_id_global);
         int steal_task_id = load_L2(warp_queue_slot_ptr(
             queue_idx,
             target_warp_id_global,
@@ -133,9 +133,9 @@ __device__ __forceinline__ int steal_batch(int* execute_task_id, int max_count_t
     }
     __syncwarp();
     if (lane == 0) {
-        targetWq->head = old_head + steal_count;
+        target_queue->head = old_head + steal_count;
         __threadfence();
-        atomicExch(&targetWq->lock, 0);
+        atomicExch(&target_queue->lock, 0);
     }
     return steal_count;
 }
@@ -505,7 +505,7 @@ __device__ __forceinline__ void execute_task_loop() {
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             copy_task_header(lane, execute_task_id, task_context);
             generation_before = static_cast<uint16_t>(
-                task_context->task_generations[lane]);
+                task_context->generations[lane]);
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING

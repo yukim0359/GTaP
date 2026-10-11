@@ -46,8 +46,8 @@ __device__ __forceinline__ bool prepare_for_join(
 
 #ifndef GTAP_ASSUME_NO_TASKWAIT
 // Called only from finish_task's thread 0 path.
-__device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
-    TaskHeader* const parent_hdr = &d_task_headers[parentId];
+__device__ __forceinline__ int notify_parent(int parent_tid, TaskContext* ctx) {
+    TaskHeader* const parent_hdr = &d_task_headers[parent_tid];
     // Fence before the decrement. Another worker can bring waiting_child_count
     // to zero and resume the parent before this worker's global stores are
     // visible.
@@ -55,10 +55,10 @@ __device__ __forceinline__ int notify_parent(int parentId, TaskContext* ctx) {
     const int rem = atomicSub(&parent_hdr->waiting_child_count, 1);
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
     printf("notify_parent: %d (remaining child count: %d) in block %d\n",
-           parentId, rem, blockIdx.x);
+           parent_tid, rem, blockIdx.x);
 #endif
     if (rem == 1) {
-        ctx->task_id_resumable = parentId;
+        ctx->task_id_resumable = parent_tid;
     }
     return rem;
 }
