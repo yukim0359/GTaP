@@ -210,20 +210,34 @@ std::vector<int> load_array(const char* filename, size_t& n) {
 int main(int argc, char** argv) {
     size_t N = 100000000;
     std::vector<int> h;
+    const char* reference_file = nullptr;
     if (argc >= 2) {
         const char* data_file = argv[1];
         h = load_array(data_file, N);
         if (h.empty()) return 1;
         printf("Loaded %zu elements from %s\n", N, data_file);
+        if (argc >= 3) reference_file = argv[2];
     } else {
         std::mt19937 rng(12345);
         h.resize(N);
         for (size_t i = 0; i < N; ++i) h[i] = static_cast<int>(rng());
-        printf("Generated %zu random elements (use %s <file> for custom data)\n", N, argv[0]);
+        printf("Generated %zu random elements (use %s <file> [reference] for custom data)\n", N, argv[0]);
     }
 
-    std::vector<int> gold = h;
-    std::sort(gold.begin(), gold.end());
+    std::vector<int> gold;
+    if (reference_file) {
+        size_t ref_n = 0;
+        gold = load_array(reference_file, ref_n);
+        if (gold.empty()) return 1;
+        if (ref_n != N) {
+            fprintf(stderr, "Error: Reference file size mismatch\n");
+            return 1;
+        }
+        printf("Loaded %zu reference elements from %s\n", ref_n, reference_file);
+    } else {
+        gold = h;
+        std::sort(gold.begin(), gold.end());
+    }
 
     gtap_thread_config config{
         .grid_size = 3000,

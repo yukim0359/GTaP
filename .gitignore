@@ -31,6 +31,7 @@ tmp*
 # Generated utility programs and data
 gen_vector
 data.bin
+data.sorted.bin
 gen_spm
 spm_data.bin
 gen_spm_skew
