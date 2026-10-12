@@ -9,7 +9,18 @@
 #include "gtap_thread.cuh"
 #include "cilksort_options.hpp"
 
-using gtap::detail::load_L2;
+#ifndef GTAP_BENCH_GRID_SIZE
+#define GTAP_BENCH_GRID_SIZE 3000
+#endif
+#ifndef GTAP_BENCH_BLOCK_SIZE
+#define GTAP_BENCH_BLOCK_SIZE 32
+#endif
+#ifndef GTAP_BENCH_MAX_TASKS_PER_WARP
+#define GTAP_BENCH_MAX_TASKS_PER_WARP 150000
+#endif
+#ifndef GTAP_BENCH_NUM_QUEUES
+#define GTAP_BENCH_NUM_QUEUES 1
+#endif
 
 #define TASK_SPAWN_CUTOFF_SORT 64
 #define TASK_SPAWN_CUTOFF_MERGE 256
@@ -21,8 +32,8 @@ __device__ int* g_buf;
 __device__ __forceinline__ void merge_device(int* a, int a_len, int* b, int b_len, int* dst) {
     int i = 0, j = 0, ti = 0;
     while (i < a_len && j < b_len) {
-        int a_val = load_L2(&a[i]);
-        int b_val = load_L2(&b[j]);
+        int a_val = a[i];
+        int b_val = b[j];
         if (a_val < b_val) {
             dst[ti++] = a_val;
             i++;
@@ -32,10 +43,10 @@ __device__ __forceinline__ void merge_device(int* a, int a_len, int* b, int b_le
         }
     }
     while (i < a_len) {
-        dst[ti++] = load_L2(&a[i++]);
+        dst[ti++] = a[i++];
     }
     while (j < b_len) {
-        dst[ti++] = load_L2(&b[j++]);
+        dst[ti++] = b[j++];
     }
 }
 
@@ -45,7 +56,7 @@ __device__ __forceinline__ int binary_search_device(int* x, int len, int val) {
     int high = len;
     while (low + 1 < high) {
         int mid = (low + high) / 2;
-        int mid_val = load_L2(&x[mid]);
+        int mid_val = x[mid];
         if (mid_val <= val) low = mid;
         else high = mid;
     }
@@ -58,7 +69,7 @@ __device__ __forceinline__ void sort_small_device(int* arr, int n) {
     #pragma unroll
     for (int i = 0; i < TASK_SPAWN_CUTOFF_SORT; ++i) {
         if (i < n) {
-            buf[i] = load_L2(&arr[i]);
+            buf[i] = arr[i];
         } else {
             buf[i] = INT_MAX;
         }
@@ -103,7 +114,7 @@ __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
         // Copy a to dst if a_len > 0
         if (a_len > 0) {
             for (int i = 0; i < a_len; i++) {
-                dst[i] = load_L2(&a[i]);
+                dst[i] = a[i];
             }
             // printf("cilkmerge: a_len = %d\n", a_len);
         }
@@ -119,7 +130,7 @@ __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
 
     // Parallel merge: split and recurse
     int a_split = (a_len + 1) / 2;
-    int b_split = binary_search_device(b, b_len, load_L2(&a[a_split - 1])) + 1;
+    int b_split = binary_search_device(b, b_len, a[a_split - 1]) + 1;
 
     #pragma gtap task
     cilkmerge(a, a_split, b, b_split, dst);

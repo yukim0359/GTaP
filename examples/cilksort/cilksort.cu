@@ -7,8 +7,6 @@
 #include <cuda_runtime.h>
 #include "gtap_thread.cuh"
 
-using gtap::detail::load_L2;
-
 #define TASK_SPAWN_CUTOFF_SORT 64
 #define TASK_SPAWN_CUTOFF_MERGE 256
 
@@ -19,8 +17,8 @@ __device__ int* g_buf;
 __device__ __forceinline__ void merge_device(int* a, int a_len, int* b, int b_len, int* dst) {
     int i = 0, j = 0, ti = 0;
     while (i < a_len && j < b_len) {
-        int a_val = load_L2(&a[i]);
-        int b_val = load_L2(&b[j]);
+        int a_val = a[i];
+        int b_val = b[j];
         if (a_val < b_val) {
             dst[ti++] = a_val;
             i++;
@@ -30,10 +28,10 @@ __device__ __forceinline__ void merge_device(int* a, int a_len, int* b, int b_le
         }
     }
     while (i < a_len) {
-        dst[ti++] = load_L2(&a[i++]);
+        dst[ti++] = a[i++];
     }
     while (j < b_len) {
-        dst[ti++] = load_L2(&b[j++]);
+        dst[ti++] = b[j++];
     }
 }
 
@@ -43,7 +41,7 @@ __device__ __forceinline__ int binary_search_device(int* x, int len, int val) {
     int high = len;
     while (low + 1 < high) {
         int mid = (low + high) / 2;
-        int mid_val = load_L2(&x[mid]);
+        int mid_val = x[mid];
         if (mid_val <= val) low = mid;
         else high = mid;
     }
@@ -56,7 +54,7 @@ __device__ __forceinline__ void sort_small_device(int* arr, int n) {
     #pragma unroll
     for (int i = 0; i < TASK_SPAWN_CUTOFF_SORT; ++i) {
         if (i < n) {
-            buf[i] = load_L2(&arr[i]);
+            buf[i] = arr[i];
         } else {
             buf[i] = INT_MAX;
         }
@@ -101,7 +99,7 @@ __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
         // Copy a to dst if a_len > 0
         if (a_len > 0) {
             for (int i = 0; i < a_len; i++) {
-                dst[i] = load_L2(&a[i]);
+                dst[i] = a[i];
             }
         }
         __threadfence();
@@ -116,7 +114,7 @@ __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
 
     // Parallel merge: split and recurse
     int a_split = (a_len + 1) / 2;
-    int b_split = binary_search_device(b, b_len, load_L2(&a[a_split - 1])) + 1;
+    int b_split = binary_search_device(b, b_len, a[a_split - 1]) + 1;
 
     #pragma gtap task
     cilkmerge(a, a_split, b, b_split, dst);
@@ -242,7 +240,7 @@ int main(int argc, char** argv) {
     gtap_thread_config config{
         .grid_size = 3000,
         .block_size = 32,
-        .max_tasks_per_warp = 100000,
+        .max_tasks_per_warp = 150000,
         .num_queues = 1,
     };
     cudaError_t err = gtap_initialize(config);
