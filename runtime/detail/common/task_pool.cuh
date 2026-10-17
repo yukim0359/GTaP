@@ -21,4 +21,14 @@ __device__ __forceinline__ int unpack_task_id_slot(int packed) {
     return static_cast<int>(static_cast<unsigned>(packed) & 0x7fffffffu);
 }
 
+__host__ __device__ __forceinline__ int max_safe_release_ticket(
+    int alloc_pos,
+    int pool_size
+) {
+    // Borrows below pool_size take a static tid and never read the ring, so the
+    // first recycle lap (tickets pool_size .. 2*pool_size-1) is always safe.
+    const int covered = alloc_pos > pool_size ? alloc_pos : pool_size;
+    return pool_size - 1 + covered;
+}
+
 }  // namespace gtap::detail

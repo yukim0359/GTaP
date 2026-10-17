@@ -436,7 +436,8 @@ __device__ __forceinline__ void execute_task_loop() {
         __syncwarp();
 #endif
         release_task_ids(
-            lane, execute_task_count, execute_task_id
+            lane, execute_task_count, execute_task_id,
+            task_context->id_list_alloc_pos
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             , generation_before, task_context
 #endif

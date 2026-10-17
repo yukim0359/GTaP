@@ -58,7 +58,8 @@ __device__ __forceinline__ void record_execution_end(
 __device__ __forceinline__ void release_task_ids(
     int lane,
     int execute_task_count,
-    int executed_tid
+    int executed_tid,
+    int alloc_pos
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     , uint16_t generation_before
     , const TaskContext* task_context
@@ -69,23 +70,36 @@ __device__ __forceinline__ void release_task_ids(
 #else
     const bool returns_id =
         lane < execute_task_count &&
-        static_cast<uint16_t>(task_context->generations[lane]) !=
-            generation_before;
+        static_cast<uint16_t>(task_context->generations[lane]) != generation_before;
 #endif
     const unsigned mask = __ballot_sync(0xffffffffu, returns_id);
     if (mask == 0) return;
 
     const int leader = __ffs(mask) - 1;
     int base = 0;
+    int publish_count = 0;
     if (lane == leader) {
-        base = atomicAdd(
-            &d_task_id_list_free_positions[get_warp_id_global()], __popc(mask));
+        const int pool_size = d_launch_config.tasks_per_scheduling_unit;
+        int* const free_pos_ptr =
+            &d_task_id_list_free_positions[get_warp_id_global()];
+        const int free_pos = load_L2(free_pos_ptr);
+        const int max_safe_ticket =
+            max_safe_release_ticket(alloc_pos, pool_size);
+        int releasable_count = max_safe_ticket - free_pos + 1;
+        if (releasable_count < 0) releasable_count = 0;
+        const int id_count_to_return = __popc(mask);
+        publish_count = releasable_count < id_count_to_return ? releasable_count : id_count_to_return;
+        if (publish_count > 0) {
+            base = atomicAdd(free_pos_ptr, publish_count);
+        }
     }
     base = __shfl_sync(0xffffffffu, base, leader);
+    publish_count = __shfl_sync(0xffffffffu, publish_count, leader);
     if (!returns_id) return;
 
-    const int ticket = base + __popc(mask & ((1u << lane) - 1u));
-    release_task_id_to_warp_pool(executed_tid, ticket);
+    const int tids_before_this_lane = __popc(mask & ((1u << lane) - 1u));
+    if (tids_before_this_lane >= publish_count) return;
+    release_task_id_to_warp_pool(executed_tid, base + tids_before_this_lane);
 }
 
 #ifndef GTAP_ASSUME_NO_TASKWAIT
