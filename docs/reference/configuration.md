@@ -68,15 +68,10 @@ struct gtap_block_config {
 Task capacity is allocated to each CUDA thread block. `dynamic_shared_bytes`
 specifies the dynamic shared memory supplied to each block.
 
-## `gtap_validate_config`
+## Accepted configurations
 
-Validates a configuration without allocating runtime resources or changing
-the GTaP initialization state.
-
-```cpp
-cudaError_t gtap_validate_config(const gtap_thread_config& config);
-cudaError_t gtap_validate_config(const gtap_block_config& config);
-```
+[`gtap_initialize`](./runtime-functions#gtap-initialize) rejects a configuration
+before it allocates runtime resources.
 
 Both modes require:
 
@@ -91,9 +86,8 @@ Thread mode additionally requires:
 - `num_queues > 0`
 - `max_tasks_per_warp % num_queues == 0`
 
-The function returns `cudaSuccess` for a valid configuration,
-`cudaErrorInvalidConfiguration` for invalid launch geometry, and
-`cudaErrorInvalidValue` for invalid task, queue, or profile capacities.
+Invalid launch geometry returns `cudaErrorInvalidConfiguration`. An invalid
+task, queue, or profile capacity returns `cudaErrorInvalidValue`.
 
 ## Compile-time settings
 

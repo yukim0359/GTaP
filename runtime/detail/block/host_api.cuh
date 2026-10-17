@@ -16,7 +16,9 @@ struct gtap_block_config {
     cudaStream_t stream = nullptr;
 };
 
-inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
+namespace gtap::detail {
+
+inline cudaError_t validate_config(const gtap_block_config& config) {
     if (config.grid_size <= 0 ||
         config.block_size <= 0 ||
         config.block_size > GTAP_MAX_THREADS_PER_BLOCK ||
@@ -35,6 +37,8 @@ inline cudaError_t gtap_validate_config(const gtap_block_config& config) {
     return cudaSuccess;
 }
 
+}  // namespace gtap::detail
+
 inline cudaError_t gtap_initialize(
     const gtap_block_config& config,
     size_t* device_bytes_allocated = nullptr
@@ -49,7 +53,7 @@ inline cudaError_t gtap_initialize(
     const gtap_block_config& config,
     size_t* device_bytes_allocated
 ) {
-    cudaError_t validation = gtap_validate_config(config);
+    cudaError_t validation = gtap::detail::validate_config(config);
     if (validation != cudaSuccess) return validation;
     if (gtap::detail::h_runtime_initialized) return cudaErrorInitializationError;
 
