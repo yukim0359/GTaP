@@ -25,6 +25,12 @@ inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
         config.block_size % gtap::detail::warp_size != 0) {
         return cudaErrorInvalidConfiguration;
     }
+    const long long scheduling_units =
+        static_cast<long long>(config.grid_size) *
+        (config.block_size / gtap::detail::warp_size);
+    if (scheduling_units > INT_MAX) {
+        return cudaErrorInvalidConfiguration;
+    }
     if (config.max_tasks_per_warp <= 0 ||
         config.num_queues <= 0 ||
         config.max_tasks_per_warp % config.num_queues != 0) {
