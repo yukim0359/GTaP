@@ -56,6 +56,10 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
     const int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     const int tasks_per_block = d_launch_config.tasks_per_scheduling_unit;
 #ifdef GTAP_ENABLE_PROFILING
+    // TODO: A return from another block can land between the alloc_pos update
+    // and this free_pos load, so the sampled count can miss the peak. atomicMax
+    // cannot recover a value that was never recorded. An exact peak needs the
+    // allocation and the return to update one consistent count.
     const int unreturned_id_count =
         (old_alloc + 1) + tasks_per_block - load_L2(id_list_free_pos);
     record_unreturned_id_count(blockIdx.x, unreturned_id_count);

@@ -228,6 +228,9 @@ __device__ __forceinline__ void initialize_loop(
 #endif
         if (blockIdx.x == 0) {
             task_context->id_list_alloc_pos = 1;
+#ifdef GTAP_ENABLE_PROFILING
+            record_unreturned_id_count(blockIdx.x, 1);
+#endif
             *prev_get_task = true;
         } else {
             task_context->id_list_alloc_pos = 0;

@@ -320,6 +320,9 @@ __device__ __forceinline__ void initialize_loop(
         }
         if (warp_id_global == 0) {
             task_context->id_list_alloc_pos = 1;
+#ifdef GTAP_ENABLE_PROFILING
+            record_unreturned_id_count(warp_id_global, 1);
+#endif
         } else {
             task_context->id_list_alloc_pos = 0;
         }

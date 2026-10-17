@@ -409,6 +409,9 @@ __device__ __forceinline__ void initialize_loop(
         }
         if (warp_id_global == 0) {
             task_context->id_list_alloc_pos = 1;
+#ifdef GTAP_ENABLE_PROFILING
+            record_unreturned_id_count(warp_id_global, 1);
+#endif
             WarpTaskQueueMetadata* q = warp_queue_metadata_ptr(0, 0);
             store_L2(&q->count, 1);
             queue_tails[0] = 1;
