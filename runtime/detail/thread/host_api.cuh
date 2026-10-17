@@ -30,21 +30,6 @@ inline cudaError_t gtap_validate_config(const gtap_thread_config& config) {
         config.max_tasks_per_warp % config.num_queues != 0) {
         return cudaErrorInvalidValue;
     }
-    // init_warp_id_pools_metadata is launched with one block per warp, so the
-    // warp count must fit in the device's maximum grid dimension.
-    int device = 0;
-    cudaError_t device_status = cudaGetDevice(&device);
-    if (device_status != cudaSuccess) return device_status;
-    int max_grid_dim_x = 0;
-    device_status = cudaDeviceGetAttribute(
-        &max_grid_dim_x, cudaDevAttrMaxGridDimX, device);
-    if (device_status != cudaSuccess) return device_status;
-    const long long scheduling_units =
-        static_cast<long long>(config.grid_size) *
-        (config.block_size / gtap::detail::warp_size);
-    if (scheduling_units > max_grid_dim_x) {
-        return cudaErrorInvalidConfiguration;
-    }
 #ifdef GTAP_ENABLE_PROFILING
     if (config.profile_capacity_per_warp <= 0 ||
         config.profile_capacity_per_warp > INT_MAX / 2) {

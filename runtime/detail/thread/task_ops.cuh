@@ -110,11 +110,9 @@ __device__ __forceinline__ void* spawn_task(
         GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(
             self_tid, child_queue_idx, d_launch_config.num_queues);
     }
-    const int warp_id_global = get_warp_id_global();
     const int new_tid = get_task_id_from_warp_pool(
-        &d_task_id_list_free_positions[warp_id_global],
-        &ctx->id_list_alloc_pos,
-        &ctx->id_list_free_pos_stale);
+        &ctx->id_list_free_pos,
+        &ctx->id_list_alloc_pos);
     TaskHeader* const new_hdr = &d_task_headers[new_tid];
     new_hdr->func = func;
     new_hdr->queue_idx = child_queue_idx;

@@ -59,7 +59,8 @@ __device__ __forceinline__ void release_task_ids(
     int lane,
     int execute_task_count,
     int executed_tid,
-    int alloc_pos
+    int alloc_pos,
+    int* free_pos_ptr
 #ifndef GTAP_ASSUME_NO_TASKWAIT
     , uint16_t generation_before
     , const TaskContext* task_context
@@ -80,9 +81,7 @@ __device__ __forceinline__ void release_task_ids(
     int publish_count = 0;
     if (lane == leader) {
         const int pool_size = d_launch_config.tasks_per_scheduling_unit;
-        int* const free_pos_ptr =
-            &d_task_id_list_free_positions[get_warp_id_global()];
-        const int free_pos = load_L2(free_pos_ptr);
+        const int free_pos = *free_pos_ptr;
         const int max_safe_ticket =
             max_safe_release_ticket(alloc_pos, pool_size);
         int releasable_count = max_safe_ticket - free_pos + 1;
@@ -90,7 +89,8 @@ __device__ __forceinline__ void release_task_ids(
         const int id_count_to_return = __popc(mask);
         publish_count = releasable_count < id_count_to_return ? releasable_count : id_count_to_return;
         if (publish_count > 0) {
-            base = atomicAdd(free_pos_ptr, publish_count);
+            base = free_pos;
+            *free_pos_ptr = free_pos + publish_count;
         }
     }
     base = __shfl_sync(0xffffffffu, base, leader);

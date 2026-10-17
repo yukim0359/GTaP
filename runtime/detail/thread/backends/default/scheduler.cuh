@@ -401,7 +401,7 @@ __device__ __forceinline__ void initialize_loop(
         task_context->staged_task_ids =
             reinterpret_cast<int*>(dynamic_shared + layout.staged_task_ids) +
             warp_id_in_block * d_launch_config.num_queues * warp_size;
-        task_context->id_list_free_pos_stale =
+        task_context->id_list_free_pos =
             d_launch_config.tasks_per_scheduling_unit;
         for (int k = 0; k < d_launch_config.num_queues; ++k) {
             task_context->generated_task_counts[k] = 0;
@@ -530,7 +530,8 @@ __device__ __forceinline__ void execute_task_loop() {
 #endif
         release_task_ids(
             lane, execute_task_count, execute_task_id,
-            task_context->id_list_alloc_pos
+            task_context->id_list_alloc_pos,
+            &task_context->id_list_free_pos
 #ifndef GTAP_ASSUME_NO_TASKWAIT
             , generation_before, task_context
 #endif

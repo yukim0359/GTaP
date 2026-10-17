@@ -108,27 +108,6 @@ cudaError_t initialize_runtime() {
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     printf("  cudaMemcpyToSymbol(d_active_warp_count): %.3f ms\n", elapsed);
-#endif
-
-#ifdef GTAP_INTERNAL_PROFILE_INIT
-    cudaEventRecord(start, stream);
-#endif
-    init_warp_id_pools_metadata<<<
-        runtime_config.total_scheduling_units, 1, 0, stream>>>();
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaGetLastError(),
-        abandon_initialize(&queues, &task_pool, &profile));
-#ifdef GTAP_INTERNAL_PROFILE_INIT
-    cudaEventRecord(stop, stream);
-#endif
-    // TODO: cudaDeviceSynchronize waits for every stream.
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaDeviceSynchronize(),
-        abandon_initialize(&queues, &task_pool, &profile));
-#ifdef GTAP_INTERNAL_PROFILE_INIT
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&elapsed, start, stop);
-    printf("  init_warp_id_pools_metadata kernel: %.3f ms\n", elapsed);
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
     printf("=== initialize_runtime profiling complete ===\n\n");
@@ -165,11 +144,6 @@ cudaError_t reset_runtime() {
 
     GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(runtime_config, stream));
     GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
-
-    init_warp_id_pools_metadata<<<
-        runtime_config.total_scheduling_units, 1, 0, stream>>>();
-    // TODO: cudaDeviceSynchronize waits for every stream.
-    GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
     return cudaGetLastError();
 }
 

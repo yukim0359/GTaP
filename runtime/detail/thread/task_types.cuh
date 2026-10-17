@@ -12,7 +12,7 @@ struct TaskContext {
     int* queue_tails;           // int[num_queues] for each warp
     int* staged_task_ids;       // int[num_queues * warp_size] for each warp
     int id_list_alloc_pos;
-    int id_list_free_pos_stale;
+    int id_list_free_pos;
     // TODO: Task functions do not read queue_idx. Move it to its own per-warp shared slot.
     int queue_idx;
 #ifndef GTAP_ASSUME_NO_TASKWAIT
