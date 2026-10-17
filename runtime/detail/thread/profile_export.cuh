@@ -29,8 +29,12 @@ static inline gtap_profile_export_result gtap_export_profile(
         sizeof(long long) * warps * gtap::detail::profile_timestamp_capacity()));
     int* task_counts = static_cast<int*>(malloc(
         sizeof(int) * warps * gtap::detail::profile_timestamp_capacity()));
-    if (!indices || !dropped || !times || !task_counts) {
+    int* task_pool_peak_usage = static_cast<int*>(malloc(sizeof(int) * warps));
+    int* task_id_allocation_count = static_cast<int*>(malloc(sizeof(int) * warps));
+    if (!indices || !dropped || !times || !task_counts || !task_pool_peak_usage ||
+        !task_id_allocation_count) {
         free(indices); free(dropped); free(times); free(task_counts);
+        free(task_pool_peak_usage); free(task_id_allocation_count);
         result.status = gtap_profile_export_status::out_of_memory;
         printf("GTaP profile not written: host memory allocation failed\n");
         return result;
@@ -53,9 +57,16 @@ static inline gtap_profile_export_result gtap_export_profile(
     if (error == cudaSuccess) {
         error = gtap::detail::thread::get_warp_profile_dropped_events_data(dropped);
     }
+    if (error == cudaSuccess) {
+        error = gtap::detail::thread::get_warp_task_pool_peak_usage(task_pool_peak_usage);
+    }
+    if (error == cudaSuccess) {
+        error = gtap::detail::thread::get_warp_task_id_allocation_count(task_id_allocation_count);
+    }
     cudaFree(device_indices);
     if (error != cudaSuccess) {
         free(indices); free(dropped); free(times); free(task_counts);
+        free(task_pool_peak_usage); free(task_id_allocation_count);
         result.status = gtap_profile_export_status::cuda_error;
         printf("GTaP profile not written: CUDA data transfer failed\n");
         return result;
@@ -77,6 +88,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     }
     if (result.recorded_intervals == 0) {
         free(indices); free(dropped); free(times); free(task_counts);
+        free(task_pool_peak_usage); free(task_id_allocation_count);
         result.status = gtap_profile_export_status::no_data;
         printf("GTaP profile not written: no task execution data\n");
         return result;
@@ -90,11 +102,17 @@ static inline gtap_profile_export_result gtap_export_profile(
         sizeof(double) * warps));
     double* active_warp_ratios = static_cast<double*>(malloc(
         sizeof(double) * warps_with_executed_tasks));
+    double* peak_usages = static_cast<double*>(malloc(
+        sizeof(double) * warps));
+    double* task_id_allocation_counts = static_cast<double*>(malloc(
+        sizeof(double) * warps));
     if (!durations || !batch_sizes || !all_warp_ratios ||
-        !active_warp_ratios) {
+        !active_warp_ratios || !peak_usages || !task_id_allocation_counts) {
         free(indices); free(dropped); free(times); free(task_counts);
+        free(task_pool_peak_usage); free(task_id_allocation_count);
         free(durations); free(batch_sizes); free(all_warp_ratios);
         free(active_warp_ratios);
+        free(peak_usages); free(task_id_allocation_counts);
         result.status = gtap_profile_export_status::out_of_memory;
         printf("GTaP profile not written: host memory allocation failed\n");
         return result;
@@ -130,12 +148,24 @@ static inline gtap_profile_export_result gtap_export_profile(
     const gtap::detail::profile_distribution active_warp_ratio_stats =
         gtap::detail::compute_distribution(
             active_warp_ratios, active_warp_index);
+    for (int warp = 0; warp < warps; ++warp) {
+        peak_usages[warp] =
+            static_cast<double>(task_pool_peak_usage[warp]);
+        task_id_allocation_counts[warp] =
+            static_cast<double>(task_id_allocation_count[warp]);
+    }
+    const gtap::detail::profile_distribution peak_usage_stats =
+        gtap::detail::compute_distribution(peak_usages, warps);
+    const gtap::detail::profile_distribution task_id_allocation_count_stats =
+        gtap::detail::compute_distribution(task_id_allocation_counts, warps);
 
     FILE* timeline = fopen(result.intervals_path, "w");
     if (!timeline) {
         free(indices); free(dropped); free(times); free(task_counts);
+        free(task_pool_peak_usage); free(task_id_allocation_count);
         free(durations); free(batch_sizes); free(all_warp_ratios);
         free(active_warp_ratios);
+        free(peak_usages); free(task_id_allocation_counts);
         result.status = gtap_profile_export_status::io_error;
         printf("GTaP profile not written: failed to write %s\n",
                result.result_directory);
@@ -158,7 +188,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         fprintf(stats,
                 "warp_id,intervals_recorded,intervals_dropped,tasks_executed,"
                 "recorded_task_execution_ns,first_execution_ns,"
-                "last_execution_ns\n");
+                "last_execution_ns,task_pool_peak_usage,task_id_allocation_count\n");
         for (int warp = 0; warp < warps; ++warp) {
             long long tasks_executed = 0;
             long long recorded_task_execution_ns = 0;
@@ -175,10 +205,11 @@ static inline gtap_profile_export_result gtap_export_profile(
                 tasks_executed +=
                     task_counts[offset + 1];
             }
-            fprintf(stats, "%d,%d,%llu,%lld,%lld,%lld,%lld\n", warp,
+            fprintf(stats, "%d,%d,%llu,%lld,%lld,%lld,%lld,%d,%d\n", warp,
                     indices[warp] / 2, dropped[warp], tasks_executed,
                     recorded_task_execution_ns, first_execution_ns,
-                    last_execution_ns);
+                    last_execution_ns, task_pool_peak_usage[warp],
+                    task_id_allocation_count[warp]);
         }
         io_ok = gtap::detail::close_profile_file(stats);
     } else {
@@ -188,7 +219,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     FILE* metadata = io_ok ? fopen(result.profile_path, "w") : nullptr;
     if (metadata) {
         bool metadata_ok = fputs(
-            "{\n  \"schema_version\": 1,\n", metadata) != EOF;
+            "{\n  \"schema_version\": 2,\n", metadata) != EOF;
         if (metadata_ok && options.label) {
             metadata_ok = fprintf(
                 metadata, "  \"label\": \"%s\",\n", options.label) >= 0;
@@ -229,6 +260,20 @@ static inline gtap_profile_export_result gtap_export_profile(
             "        \"p99\": %.6f, \"max\": %.6f\n"
             "      }\n"
             "    }\n"
+            "  },\n"
+            "  \"task_pool\": {\n"
+            "    \"scheduling_unit\": \"warp\",\n"
+            "    \"capacity\": %d,\n"
+            "    \"peak_usage\": {\n"
+            "      \"count\": %zu, \"mean\": %.2f, \"stddev\": %.2f,\n"
+            "      \"min\": %.0f, \"p50\": %.0f, \"p95\": %.0f,\n"
+            "      \"p99\": %.0f, \"max\": %.0f\n"
+            "    },\n"
+            "    \"task_id_allocation_count\": {\n"
+            "      \"count\": %zu, \"mean\": %.2f, \"stddev\": %.2f,\n"
+            "      \"min\": %.0f, \"p50\": %.0f, \"p95\": %.0f,\n"
+            "      \"p99\": %.0f, \"max\": %.0f\n"
+            "    }\n"
             "  }\n"
             "}\n",
             gtap::detail::h_launch_config.grid_size,
@@ -249,15 +294,26 @@ static inline gtap_profile_export_result gtap_export_profile(
             active_warp_ratio_stats.count, active_warp_ratio_stats.mean,
             active_warp_ratio_stats.stddev, active_warp_ratio_stats.min,
             active_warp_ratio_stats.p50, active_warp_ratio_stats.p95,
-            active_warp_ratio_stats.p99, active_warp_ratio_stats.max) >= 0;
+            active_warp_ratio_stats.p99, active_warp_ratio_stats.max,
+            gtap::detail::h_launch_config.tasks_per_scheduling_unit,
+            peak_usage_stats.count, peak_usage_stats.mean,
+            peak_usage_stats.stddev, peak_usage_stats.min,
+            peak_usage_stats.p50, peak_usage_stats.p95,
+            peak_usage_stats.p99, peak_usage_stats.max,
+            task_id_allocation_count_stats.count, task_id_allocation_count_stats.mean,
+            task_id_allocation_count_stats.stddev, task_id_allocation_count_stats.min,
+            task_id_allocation_count_stats.p50, task_id_allocation_count_stats.p95,
+            task_id_allocation_count_stats.p99, task_id_allocation_count_stats.max) >= 0;
         io_ok = gtap::detail::close_profile_file(metadata) && metadata_ok;
     } else {
         io_ok = false;
     }
 
     free(indices); free(dropped); free(times); free(task_counts);
+    free(task_pool_peak_usage); free(task_id_allocation_count);
     free(durations); free(batch_sizes); free(all_warp_ratios);
     free(active_warp_ratios);
+    free(peak_usages); free(task_id_allocation_counts);
     result.status = io_ok ? gtap_profile_export_status::success
                           : gtap_profile_export_status::io_error;
     if (result.status == gtap_profile_export_status::success) {

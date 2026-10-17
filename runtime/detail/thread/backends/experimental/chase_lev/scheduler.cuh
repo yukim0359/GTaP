@@ -549,6 +549,11 @@ __device__ __forceinline__ void execute_task_loop() {
             &execute_task_count
         );
     }
+#ifdef GTAP_ENABLE_PROFILING
+    if (lane == 0) {
+        record_task_id_allocation_count(warp_id_global, task_context->id_list_alloc_pos);
+    }
+#endif
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
     if (lane == 0) printf("execute_task_loop: end in lane %d of warp %d of block %d\n",
                           lane, warp_id_in_block, blockIdx.x);

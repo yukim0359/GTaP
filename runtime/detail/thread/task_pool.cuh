@@ -8,6 +8,9 @@
 #include "../common/warp_index.cuh"
 
 #include "task_types.cuh"
+#ifdef GTAP_ENABLE_PROFILING
+#include "profile_buffer.cuh"
+#endif
 
 // The compiler sets this stride after rounding the task records up to their alignment.
 extern const size_t __gtap_task_data_stride;
@@ -35,6 +38,11 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
     const int warp_id_global = get_warp_id_global();
     const int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     const int tasks_per_warp = d_launch_config.tasks_per_scheduling_unit;
+#ifdef GTAP_ENABLE_PROFILING
+    const int unreturned_id_count =
+        (old_alloc + 1) + tasks_per_warp - *id_list_free_pos;
+    record_unreturned_id_count(warp_id_global, unreturned_id_count);
+#endif
     const bool first_use = (old_alloc < tasks_per_warp);
     int task_id = 0;
     if (first_use) {

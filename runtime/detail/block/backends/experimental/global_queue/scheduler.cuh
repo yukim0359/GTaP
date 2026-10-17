@@ -337,6 +337,11 @@ __device__ __forceinline__ void execute_task_loop() {
 
         push_global_queue<M>(&task_context, &execute_task_id, &have_execute_task);
     }
+#ifdef GTAP_ENABLE_PROFILING
+    if (threadIdx.x == 0) {
+        record_task_id_allocation_count(blockIdx.x, task_context.id_list_alloc_pos);
+    }
+#endif
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
     if (threadIdx.x == 0) printf("execute_task_loop: end in block %d\n", blockIdx.x);
 #endif

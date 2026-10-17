@@ -137,6 +137,6 @@ status name.
 
 | File | Contents |
 | --- | --- |
-| `profile.json` | Mode, launch geometry, interval counts, dropped counts, and statistical summaries |
+| `profile.json` | Statistical summaries of execution intervals and per-unit task-pool usage |
 | `task_execution_intervals.csv` | Per-warp or per-block start and end times; thread mode also records the executed task count for each interval |
-| `task_execution_aggregates.csv` | Per-warp or per-block totals and recorded execution span |
+| `task_execution_aggregates.csv` | Per-warp or per-block total executed task count, execution time, and task-pool usage |

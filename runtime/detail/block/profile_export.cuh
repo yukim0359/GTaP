@@ -27,8 +27,11 @@ static inline gtap_profile_export_result gtap_export_profile(
         malloc(sizeof(unsigned long long) * blocks));
     long long* times = static_cast<long long*>(malloc(
         sizeof(long long) * blocks * gtap::detail::profile_timestamp_capacity()));
-    if (!indices || !dropped || !times) {
-        free(indices); free(dropped); free(times);
+    int* task_pool_peak_usage = static_cast<int*>(malloc(sizeof(int) * blocks));
+    int* task_id_allocation_count = static_cast<int*>(malloc(sizeof(int) * blocks));
+    if (!indices || !dropped || !times || !task_pool_peak_usage ||
+        !task_id_allocation_count) {
+        free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         result.status = gtap_profile_export_status::out_of_memory;
         printf("GTaP profile not written: host memory allocation failed\n");
         return result;
@@ -45,9 +48,15 @@ static inline gtap_profile_export_result gtap_export_profile(
     if (error == cudaSuccess) {
         error = gtap::detail::block::get_block_profile_dropped_events_data(dropped);
     }
+    if (error == cudaSuccess) {
+        error = gtap::detail::block::get_block_task_pool_peak_usage(task_pool_peak_usage);
+    }
+    if (error == cudaSuccess) {
+        error = gtap::detail::block::get_block_task_id_allocation_count(task_id_allocation_count);
+    }
     cudaFree(device_indices);
     if (error != cudaSuccess) {
-        free(indices); free(dropped); free(times);
+        free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         result.status = gtap_profile_export_status::cuda_error;
         printf("GTaP profile not written: CUDA data transfer failed\n");
         return result;
@@ -67,7 +76,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         }
     }
     if (!result.recorded_intervals) {
-        free(indices); free(dropped); free(times);
+        free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         result.status = gtap_profile_export_status::no_data;
         printf("GTaP profile not written: no task execution data\n");
         return result;
@@ -79,9 +88,15 @@ static inline gtap_profile_export_result gtap_export_profile(
         sizeof(double) * blocks));
     double* active_block_ratios = static_cast<double*>(malloc(
         sizeof(double) * blocks_with_executed_tasks));
-    if (!durations || !all_block_ratios || !active_block_ratios) {
-        free(indices); free(dropped); free(times);
+    double* peak_usages = static_cast<double*>(malloc(
+        sizeof(double) * blocks));
+    double* task_id_allocation_counts = static_cast<double*>(malloc(
+        sizeof(double) * blocks));
+    if (!durations || !all_block_ratios || !active_block_ratios ||
+        !peak_usages || !task_id_allocation_counts) {
+        free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         free(durations); free(all_block_ratios); free(active_block_ratios);
+        free(peak_usages); free(task_id_allocation_counts);
         result.status = gtap_profile_export_status::out_of_memory;
         printf("GTaP profile not written: host memory allocation failed\n");
         return result;
@@ -112,11 +127,22 @@ static inline gtap_profile_export_result gtap_export_profile(
     const gtap::detail::profile_distribution active_block_ratio_stats =
         gtap::detail::compute_distribution(
             active_block_ratios, active_block_index);
+    for (int block = 0; block < blocks; ++block) {
+        peak_usages[block] =
+            static_cast<double>(task_pool_peak_usage[block]);
+        task_id_allocation_counts[block] =
+            static_cast<double>(task_id_allocation_count[block]);
+    }
+    const gtap::detail::profile_distribution peak_usage_stats =
+        gtap::detail::compute_distribution(peak_usages, blocks);
+    const gtap::detail::profile_distribution task_id_allocation_count_stats =
+        gtap::detail::compute_distribution(task_id_allocation_counts, blocks);
 
     FILE* timeline = fopen(result.intervals_path, "w");
     if (!timeline) {
-        free(indices); free(dropped); free(times);
+        free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         free(durations); free(all_block_ratios); free(active_block_ratios);
+        free(peak_usages); free(task_id_allocation_counts);
         result.status = gtap_profile_export_status::io_error;
         printf("GTaP profile not written: failed to write %s\n",
                result.result_directory);
@@ -138,7 +164,7 @@ static inline gtap_profile_export_result gtap_export_profile(
         fprintf(stats,
                 "block_id,intervals_recorded,intervals_dropped,tasks_executed,"
                 "recorded_task_execution_ns,first_execution_ns,"
-                "last_execution_ns\n");
+                "last_execution_ns,task_pool_peak_usage,task_id_allocation_count\n");
         for (int block = 0; block < blocks; ++block) {
             long long recorded_task_execution_ns = 0;
             long long first_execution_ns = 0;
@@ -152,10 +178,11 @@ static inline gtap_profile_export_result gtap_export_profile(
                 if (i == 0) first_execution_ns = start_ns;
                 last_execution_ns = end_ns;
             }
-            fprintf(stats, "%d,%d,%llu,%d,%lld,%lld,%lld\n", block,
+            fprintf(stats, "%d,%d,%llu,%d,%lld,%lld,%lld,%d,%d\n", block,
                     indices[block] / 2, dropped[block], indices[block] / 2,
                     recorded_task_execution_ns, first_execution_ns,
-                    last_execution_ns);
+                    last_execution_ns, task_pool_peak_usage[block],
+                    task_id_allocation_count[block]);
         }
         io_ok = gtap::detail::close_profile_file(stats);
     } else io_ok = false;
@@ -163,7 +190,7 @@ static inline gtap_profile_export_result gtap_export_profile(
     FILE* metadata = io_ok ? fopen(result.profile_path, "w") : nullptr;
     if (metadata) {
         bool metadata_ok = fputs(
-            "{\n  \"schema_version\": 1,\n", metadata) != EOF;
+            "{\n  \"schema_version\": 2,\n", metadata) != EOF;
         if (metadata_ok && options.label) {
             metadata_ok = fprintf(
                 metadata, "  \"label\": \"%s\",\n", options.label) >= 0;
@@ -199,6 +226,20 @@ static inline gtap_profile_export_result gtap_export_profile(
             "        \"p99\": %.6f, \"max\": %.6f\n"
             "      }\n"
             "    }\n"
+            "  },\n"
+            "  \"task_pool\": {\n"
+            "    \"scheduling_unit\": \"block\",\n"
+            "    \"capacity\": %d,\n"
+            "    \"peak_usage\": {\n"
+            "      \"count\": %zu, \"mean\": %.2f, \"stddev\": %.2f,\n"
+            "      \"min\": %.0f, \"p50\": %.0f, \"p95\": %.0f,\n"
+            "      \"p99\": %.0f, \"max\": %.0f\n"
+            "    },\n"
+            "    \"task_id_allocation_count\": {\n"
+            "      \"count\": %zu, \"mean\": %.2f, \"stddev\": %.2f,\n"
+            "      \"min\": %.0f, \"p50\": %.0f, \"p95\": %.0f,\n"
+            "      \"p99\": %.0f, \"max\": %.0f\n"
+            "    }\n"
             "  }\n"
             "}\n",
             gtap::detail::h_launch_config.grid_size,
@@ -216,12 +257,22 @@ static inline gtap_profile_export_result gtap_export_profile(
             active_block_ratio_stats.count, active_block_ratio_stats.mean,
             active_block_ratio_stats.stddev, active_block_ratio_stats.min,
             active_block_ratio_stats.p50, active_block_ratio_stats.p95,
-            active_block_ratio_stats.p99, active_block_ratio_stats.max) >= 0;
+            active_block_ratio_stats.p99, active_block_ratio_stats.max,
+            gtap::detail::h_launch_config.tasks_per_scheduling_unit,
+            peak_usage_stats.count, peak_usage_stats.mean,
+            peak_usage_stats.stddev, peak_usage_stats.min,
+            peak_usage_stats.p50, peak_usage_stats.p95,
+            peak_usage_stats.p99, peak_usage_stats.max,
+            task_id_allocation_count_stats.count, task_id_allocation_count_stats.mean,
+            task_id_allocation_count_stats.stddev, task_id_allocation_count_stats.min,
+            task_id_allocation_count_stats.p50, task_id_allocation_count_stats.p95,
+            task_id_allocation_count_stats.p99, task_id_allocation_count_stats.max) >= 0;
         io_ok = gtap::detail::close_profile_file(metadata) && metadata_ok;
     } else io_ok = false;
 
-    free(indices); free(dropped); free(times);
+    free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
     free(durations); free(all_block_ratios); free(active_block_ratios);
+    free(peak_usages); free(task_id_allocation_counts);
     result.status = io_ok ? gtap_profile_export_status::success
                           : gtap_profile_export_status::io_error;
     if (result.status == gtap_profile_export_status::success) {

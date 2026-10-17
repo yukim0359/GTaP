@@ -7,6 +7,9 @@
 #include "../common/task_pool.cuh"
 
 #include "task_types.cuh"
+#ifdef GTAP_ENABLE_PROFILING
+#include "profile_buffer.cuh"
+#endif
 
 // The compiler sets these strides after rounding the task records up to their alignment.
 // The index is the number of warps in the block.
@@ -52,6 +55,11 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
 ) {
     const int old_alloc = atomicAdd(id_list_alloc_pos, 1);
     const int tasks_per_block = d_launch_config.tasks_per_scheduling_unit;
+#ifdef GTAP_ENABLE_PROFILING
+    const int unreturned_id_count =
+        (old_alloc + 1) + tasks_per_block - load_L2(id_list_free_pos);
+    record_unreturned_id_count(blockIdx.x, unreturned_id_count);
+#endif
     const bool first_use = (old_alloc < tasks_per_block);
     int task_id = 0;
     if (first_use) {
