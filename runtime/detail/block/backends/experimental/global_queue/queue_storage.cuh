@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../../common/checked_size.cuh"
 #include "../../../../common/device_memory.cuh"
 #include "../../../../common/runtime_config.cuh"
 #include "../../../../common/runtime_error.cuh"
@@ -41,12 +42,36 @@ struct queue_storage_buffers {
     int* generated = nullptr;
 };
 
+// fixed_bytes is the unpublished-child buffer. bytes_per_task is one queue slot.
+inline bool queue_memory_terms(
+    const launch_config& config,
+    size_t* fixed_bytes,
+    size_t* bytes_per_task
+) {
+    if (!checked_mul(
+            sizeof(int) * static_cast<size_t>(GTAP_MAX_CHILD_TASKS),
+            static_cast<size_t>(config.total_scheduling_units),
+            fixed_bytes)) {
+        return false;
+    }
+    *bytes_per_task = sizeof(int);
+    return true;
+}
+
 inline size_t queue_storage_allocation_bytes(const launch_config& config) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
-    return sizeof(int) * tasks
-        + sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS;
+    size_t fixed_bytes = 0;
+    size_t bytes_per_task = 0;
+    size_t bytes = 0;
+    if (!queue_memory_terms(config, &fixed_bytes, &bytes_per_task) ||
+        !compute_memory_bytes(
+            fixed_bytes,
+            bytes_per_task,
+            static_cast<size_t>(config.total_scheduling_units),
+            static_cast<size_t>(config.tasks_per_scheduling_unit),
+            &bytes)) {
+        return SIZE_MAX;
+    }
+    return bytes;
 }
 
 inline cudaError_t stage_queue_storage(

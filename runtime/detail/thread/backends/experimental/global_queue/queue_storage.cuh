@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../../common/checked_size.cuh"
 #include "../../../../common/cuda_primitives.cuh"
 #include "../../../../common/device_memory.cuh"
 #include "../../../../common/runtime_config.cuh"
@@ -73,17 +74,56 @@ inline size_t generated_task_id_bytes(const launch_config& config) {
         * GTAP_TASK_ID_GEN_QUEUE_STRIDE;
 }
 
+// fixed_bytes is the queue cursors and the unpublished-child buffer.
+// bytes_per_task is one global-queue slot.
+inline bool queue_memory_terms(
+    const launch_config& config,
+    size_t* fixed_bytes,
+    size_t* bytes_per_task
+) {
+    size_t generated = sizeof(int);
+    if (!checked_mul(generated, static_cast<size_t>(config.total_scheduling_units), &generated) ||
+        !checked_mul(generated, static_cast<size_t>(config.num_queues), &generated) ||
+        !checked_mul(generated, static_cast<size_t>(GTAP_TASK_ID_GEN_QUEUE_STRIDE), &generated)) {
+        return false;
+    }
+    const size_t cursors = 3 * sizeof(int) * static_cast<size_t>(config.num_queues);
+    if (cursors > SIZE_MAX - generated) return false;
+    *fixed_bytes = cursors + generated;
+    *bytes_per_task = sizeof(int);
+    return true;
+}
+
 inline size_t queue_slot_bytes(const launch_config& config) {
-    return sizeof(int)
-        * static_cast<size_t>(config.total_scheduling_units)
-        * static_cast<size_t>(config.num_queues)
-        * static_cast<size_t>(config.queue_capacity);
+    size_t fixed_bytes = 0;
+    size_t bytes_per_task = 0;
+    size_t slot_bytes = 0;
+    if (!queue_memory_terms(config, &fixed_bytes, &bytes_per_task) ||
+        !compute_memory_bytes(
+            0,
+            bytes_per_task,
+            static_cast<size_t>(config.total_scheduling_units),
+            static_cast<size_t>(config.tasks_per_scheduling_unit),
+            &slot_bytes)) {
+        return SIZE_MAX;
+    }
+    return slot_bytes;
 }
 
 inline size_t queue_storage_allocation_bytes(const launch_config& config) {
-    return queue_slot_bytes(config)
-        + 3 * sizeof(int) * static_cast<size_t>(config.num_queues)
-        + generated_task_id_bytes(config);
+    size_t fixed_bytes = 0;
+    size_t bytes_per_task = 0;
+    size_t bytes = 0;
+    if (!queue_memory_terms(config, &fixed_bytes, &bytes_per_task) ||
+        !compute_memory_bytes(
+            fixed_bytes,
+            bytes_per_task,
+            static_cast<size_t>(config.total_scheduling_units),
+            static_cast<size_t>(config.tasks_per_scheduling_unit),
+            &bytes)) {
+        return SIZE_MAX;
+    }
+    return bytes;
 }
 
 // Starts the async clears. Symbols are published later.
@@ -93,6 +133,7 @@ inline cudaError_t stage_queue_storage(
     queue_storage_buffers* buffers
 ) {
     const size_t slot_bytes = queue_slot_bytes(config);
+    if (slot_bytes == SIZE_MAX) return cudaErrorInvalidValue;
     const size_t metadata_bytes = sizeof(int) * static_cast<size_t>(config.num_queues);
     const size_t generated_bytes = generated_task_id_bytes(config);
 
@@ -168,6 +209,9 @@ inline cudaError_t clear_queue_storage(
     const launch_config& config,
     cudaStream_t stream
 ) {
+    const size_t slot_bytes = queue_slot_bytes(config);
+    if (slot_bytes == SIZE_MAX) return cudaErrorInvalidValue;
+
     int* slots = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &slots, d_global_task_queue, sizeof(int*)));
@@ -183,7 +227,7 @@ inline cudaError_t clear_queue_storage(
 
     if (slots != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, queue_slot_bytes(config), stream));
+            slots, 0, slot_bytes, stream));
     }
     if (generated != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
