@@ -11,8 +11,8 @@
 struct gtap_block_config {
     int grid_size = 1024;
     int block_size = 256;
-    int max_tasks_per_block = 0;     // 0: derive from memory_budget_bytes
     size_t memory_budget_bytes = 0;  // 0: use GTAP_MEMORY_BUDGET, or 5 GiB if unset
+    int max_tasks_per_block = 0;     // 0: derive from memory_budget_bytes
     int profile_capacity_per_block = 15000;
     size_t dynamic_shared_bytes = 0;
     cudaStream_t stream = nullptr;

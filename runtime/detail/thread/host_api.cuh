@@ -11,9 +11,9 @@
 struct gtap_thread_config {
     int grid_size = 4096;
     int block_size = 32;
+    size_t memory_budget_bytes = 0;  // 0: use GTAP_MEMORY_BUDGET, or 5 GiB if unset
     int max_tasks_per_warp = 0;      // 0: derive from memory_budget_bytes
     int num_queues = 1;
-    size_t memory_budget_bytes = 0;  // 0: use GTAP_MEMORY_BUDGET, or 5 GiB if unset
     int profile_capacity_per_warp = 15000;
     cudaStream_t stream = nullptr;
 };
