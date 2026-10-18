@@ -28,14 +28,16 @@ inline bool parse_memory_budget(const char* text, size_t* bytes) {
 
     char token[4] = {};
     int length = 0;
-    for (const char* p = end; *p != '\0'; ++p) {
-        if (*p == ' ' || *p == '\t') continue;
+    while (*end != '\0' && *end != ' ' && *end != '\t') {
         if (length == 3) return false;
-        char c = *p;
+        char c = *end;
         if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
         if (c < 'a' || c > 'z') return false;
         token[length++] = c;
+        ++end;
     }
+    while (*end == ' ' || *end == '\t') ++end;
+    if (*end != '\0') return false;
 
     unsigned long long scale = 1;
     if (length != 0) {
