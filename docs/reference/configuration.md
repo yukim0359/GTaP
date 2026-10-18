@@ -22,6 +22,15 @@ The runtime memory budget defaults to 5 GiB. Set `GTAP_MEMORY_BUDGET` to change
 it, or set a nonzero `memory_budget_bytes` to override the environment
 variable.
 
+```sh
+GTAP_MEMORY_BUDGET=5GiB ./app
+```
+
+`GTAP_MEMORY_BUDGET` accepts a decimal integer with an optional unit suffix.
+No suffix or `B` means bytes. `K`, `M`, `G`, `T` and their `iB` forms use
+powers of 1024; `KB`, `MB`, `GB`, `TB` use powers of 1000. An empty value is
+an error.
+
 Task capacity limits the number of simultaneously live tasks assigned to each
 CUDA warp in thread mode or CUDA thread block in block mode, not the total
 number of tasks executed. Larger capacities consume more device memory.
@@ -97,7 +106,8 @@ Thread mode additionally requires:
 - `max_tasks_per_warp % num_queues == 0`
 
 Invalid launch geometry returns `cudaErrorInvalidConfiguration`. An invalid
-task, queue, or profile capacity returns `cudaErrorInvalidValue`.
+task capacity, queue count, memory budget, or profiling capacity returns
+`cudaErrorInvalidValue`.
 
 ## Compile-time settings
 
