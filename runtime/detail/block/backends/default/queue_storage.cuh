@@ -30,36 +30,38 @@ struct queue_storage_buffers {
     int* slots = nullptr;
 };
 
-// fixed_bytes is the per-block metadata. bytes_per_task is one queue slot.
+inline size_t queue_metadata_bytes(const launch_config& config) {
+    return mul_memory_bytes(
+        sizeof(BlockTaskQueueMetadata),
+        static_cast<size_t>(config.total_scheduling_units));
+}
+
+inline size_t queue_slot_bytes(const launch_config& config) {
+    size_t bytes = mul_memory_bytes(
+        sizeof(int),
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(
+        bytes, static_cast<size_t>(config.tasks_per_scheduling_unit));
+}
+
+// fixed_bytes is the metadata array, independent of task capacity.
+// bytes_per_task is the size of one queue slot.
 inline bool queue_memory_terms(
     const launch_config& config,
     size_t* fixed_bytes,
     size_t* bytes_per_task
 ) {
-    if (!checked_mul(
-            sizeof(BlockTaskQueueMetadata),
-            static_cast<size_t>(config.total_scheduling_units),
-            fixed_bytes)) {
-        return false;
-    }
+    const size_t metadata_bytes = queue_metadata_bytes(config);
+    if (metadata_bytes == SIZE_MAX) return false;
+    *fixed_bytes = metadata_bytes;
     *bytes_per_task = sizeof(int);
     return true;
 }
 
 inline size_t queue_storage_allocation_bytes(const launch_config& config) {
-    size_t fixed_bytes = 0;
-    size_t bytes_per_task = 0;
-    size_t bytes = 0;
-    if (!queue_memory_terms(config, &fixed_bytes, &bytes_per_task) ||
-        !compute_memory_bytes(
-            fixed_bytes,
-            bytes_per_task,
-            static_cast<size_t>(config.total_scheduling_units),
-            static_cast<size_t>(config.tasks_per_scheduling_unit),
-            &bytes)) {
-        return SIZE_MAX;
-    }
-    return bytes;
+    return add_memory_bytes(
+        queue_metadata_bytes(config),
+        queue_slot_bytes(config));
 }
 
 inline cudaError_t stage_queue_storage(
@@ -67,17 +69,17 @@ inline cudaError_t stage_queue_storage(
     cudaStream_t stream,
     queue_storage_buffers* buffers
 ) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->metadata, sizeof(BlockTaskQueueMetadata) * scheduling_units));
+    const size_t metadata_bytes = queue_metadata_bytes(config);
+    const size_t slot_bytes = queue_slot_bytes(config);
+    if (metadata_bytes == SIZE_MAX || slot_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->metadata, metadata_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->metadata, 0, sizeof(BlockTaskQueueMetadata) * scheduling_units,
-        stream));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, sizeof(int) * tasks));
+        buffers->metadata, 0, metadata_bytes, stream));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, slot_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->slots, 0, sizeof(int) * tasks, stream));
+        buffers->slots, 0, slot_bytes, stream));
     return cudaSuccess;
 }
 
@@ -94,9 +96,12 @@ inline cudaError_t clear_queue_storage(
     const launch_config& config,
     cudaStream_t stream
 ) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
+    const size_t metadata_bytes = queue_metadata_bytes(config);
+    const size_t slot_bytes = queue_slot_bytes(config);
+    if (metadata_bytes == SIZE_MAX || slot_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
+
     BlockTaskQueueMetadata* metadata = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &metadata, d_block_task_queue_metadata,
@@ -106,12 +111,11 @@ inline cudaError_t clear_queue_storage(
         &slots, d_block_task_queue_storage, sizeof(int*)));
     if (metadata != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            metadata, 0, sizeof(BlockTaskQueueMetadata) * scheduling_units,
-            stream));
+            metadata, 0, metadata_bytes, stream));
     }
     if (slots != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, sizeof(int) * tasks, stream));
+            slots, 0, slot_bytes, stream));
     }
     return cudaSuccess;
 }

@@ -43,6 +43,21 @@ struct queue_storage_buffers {
     int* slots = nullptr;
 };
 
+inline size_t queue_metadata_bytes(const launch_config& config) {
+    size_t bytes = mul_memory_bytes(
+        sizeof(WarpTaskQueueMetadata),
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(bytes, static_cast<size_t>(config.num_queues));
+}
+
+inline size_t queue_slot_bytes(const launch_config& config) {
+    size_t bytes = mul_memory_bytes(
+        sizeof(int),
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(
+        bytes, static_cast<size_t>(config.tasks_per_scheduling_unit));
+}
+
 // fixed_bytes is the total queue metadata size, independent of task capacity.
 // bytes_per_task is the size of one queue slot.
 inline bool queue_memory_terms(
@@ -50,42 +65,11 @@ inline bool queue_memory_terms(
     size_t* fixed_bytes,
     size_t* bytes_per_task
 ) {
-    size_t metadata_bytes_per_queue = 0;
-    if (!checked_mul(
-            sizeof(WarpTaskQueueMetadata),
-            static_cast<size_t>(config.total_scheduling_units),
-            &metadata_bytes_per_queue) ||
-        !checked_mul(
-            metadata_bytes_per_queue,
-            static_cast<size_t>(config.num_queues),
-            fixed_bytes)) {
-        return false;
-    }
+    const size_t metadata_bytes = queue_metadata_bytes(config);
+    if (metadata_bytes == SIZE_MAX) return false;
+    *fixed_bytes = metadata_bytes;
     *bytes_per_task = sizeof(int);
     return true;
-}
-
-inline size_t queue_metadata_bytes(const launch_config& config) {
-    size_t fixed_bytes = 0;
-    size_t bytes_per_task = 0;
-    if (!queue_memory_terms(config, &fixed_bytes, &bytes_per_task)) return SIZE_MAX;
-    return fixed_bytes;
-}
-
-inline size_t queue_slot_bytes(const launch_config& config) {
-    size_t fixed_bytes = 0;
-    size_t bytes_per_task = 0;
-    size_t slot_bytes = 0;
-    if (!queue_memory_terms(config, &fixed_bytes, &bytes_per_task) ||
-        !compute_memory_bytes(
-            0,
-            bytes_per_task,
-            static_cast<size_t>(config.total_scheduling_units),
-            static_cast<size_t>(config.tasks_per_scheduling_unit),
-            &slot_bytes)) {
-        return SIZE_MAX;
-    }
-    return slot_bytes;
 }
 
 inline size_t queue_storage_allocation_bytes(const launch_config& config) {

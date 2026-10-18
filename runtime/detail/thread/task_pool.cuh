@@ -110,16 +110,11 @@ inline size_t task_pool_component_bytes(
     const launch_config& config,
     size_t bytes_per_task
 ) {
-    size_t bytes = 0;
-    if (!compute_memory_bytes(
-            0,
-            bytes_per_task,
-            static_cast<size_t>(config.total_scheduling_units),
-            static_cast<size_t>(config.tasks_per_scheduling_unit),
-            &bytes)) {
-        return SIZE_MAX;
-    }
-    return bytes;
+    size_t bytes = mul_memory_bytes(
+        bytes_per_task,
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(
+        bytes, static_cast<size_t>(config.tasks_per_scheduling_unit));
 }
 
 inline size_t task_pool_allocation_bytes(const launch_config& config) {

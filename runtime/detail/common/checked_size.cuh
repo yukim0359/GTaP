@@ -30,21 +30,4 @@ inline size_t add_memory_bytes(size_t a, size_t b) {
     return checked_add(a, b, &bytes) ? bytes : SIZE_MAX;
 }
 
-// bytes = fixed + per_task * units * tasks
-inline bool compute_memory_bytes(
-    size_t fixed_bytes,
-    size_t bytes_per_task,
-    size_t scheduling_units,
-    size_t tasks_per_unit,
-    size_t* bytes
-) {
-    size_t capacity_bytes = 0;
-    if (!checked_mul(bytes_per_task, scheduling_units, &capacity_bytes) ||
-        !checked_mul(capacity_bytes, tasks_per_unit, &capacity_bytes) ||
-        !checked_add(fixed_bytes, capacity_bytes, bytes)) {
-        return false;
-    }
-    return true;
-}
-
 }  // namespace gtap::detail

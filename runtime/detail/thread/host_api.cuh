@@ -29,9 +29,7 @@ inline cudaError_t validate_config(const gtap_thread_config& config) {
             (config.block_size / gtap::detail::warp_size) > INT_MAX) {
         return cudaErrorInvalidConfiguration;
     }
-    if (config.num_queues <= 0 || config.max_tasks_per_warp < 0 ||
-        (config.max_tasks_per_warp > 0 &&
-         config.max_tasks_per_warp % config.num_queues != 0)) {
+    if (config.num_queues <= 0 || config.max_tasks_per_warp < 0) {
         return cudaErrorInvalidValue;
     }
 #ifdef GTAP_ENABLE_PROFILING
