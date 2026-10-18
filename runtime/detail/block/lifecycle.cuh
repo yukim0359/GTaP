@@ -70,7 +70,7 @@ cudaError_t initialize_runtime(init_error& error) {
     cudaError_t status = initialize_runtime_error_record();
     if (status != cudaSuccess) {
         abandon_initialize(&queues, &task_pool, &profile);
-        return error.fail(status, "failed to allocate the runtime error record");
+        return error.fail(status, "failed to initialize runtime error reporting");
     }
     const launch_config& runtime_config = h_launch_config;
 
