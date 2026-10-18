@@ -29,7 +29,7 @@ int main() {
   gtap_thread_config config;
   config.grid_size = 8;
   config.block_size = 32;
-  config.max_tasks_per_warp = 128;
+  config.max_tasks_per_warp = 256;
   config.num_queues = 2;
 
   cudaError_t status = gtap_initialize(config);
