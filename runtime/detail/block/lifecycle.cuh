@@ -20,13 +20,13 @@ using namespace gtap::detail;
 
 static size_t runtime_device_allocation_bytes() {
     const launch_config& config = h_launch_config;
-    return queue_storage_allocation_bytes(config) +
-           task_pool_allocation_bytes(config) +
-           profile_buffer_allocation_bytes(config);
+    size_t bytes = queue_storage_allocation_bytes(config);
+    bytes = add_memory_bytes(bytes, task_pool_allocation_bytes(config));
+    return add_memory_bytes(bytes, profile_buffer_allocation_bytes(config));
 }
 
 // Profile buffers are not included. fixed_bytes does not depend on task capacity.
-inline bool management_memory_terms(
+inline bool runtime_fixed_and_per_task_bytes(
     const launch_config& config,
     size_t* fixed_bytes,
     size_t* bytes_per_task
@@ -37,8 +37,8 @@ inline bool management_memory_terms(
     size_t pool_per_task = 0;
     size_t fixed = 0;
     size_t per_task = 0;
-    if (!queue_memory_terms(config, &queue_fixed, &queue_per_task) ||
-        !task_pool_memory_terms(config, &pool_fixed, &pool_per_task) ||
+    if (!queue_fixed_and_per_task_bytes(config, &queue_fixed, &queue_per_task) ||
+        !task_pool_fixed_and_per_task_bytes(config, &pool_fixed, &pool_per_task) ||
         !checked_add(queue_fixed, pool_fixed, &fixed) ||
         !checked_add(queue_per_task, pool_per_task, &per_task) ||
         per_task == 0) {

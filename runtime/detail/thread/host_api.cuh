@@ -63,7 +63,7 @@ inline cudaError_t resolve_launch_config(
 
     size_t fixed_bytes = 0;
     size_t bytes_per_task = 0;
-    if (!management_memory_terms(resolved, &fixed_bytes, &bytes_per_task)) {
+    if (!runtime_fixed_and_per_task_bytes(resolved, &fixed_bytes, &bytes_per_task)) {
         return cudaErrorInvalidValue;
     }
     status = resolve_tasks_per_unit(

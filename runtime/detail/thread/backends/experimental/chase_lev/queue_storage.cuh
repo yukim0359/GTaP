@@ -60,7 +60,7 @@ inline size_t queue_slot_bytes(const launch_config& config) {
 
 // fixed_bytes is the total queue metadata size, independent of task capacity.
 // bytes_per_task is the size of one queue slot.
-inline bool queue_memory_terms(
+inline bool queue_fixed_and_per_task_bytes(
     const launch_config& config,
     size_t* fixed_bytes,
     size_t* bytes_per_task
@@ -143,7 +143,7 @@ inline cudaError_t stage_queue_storage(
     return cudaSuccess;
 }
 
-inline cudaError_t publish_queue_storage(queue_storage_buffers& buffers) {
+inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         d_warp_task_queue_metadata, &buffers.metadata, sizeof(WarpTaskQueueMetadata*)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(

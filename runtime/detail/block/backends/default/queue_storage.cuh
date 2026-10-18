@@ -46,7 +46,7 @@ inline size_t queue_slot_bytes(const launch_config& config) {
 
 // fixed_bytes is the metadata array, independent of task capacity.
 // bytes_per_task is the size of one queue slot.
-inline bool queue_memory_terms(
+inline bool queue_fixed_and_per_task_bytes(
     const launch_config& config,
     size_t* fixed_bytes,
     size_t* bytes_per_task

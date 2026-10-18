@@ -145,7 +145,7 @@ inline size_t task_pool_component_bytes(
 
 // fixed_bytes is the free-position array and the entry result.
 // bytes_per_task is the task record, its header, and one task-id pool slot.
-inline bool task_pool_memory_terms(
+inline bool task_pool_fixed_and_per_task_bytes(
     const launch_config& config,
     size_t* fixed_bytes,
     size_t* bytes_per_task
@@ -157,8 +157,7 @@ inline bool task_pool_memory_terms(
     size_t per_task = 0;
     if (fixed == SIZE_MAX ||
         !checked_add(sizeof(int), sizeof(TaskHeader), &id_and_header) ||
-        !checked_add(id_and_header, compute_task_data_stride(config), &per_task) ||
-        per_task == 0) {
+        !checked_add(id_and_header, compute_task_data_stride(config), &per_task)) {
         return false;
     }
     *fixed_bytes = fixed;

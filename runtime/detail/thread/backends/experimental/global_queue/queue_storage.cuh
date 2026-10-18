@@ -89,16 +89,16 @@ inline size_t queue_slot_bytes(const launch_config& config) {
 
 // fixed_bytes is the queue cursors and the unpublished-child buffer.
 // bytes_per_task is the size of one global-queue slot.
-inline bool queue_memory_terms(
+inline bool queue_fixed_and_per_task_bytes(
     const launch_config& config,
     size_t* fixed_bytes,
     size_t* bytes_per_task
 ) {
-    const size_t cursor_bytes = queue_cursor_bytes(config);
-    size_t cursors = cursor_bytes;
-    cursors = add_memory_bytes(cursors, cursor_bytes);
-    cursors = add_memory_bytes(cursors, cursor_bytes);
-    const size_t fixed = add_memory_bytes(cursors, generated_task_id_bytes(config));
+    size_t cursor_bytes = queue_cursor_bytes(config);
+    cursor_bytes = add_memory_bytes(cursor_bytes, queue_cursor_bytes(config));
+    cursor_bytes = add_memory_bytes(cursor_bytes, queue_cursor_bytes(config));
+    const size_t generated_bytes = generated_task_id_bytes(config);
+    const size_t fixed = add_memory_bytes(cursor_bytes, generated_bytes);
     if (fixed == SIZE_MAX) return false;
     *fixed_bytes = fixed;
     *bytes_per_task = sizeof(int);

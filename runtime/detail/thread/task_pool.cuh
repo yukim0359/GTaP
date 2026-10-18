@@ -87,7 +87,7 @@ struct task_pool_buffers {
 };
 
 // bytes_per_task is the task record, its header, and one task-id pool slot.
-inline bool task_pool_memory_terms(
+inline bool task_pool_fixed_and_per_task_bytes(
     const launch_config& config,
     size_t* fixed_bytes,
     size_t* bytes_per_task
@@ -96,8 +96,7 @@ inline bool task_pool_memory_terms(
     size_t header_and_record = 0;
     size_t per_task = 0;
     if (!checked_add(sizeof(TaskHeader), __gtap_task_data_stride, &header_and_record) ||
-        !checked_add(header_and_record, sizeof(int), &per_task) ||
-        per_task == 0) {
+        !checked_add(header_and_record, sizeof(int), &per_task)) {
         return false;
     }
     *fixed_bytes = 0;

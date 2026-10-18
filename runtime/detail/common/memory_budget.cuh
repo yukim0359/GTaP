@@ -107,34 +107,36 @@ inline cudaError_t resolve_tasks_per_unit(
     const size_t units = static_cast<size_t>(scheduling_units);
     const size_t queues = static_cast<size_t>(num_queues);
     // The scheduling-unit count times tasks per unit is computed in signed int.
-    // max_safe_release_ticket adds the pool size to itself, which fits through 1 << 30.
-    const size_t total_limit = static_cast<size_t>(INT_MAX) / units;
-    const size_t ticket_limit = static_cast<size_t>(1) << 30;
+    // The first recycle lap's 2 * pool_size - 1 fits in int when pool_size <= 1 << 30.
+    const size_t max_tasks_by_total_count = static_cast<size_t>(INT_MAX) / units;
+    const size_t max_tasks_by_ticket = static_cast<size_t>(1) << 30;
     const size_t max_tasks_per_unit =
-        ticket_limit < total_limit ? ticket_limit : total_limit;
+        max_tasks_by_ticket < max_tasks_by_total_count
+            ? max_tasks_by_ticket
+            : max_tasks_by_total_count;
     size_t resolved_tasks_per_unit = 0;
 
     // requested_tasks > 0 ignores the budget.
     if (requested_tasks > 0) {
         resolved_tasks_per_unit = static_cast<size_t>(requested_tasks);
     } else {
-        size_t budget = config_budget_bytes;
-        if (budget == 0) {
+        size_t budget_bytes = config_budget_bytes;
+        if (budget_bytes == 0) {
             bool env_is_set = false;
-            size_t env_budget = 0;
-            if (!read_memory_budget_env(&env_budget, &env_is_set)) {
+            size_t env_budget_bytes = 0;
+            if (!read_memory_budget_env(&env_budget_bytes, &env_is_set)) {
                 return cudaErrorInvalidValue;
             }
-            budget = env_is_set ? env_budget : default_memory_budget_bytes;
+            budget_bytes = env_is_set ? env_budget_bytes : default_memory_budget_bytes;
         }
-        if (budget < fixed_bytes) return cudaErrorInvalidValue;
+        if (budget_bytes < fixed_bytes) return cudaErrorInvalidValue;
 
         size_t bytes_per_capacity_increment = 0;
         if (!checked_mul(bytes_per_task, units, &bytes_per_capacity_increment)) {
             return cudaErrorInvalidValue;
         }
         resolved_tasks_per_unit =
-            (budget - fixed_bytes) / bytes_per_capacity_increment;
+            (budget_bytes - fixed_bytes) / bytes_per_capacity_increment;
 
         if (resolved_tasks_per_unit > max_tasks_per_unit) {
             resolved_tasks_per_unit = max_tasks_per_unit;
