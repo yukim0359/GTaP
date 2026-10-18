@@ -1,7 +1,6 @@
 #pragma once
 
 #include <climits>
-#include <cstdio>
 
 #include "../common/cuda_primitives.cuh"
 #include "../common/host_api.cuh"
@@ -146,7 +145,10 @@ inline cudaError_t initialize_impl(
     cudaError_t status = resolve_launch_config(config, &resolved, error);
     if (status != cudaSuccess) return status;
 
-    status = publish_launch_config(resolved, error);
+    status = check_init(
+        error,
+        publish_launch_config(resolved),
+        "failed to publish the launch configuration");
     if (status != cudaSuccess) return status;
 
     h_stream = config.stream;
@@ -183,20 +185,7 @@ inline cudaError_t gtap_initialize(
     gtap::detail::init_error error{};
     cudaError_t status = gtap::detail::thread::initialize_impl(
         config, device_bytes_allocated, error);
-    if (status != cudaSuccess) {
-        if (error.message[0] != '\0') {
-            std::fprintf(
-                stderr,
-                "GTaP initialization failed: %s (%s)\n",
-                error.message,
-                cudaGetErrorString(status));
-        } else {
-            std::fprintf(
-                stderr,
-                "GTaP initialization failed: %s\n",
-                cudaGetErrorString(status));
-        }
-    }
+    gtap::detail::print_init_error(status, error);
     return status;
 }
 

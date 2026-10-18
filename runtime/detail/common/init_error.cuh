@@ -22,6 +22,22 @@ struct init_error {
     }
 };
 
+inline void print_init_error(cudaError_t status, const init_error& error) {
+    if (status == cudaSuccess) return;
+    if (error.message[0] != '\0') {
+        std::fprintf(
+            stderr,
+            "GTaP initialization failed: %s (%s)\n",
+            error.message,
+            cudaGetErrorString(status));
+    } else {
+        std::fprintf(
+            stderr,
+            "GTaP initialization failed: %s\n",
+            cudaGetErrorString(status));
+    }
+}
+
 template <typename... Args>
 inline cudaError_t check_init(
     init_error& error,

@@ -99,19 +99,13 @@ inline size_t minimum_required_bytes(
     const size_t min_queue_slots =
         static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN) + 1;
     size_t min_tasks = 0;
-    size_t per_unit = 0;
-    size_t variable = 0;
-    size_t total = 0;
     if (!checked_mul(queues, min_queue_slots, &min_tasks)) return SIZE_MAX;
     if (min_tasks < static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
         min_tasks = static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
     }
-    if (!checked_mul(bytes_per_task, min_tasks, &per_unit) ||
-        !checked_mul(per_unit, units, &variable) ||
-        !checked_add(fixed_bytes, variable, &total)) {
-        return SIZE_MAX;
-    }
-    return total;
+    size_t bytes = mul_memory_bytes(bytes_per_task, min_tasks);
+    bytes = mul_memory_bytes(bytes, units);
+    return add_memory_bytes(fixed_bytes, bytes);
 }
 
 inline cudaError_t fail_insufficient_budget(
