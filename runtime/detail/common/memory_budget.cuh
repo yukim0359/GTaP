@@ -106,6 +106,12 @@ inline cudaError_t resolve_tasks_per_unit(
 
     const size_t units = static_cast<size_t>(scheduling_units);
     const size_t queues = static_cast<size_t>(num_queues);
+    // The scheduling-unit count times tasks per unit is computed in signed int.
+    // max_safe_release_ticket adds the pool size to itself, which fits through 1 << 30.
+    const size_t total_limit = static_cast<size_t>(INT_MAX) / units;
+    const size_t ticket_limit = static_cast<size_t>(1) << 30;
+    const size_t max_tasks_per_unit =
+        ticket_limit < total_limit ? ticket_limit : total_limit;
     size_t resolved_tasks_per_unit = 0;
 
     // requested_tasks > 0 ignores the budget.
@@ -130,17 +136,15 @@ inline cudaError_t resolve_tasks_per_unit(
         resolved_tasks_per_unit =
             (budget - fixed_bytes) / bytes_per_capacity_increment;
 
-        // The scheduling-unit count times tasks per unit is computed in signed int.
-        const size_t max_tasks_per_unit = static_cast<size_t>(INT_MAX) / units;
         if (resolved_tasks_per_unit > max_tasks_per_unit) {
             resolved_tasks_per_unit = max_tasks_per_unit;
         }
         resolved_tasks_per_unit = (resolved_tasks_per_unit / queues) * queues;
     }
 
-    // Explicit capacities are not clamped above, so reject a product past this limit.
-    const size_t total_limit = static_cast<size_t>(INT_MAX) / units;
-    if (resolved_tasks_per_unit > total_limit || resolved_tasks_per_unit % queues != 0) {
+    // Explicit capacities are not clamped above, so reject one past this limit.
+    if (resolved_tasks_per_unit > max_tasks_per_unit ||
+        resolved_tasks_per_unit % queues != 0) {
         return cudaErrorInvalidValue;
     }
 
