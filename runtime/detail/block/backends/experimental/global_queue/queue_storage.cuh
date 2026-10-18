@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../../common/checked_size.cuh"
 #include "../../../../common/device_memory.cuh"
 #include "../../../../common/runtime_config.cuh"
 #include "../../../../common/runtime_error.cuh"
@@ -41,12 +42,38 @@ struct queue_storage_buffers {
     int* generated = nullptr;
 };
 
+inline size_t generated_task_id_bytes(const launch_config& config) {
+    size_t bytes = mul_memory_bytes(
+        sizeof(int), static_cast<size_t>(GTAP_MAX_CHILD_TASKS));
+    return mul_memory_bytes(
+        bytes, static_cast<size_t>(config.total_scheduling_units));
+}
+
+inline size_t queue_slot_bytes(const launch_config& config) {
+    size_t bytes = mul_memory_bytes(
+        sizeof(int),
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(
+        bytes, static_cast<size_t>(config.tasks_per_scheduling_unit));
+}
+
+// fixed_bytes is the unpublished-child buffer. bytes_per_task is the size of one queue slot.
+inline bool queue_fixed_and_per_task_bytes(
+    const launch_config& config,
+    size_t* fixed_bytes,
+    size_t* bytes_per_task
+) {
+    const size_t generated_bytes = generated_task_id_bytes(config);
+    if (generated_bytes == SIZE_MAX) return false;
+    *fixed_bytes = generated_bytes;
+    *bytes_per_task = sizeof(int);
+    return true;
+}
+
 inline size_t queue_storage_allocation_bytes(const launch_config& config) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
-    return sizeof(int) * tasks
-        + sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS;
+    return add_memory_bytes(
+        queue_slot_bytes(config),
+        generated_task_id_bytes(config));
 }
 
 inline cudaError_t stage_queue_storage(
@@ -54,14 +81,14 @@ inline cudaError_t stage_queue_storage(
     cudaStream_t stream,
     queue_storage_buffers* buffers
 ) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, sizeof(int) * tasks));
+    const size_t slot_bytes = queue_slot_bytes(config);
+    const size_t generated_bytes = generated_task_id_bytes(config);
+    if (slot_bytes == SIZE_MAX || generated_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, slot_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->slots, 0, sizeof(int) * tasks, stream));
-    const size_t generated_bytes =
-        sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS;
+        buffers->slots, 0, slot_bytes, stream));
     GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->generated, generated_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
         buffers->generated, 0, generated_bytes, stream));
@@ -80,9 +107,12 @@ inline cudaError_t clear_queue_storage(
     const launch_config& config,
     cudaStream_t stream
 ) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
+    const size_t slot_bytes = queue_slot_bytes(config);
+    const size_t generated_bytes = generated_task_id_bytes(config);
+    if (slot_bytes == SIZE_MAX || generated_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
+
     int* slots = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &slots, d_global_task_queue, sizeof(int*)));
@@ -91,12 +121,11 @@ inline cudaError_t clear_queue_storage(
         &generated, d_task_id_generated, sizeof(int*)));
     if (slots != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, sizeof(int) * tasks, stream));
+            slots, 0, slot_bytes, stream));
     }
     if (generated != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            generated, 0, sizeof(int) * scheduling_units * GTAP_MAX_CHILD_TASKS,
-            stream));
+            generated, 0, generated_bytes, stream));
     }
     return cudaSuccess;
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../common/checked_size.cuh"
 #include "../common/cuda_primitives.cuh"
 #include "../common/device_memory.cuh"
 #include "../common/runtime_config.cuh"
@@ -85,13 +86,42 @@ struct task_pool_buffers {
     int* id_storage = nullptr;
 };
 
+// bytes_per_task is the task record, its header, and one task-id pool slot.
+inline bool task_pool_fixed_and_per_task_bytes(
+    const launch_config& config,
+    size_t* fixed_bytes,
+    size_t* bytes_per_task
+) {
+    (void)config;
+    size_t header_and_record = 0;
+    size_t per_task = 0;
+    if (!checked_add(sizeof(TaskHeader), __gtap_task_data_stride, &header_and_record) ||
+        !checked_add(header_and_record, sizeof(int), &per_task)) {
+        return false;
+    }
+    *fixed_bytes = 0;
+    *bytes_per_task = per_task;
+    return true;
+}
+
+// Total bytes for one task-pool component across all task slots.
+inline size_t task_pool_component_bytes(
+    const launch_config& config,
+    size_t bytes_per_task
+) {
+    size_t bytes = mul_memory_bytes(
+        bytes_per_task,
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(
+        bytes, static_cast<size_t>(config.tasks_per_scheduling_unit));
+}
+
 inline size_t task_pool_allocation_bytes(const launch_config& config) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
-    return sizeof(TaskHeader) * tasks
-        + __gtap_task_data_stride * tasks
-        + sizeof(int) * tasks;
+    size_t bytes = task_pool_component_bytes(config, sizeof(TaskHeader));
+    bytes = add_memory_bytes(
+        bytes, task_pool_component_bytes(config, __gtap_task_data_stride));
+    return add_memory_bytes(
+        bytes, task_pool_component_bytes(config, sizeof(int)));
 }
 
 // Allocates the pool and starts the async clears. Symbols are published later.
@@ -100,21 +130,25 @@ inline cudaError_t stage_task_pool(
     cudaStream_t stream,
     task_pool_buffers* buffers
 ) {
-    const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
-    const size_t tasks =
-        scheduling_units * static_cast<size_t>(config.tasks_per_scheduling_unit);
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->headers, sizeof(TaskHeader) * tasks));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->headers, 0, sizeof(TaskHeader) * tasks, stream));
+    const size_t header_bytes = task_pool_component_bytes(config, sizeof(TaskHeader));
+    const size_t record_bytes = task_pool_component_bytes(config, __gtap_task_data_stride);
+    const size_t id_storage_bytes = task_pool_component_bytes(config, sizeof(int));
+    if (header_bytes == SIZE_MAX || record_bytes == SIZE_MAX ||
+        id_storage_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
 
-    const size_t task_data_size = __gtap_task_data_stride * tasks;
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->task_data, task_data_size));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->headers, header_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->task_data, 0, task_data_size, stream));
+        buffers->headers, 0, header_bytes, stream));
 
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_storage, sizeof(int) * tasks));
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->task_data, record_bytes));
     GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->id_storage, 0, sizeof(int) * tasks, stream));
+        buffers->task_data, 0, record_bytes, stream));
+
+    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->id_storage, id_storage_bytes));
+    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
+        buffers->id_storage, 0, id_storage_bytes, stream));
     return cudaSuccess;
 }
 
@@ -133,9 +167,14 @@ inline cudaError_t clear_task_pool(
     const launch_config& config,
     cudaStream_t stream
 ) {
-    const size_t tasks =
-        static_cast<size_t>(config.total_scheduling_units) *
-        static_cast<size_t>(config.tasks_per_scheduling_unit);
+    const size_t header_bytes = task_pool_component_bytes(config, sizeof(TaskHeader));
+    const size_t record_bytes = task_pool_component_bytes(config, __gtap_task_data_stride);
+    const size_t id_storage_bytes = task_pool_component_bytes(config, sizeof(int));
+    if (header_bytes == SIZE_MAX || record_bytes == SIZE_MAX ||
+        id_storage_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
+
     TaskHeader* headers = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &headers, d_task_headers, sizeof(TaskHeader*)));
@@ -148,15 +187,15 @@ inline cudaError_t clear_task_pool(
 
     if (headers != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            headers, 0, sizeof(TaskHeader) * tasks, stream));
+            headers, 0, header_bytes, stream));
     }
     if (task_data != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            task_data, 0, __gtap_task_data_stride * tasks, stream));
+            task_data, 0, record_bytes, stream));
     }
     if (id_storage != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_storage, 0, sizeof(int) * tasks, stream));
+            id_storage, 0, id_storage_bytes, stream));
     }
     return cudaSuccess;
 }

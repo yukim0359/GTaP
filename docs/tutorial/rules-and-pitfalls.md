@@ -11,8 +11,20 @@ many [divergence-aware queues (DAQ)](./execution-modes#divergence-aware-queueing
 are allocated at initialization. If a workload exhausts the task-ID pool or a
 queue, execution reports a runtime error.
 
-Size `max_tasks_per_warp` or `max_tasks_per_block` for the maximum number of
-simultaneously live tasks. See the
+By default, GTaP allocates runtime management buffers within a 5 GiB memory
+budget. Profiling buffers are configured separately and are not included in
+this budget.
+
+To change the budget, set the `GTAP_MEMORY_BUDGET` environment variable or the
+`memory_budget_bytes` configuration field. A nonzero `memory_budget_bytes`
+value takes precedence over the environment variable.
+
+Alternatively, set `max_tasks_per_warp` or `max_tasks_per_block` to a positive
+value to specify the capacity directly. An explicit task capacity takes
+precedence over the memory budget. Leaving the field at `0` enables automatic
+capacity selection from the budget.
+
+See the
 [Configuration Reference](../reference/configuration) for the thread-mode
 per-queue capacity formula and validation rules.
 

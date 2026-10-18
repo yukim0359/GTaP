@@ -112,7 +112,6 @@ releases the runtime:
 gtap_thread_config config{
     .grid_size = 4000,
     .block_size = 32,
-    .max_tasks_per_warp = 100000,
     .num_queues = 1,
 };
 

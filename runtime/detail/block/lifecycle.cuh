@@ -5,6 +5,7 @@
 // All clears use h_stream.
 // A failed initialize releases staged buffers. The caller owns h_stream.
 
+#include "../common/checked_size.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 
@@ -19,9 +20,33 @@ using namespace gtap::detail;
 
 static size_t runtime_device_allocation_bytes() {
     const launch_config& config = h_launch_config;
-    return queue_storage_allocation_bytes(config) +
-           task_pool_allocation_bytes(config) +
-           profile_buffer_allocation_bytes(config);
+    size_t bytes = queue_storage_allocation_bytes(config);
+    bytes = add_memory_bytes(bytes, task_pool_allocation_bytes(config));
+    return add_memory_bytes(bytes, profile_buffer_allocation_bytes(config));
+}
+
+// Profile buffers are not included. fixed_bytes does not depend on task capacity.
+inline bool runtime_fixed_and_per_task_bytes(
+    const launch_config& config,
+    size_t* fixed_bytes,
+    size_t* bytes_per_task
+) {
+    size_t queue_fixed = 0;
+    size_t queue_per_task = 0;
+    size_t pool_fixed = 0;
+    size_t pool_per_task = 0;
+    size_t fixed = 0;
+    size_t per_task = 0;
+    if (!queue_fixed_and_per_task_bytes(config, &queue_fixed, &queue_per_task) ||
+        !task_pool_fixed_and_per_task_bytes(config, &pool_fixed, &pool_per_task) ||
+        !checked_add(queue_fixed, pool_fixed, &fixed) ||
+        !checked_add(queue_per_task, pool_per_task, &per_task) ||
+        per_task == 0) {
+        return false;
+    }
+    *fixed_bytes = fixed;
+    *bytes_per_task = per_task;
+    return true;
 }
 
 inline void abandon_initialize(

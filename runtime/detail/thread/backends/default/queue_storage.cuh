@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../common/checked_size.cuh"
 #include "../../../common/cuda_primitives.cuh"
 #include "../../../common/device_memory.cuh"
 #include "../../../common/runtime_config.cuh"
@@ -41,20 +42,38 @@ struct queue_storage_buffers {
 };
 
 inline size_t queue_metadata_bytes(const launch_config& config) {
-    return sizeof(WarpTaskQueueMetadata)
-        * static_cast<size_t>(config.total_scheduling_units)
-        * static_cast<size_t>(config.num_queues);
+    size_t bytes = mul_memory_bytes(
+        sizeof(WarpTaskQueueMetadata),
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(bytes, static_cast<size_t>(config.num_queues));
 }
 
 inline size_t queue_slot_bytes(const launch_config& config) {
-    return sizeof(int)
-        * static_cast<size_t>(config.total_scheduling_units)
-        * static_cast<size_t>(config.num_queues)
-        * static_cast<size_t>(config.queue_capacity);
+    size_t bytes = mul_memory_bytes(
+        sizeof(int),
+        static_cast<size_t>(config.total_scheduling_units));
+    return mul_memory_bytes(
+        bytes, static_cast<size_t>(config.tasks_per_scheduling_unit));
+}
+
+// fixed_bytes is the total queue metadata size, independent of task capacity.
+// bytes_per_task is the size of one queue slot.
+inline bool queue_fixed_and_per_task_bytes(
+    const launch_config& config,
+    size_t* fixed_bytes,
+    size_t* bytes_per_task
+) {
+    const size_t metadata_bytes = queue_metadata_bytes(config);
+    if (metadata_bytes == SIZE_MAX) return false;
+    *fixed_bytes = metadata_bytes;
+    *bytes_per_task = sizeof(int);
+    return true;
 }
 
 inline size_t queue_storage_allocation_bytes(const launch_config& config) {
-    return queue_metadata_bytes(config) + queue_slot_bytes(config);
+    return add_memory_bytes(
+        queue_metadata_bytes(config),
+        queue_slot_bytes(config));
 }
 
 // Allocates the metadata array and the task-id ring, and starts the async clears.
@@ -65,6 +84,9 @@ inline cudaError_t stage_queue_storage(
 ) {
     const size_t metadata_bytes = queue_metadata_bytes(config);
     const size_t slot_bytes = queue_slot_bytes(config);
+    if (metadata_bytes == SIZE_MAX || slot_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     // TODO: Events leak when initialize returns early.
@@ -119,7 +141,7 @@ inline cudaError_t stage_queue_storage(
     return cudaSuccess;
 }
 
-inline cudaError_t publish_queue_storage(queue_storage_buffers& buffers) {
+inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
         d_warp_task_queue_metadata, &buffers.metadata, sizeof(WarpTaskQueueMetadata*)));
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
@@ -131,6 +153,12 @@ inline cudaError_t clear_queue_storage(
     const launch_config& config,
     cudaStream_t stream
 ) {
+    const size_t metadata_bytes = queue_metadata_bytes(config);
+    const size_t slot_bytes = queue_slot_bytes(config);
+    if (metadata_bytes == SIZE_MAX || slot_bytes == SIZE_MAX) {
+        return cudaErrorInvalidValue;
+    }
+
     WarpTaskQueueMetadata* metadata = nullptr;
     GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
         &metadata, d_warp_task_queue_metadata, sizeof(WarpTaskQueueMetadata*)));
@@ -140,11 +168,11 @@ inline cudaError_t clear_queue_storage(
 
     if (metadata != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            metadata, 0, queue_metadata_bytes(config), stream));
+            metadata, 0, metadata_bytes, stream));
     }
     if (slots != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, queue_slot_bytes(config), stream));
+            slots, 0, slot_bytes, stream));
     }
     return cudaSuccess;
 }

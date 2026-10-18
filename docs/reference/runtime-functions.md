@@ -39,7 +39,7 @@ application allocations or the CUDA context.
 | --- | --- |
 | `cudaSuccess` | Runtime initialization completed successfully |
 | `cudaErrorInvalidConfiguration` | Launch geometry is invalid |
-| `cudaErrorInvalidValue` | A task capacity, queue count, or profiling capacity is invalid |
+| `cudaErrorInvalidValue` | A task capacity, queue count, memory budget, or profiling capacity is invalid |
 | `cudaErrorInitializationError` | GTaP is already initialized in this process |
 | Other CUDA error | A CUDA allocation, copy, symbol, or initialization operation failed |
 
