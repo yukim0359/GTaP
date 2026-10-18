@@ -5,7 +5,7 @@
 
 __device__ int d_result;
 __device__ int d_non_spawner_received_result;
-__device__ int d_entry_lane_results[GTAP_MAX_THREADS_PER_BLOCK];
+__device__ int d_entry_lane_results[GTAP_DETAIL_MAX_THREADS_PER_BLOCK];
 __device__ int d_non_master_entry_assignment;
 
 #pragma gtap function
@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
   int result = 0;
   int non_spawner_received_result = 0;
   int non_master_entry_assignment = 0;
-  int entry_lane_results[GTAP_MAX_THREADS_PER_BLOCK] = {};
+  int entry_lane_results[GTAP_DETAIL_MAX_THREADS_PER_BLOCK] = {};
   if (status == cudaSuccess)
     status = cudaMemcpyFromSymbol(&result, d_result, sizeof(result));
   if (status == cudaSuccess)

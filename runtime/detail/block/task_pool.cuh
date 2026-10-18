@@ -16,7 +16,7 @@
 // The compiler sets these strides after rounding the task records up to their alignment.
 // The index is the number of warps in the block.
 extern const size_t __gtap_block_task_data_strides[
-    GTAP_MAX_THREADS_PER_BLOCK / gtap::detail::warp_size + 1];
+    GTAP_DETAIL_MAX_THREADS_PER_BLOCK / gtap::detail::warp_size + 1];
 extern const size_t __gtap_entry_result_size;
 
 namespace gtap::detail::block {

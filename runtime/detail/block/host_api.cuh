@@ -32,12 +32,12 @@ inline cudaError_t validate_config(
             config.grid_size);
     }
     if (config.block_size <= 0 ||
-        config.block_size > GTAP_MAX_THREADS_PER_BLOCK) {
+        config.block_size > GTAP_DETAIL_MAX_THREADS_PER_BLOCK) {
         return error.fail(
             cudaErrorInvalidConfiguration,
             "block_size=%d must be in (0, %d]",
             config.block_size,
-            GTAP_MAX_THREADS_PER_BLOCK);
+            GTAP_DETAIL_MAX_THREADS_PER_BLOCK);
     }
     if (config.block_size % gtap::detail::warp_size != 0) {
         return error.fail(

@@ -95,7 +95,7 @@ before it allocates runtime resources.
 Both modes require:
 
 - `grid_size > 0`
-- a CUDA block size in `(0, GTAP_MAX_THREADS_PER_BLOCK]`
+- a CUDA block size in `(0, 1024]`
 - `block_size` to be a multiple of 32
 - a non-negative task capacity (`0` selects the memory budget)
 - when profiling is enabled, a profile capacity in `(0, INT_MAX / 2]`
