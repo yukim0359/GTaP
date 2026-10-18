@@ -6,6 +6,7 @@
 // A failed initialize releases staged buffers. The caller owns h_stream.
 
 #include "../common/checked_size.cuh"
+#include "../common/init_error.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 
@@ -62,13 +63,15 @@ inline void abandon_initialize(
     cudaGetLastError();
 }
 
-cudaError_t initialize_runtime() {
+cudaError_t initialize_runtime(init_error& error) {
     queue_storage_buffers queues{};
     task_pool_buffers task_pool{};
     profile_buffers profile{};
-    GTAP_DETAIL_CUDA_TRY_OR(
-        initialize_runtime_error_record(),
-        abandon_initialize(&queues, &task_pool, &profile));
+    cudaError_t status = initialize_runtime_error_record();
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return error.fail(status, "failed to allocate the runtime error record");
+    }
     const launch_config& runtime_config = h_launch_config;
     cudaStream_t stream = h_stream;
 
@@ -81,41 +84,61 @@ cudaError_t initialize_runtime() {
     float elapsed;
 #endif
 
-    GTAP_DETAIL_CUDA_TRY_OR(
-        stage_queue_storage(runtime_config, stream, &queues),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        stage_task_pool(runtime_config, stream, &task_pool),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        stage_profile_buffers(runtime_config, stream, &profile),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaStreamSynchronize(stream),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        publish_queue_storage(queues),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        publish_task_pool(task_pool),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        publish_profile_buffers(profile),
-        abandon_initialize(&queues, &task_pool, &profile));
+    status = stage_queue_storage(runtime_config, stream, &queues, error);
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return status;
+    }
+    status = stage_task_pool(runtime_config, stream, &task_pool, error);
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return status;
+    }
+    status = stage_profile_buffers(runtime_config, stream, &profile, error);
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return status;
+    }
+    status = cudaStreamSynchronize(stream);
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return error.fail(status, "failed to finish staged initialization");
+    }
+    status = publish_queue_storage(queues, error);
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return status;
+    }
+    status = publish_task_pool(task_pool, error);
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return status;
+    }
+    status = publish_profile_buffers(profile, error);
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return status;
+    }
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(start);
 #endif
     int zero = 0;
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
+    status = cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int));
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return error.fail(status, "failed to publish root-task completion flag");
+    }
+    status = cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int));
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return error.fail(status, "failed to publish completion flag");
+    }
+    status = cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int));
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return error.fail(status, "failed to publish the runtime error code");
+    }
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -125,9 +148,11 @@ cudaError_t initialize_runtime() {
     // Initialize d_active_warp_count to 1 to prevent early termination
     // before the initial task is pushed by the master thread
     int one = 1;
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
+    status = cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int));
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return error.fail(status, "failed to publish the active scheduling-unit count");
+    }
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -138,9 +163,11 @@ cudaError_t initialize_runtime() {
     printf("=== initialize_runtime profiling complete ===\n\n");
 #endif
 
-    GTAP_DETAIL_CUDA_TRY_OR(
-        cudaGetLastError(),
-        abandon_initialize(&queues, &task_pool, &profile));
+    status = cudaGetLastError();
+    if (status != cudaSuccess) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return error.fail(status, "initialization left a CUDA error");
+    }
     return cudaSuccess;
 }
 

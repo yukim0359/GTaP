@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <cuda_runtime.h>
 
+#include "init_error.cuh"
+
+// TODO: Rename to GTAP_DETAIL_MAX_THREADS_PER_BLOCK.
 #define GTAP_MAX_THREADS_PER_BLOCK 1024
 
 // #define GTAP_DETAIL_INTERNAL_DEBUG
@@ -32,13 +35,17 @@ inline cudaStream_t h_stream = nullptr;
 
 inline bool h_runtime_initialized = false;
 
-inline cudaError_t publish_launch_config(const launch_config& config) {
-    cudaError_t status =
-        cudaMemcpyToSymbol(d_launch_config, &config, sizeof(config));
-    if (status == cudaSuccess) {
-        h_launch_config = config;
-    }
-    return status;
+inline cudaError_t publish_launch_config(
+    const launch_config& config,
+    init_error& error
+) {
+    cudaError_t status = check_init(
+        error,
+        cudaMemcpyToSymbol(d_launch_config, &config, sizeof(config)),
+        "failed to publish the launch configuration");
+    if (status != cudaSuccess) return status;
+    h_launch_config = config;
+    return cudaSuccess;
 }
 
 }  // namespace gtap::detail

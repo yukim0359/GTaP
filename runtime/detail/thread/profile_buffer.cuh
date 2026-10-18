@@ -2,6 +2,7 @@
 
 #include "../common/cuda_primitives.cuh"
 #include "../common/device_memory.cuh"
+#include "../common/init_error.cuh"
 #include "../common/profile_buffer.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
@@ -120,59 +121,126 @@ struct profile_buffers {
 inline cudaError_t stage_profile_buffers(
     const launch_config& config,
     cudaStream_t stream,
-    profile_buffers* buffers
+    profile_buffers* buffers,
+    init_error& error
 ) {
 #ifdef GTAP_ENABLE_PROFILING
     const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
     const size_t timestamps = static_cast<size_t>(config.profile_interval_capacity) * 2;
     const size_t profile_long_bytes = sizeof(long long) * scheduling_units * timestamps;
     const size_t profile_int_bytes = sizeof(int) * scheduling_units * timestamps;
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->working_time, profile_long_bytes));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->tasks_processed_count, profile_int_bytes));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->dropped_events, sizeof(unsigned long long) * scheduling_units));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->peak_usage, sizeof(int) * scheduling_units));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->task_id_allocation_count, sizeof(int) * scheduling_units));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->working_time, 0, profile_long_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->tasks_processed_count, 0, profile_int_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->dropped_events, 0,
-        sizeof(unsigned long long) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->peak_usage, 0, sizeof(int) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->task_id_allocation_count, 0, sizeof(int) * scheduling_units, stream));
+    const size_t dropped_bytes = sizeof(unsigned long long) * scheduling_units;
+    const size_t unit_int_bytes = sizeof(int) * scheduling_units;
+    cudaError_t status = check_init(
+        error,
+        alloc_device(&buffers->working_time, profile_long_bytes),
+        "failed to allocate profile timestamps (%zu bytes)",
+        profile_long_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        alloc_device(&buffers->tasks_processed_count, profile_int_bytes),
+        "failed to allocate profile task counts (%zu bytes)",
+        profile_int_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        alloc_device(&buffers->dropped_events, dropped_bytes),
+        "failed to allocate profile dropped-event counts (%zu bytes)",
+        dropped_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        alloc_device(&buffers->peak_usage, unit_int_bytes),
+        "failed to allocate profile peak usage (%zu bytes)",
+        unit_int_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        alloc_device(&buffers->task_id_allocation_count, unit_int_bytes),
+        "failed to allocate profile task-id allocation counts (%zu bytes)",
+        unit_int_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemsetAsync(buffers->working_time, 0, profile_long_bytes, stream),
+        "failed to clear profile timestamps (%zu bytes)",
+        profile_long_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemsetAsync(buffers->tasks_processed_count, 0, profile_int_bytes, stream),
+        "failed to clear profile task counts (%zu bytes)",
+        profile_int_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemsetAsync(buffers->dropped_events, 0, dropped_bytes, stream),
+        "failed to clear profile dropped-event counts (%zu bytes)",
+        dropped_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemsetAsync(buffers->peak_usage, 0, unit_int_bytes, stream),
+        "failed to clear profile peak usage (%zu bytes)",
+        unit_int_bytes);
+    if (status != cudaSuccess) return status;
+    return check_init(
+        error,
+        cudaMemsetAsync(buffers->task_id_allocation_count, 0, unit_int_bytes, stream),
+        "failed to clear profile task-id allocation counts (%zu bytes)",
+        unit_int_bytes);
 #else
     (void)config;
     (void)stream;
     (void)buffers;
-#endif
+    (void)error;
     return cudaSuccess;
+#endif
 }
 
-inline cudaError_t publish_profile_buffers(const profile_buffers& buffers) {
+inline cudaError_t publish_profile_buffers(
+    const profile_buffers& buffers,
+    init_error& error
+) {
 #ifdef GTAP_ENABLE_PROFILING
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        working_time, &buffers.working_time, sizeof(buffers.working_time)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        tasks_processed_count, &buffers.tasks_processed_count,
-        sizeof(buffers.tasks_processed_count)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        profile_dropped_events, &buffers.dropped_events,
-        sizeof(buffers.dropped_events)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        task_pool_peak_usage, &buffers.peak_usage, sizeof(buffers.peak_usage)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        task_id_allocation_count, &buffers.task_id_allocation_count, sizeof(buffers.task_id_allocation_count)));
+    cudaError_t status = check_init(
+        error,
+        cudaMemcpyToSymbol(
+            working_time, &buffers.working_time, sizeof(buffers.working_time)),
+        "failed to publish profile timestamps");
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemcpyToSymbol(
+            tasks_processed_count, &buffers.tasks_processed_count,
+            sizeof(buffers.tasks_processed_count)),
+        "failed to publish profile task counts");
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemcpyToSymbol(
+            profile_dropped_events, &buffers.dropped_events,
+            sizeof(buffers.dropped_events)),
+        "failed to publish profile dropped-event counts");
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemcpyToSymbol(
+            task_pool_peak_usage, &buffers.peak_usage, sizeof(buffers.peak_usage)),
+        "failed to publish profile peak usage");
+    if (status != cudaSuccess) return status;
+    return check_init(
+        error,
+        cudaMemcpyToSymbol(
+            task_id_allocation_count, &buffers.task_id_allocation_count,
+            sizeof(buffers.task_id_allocation_count)),
+        "failed to publish profile task-id allocation counts");
 #else
     (void)buffers;
-#endif
+    (void)error;
     return cudaSuccess;
+#endif
 }
 
 inline cudaError_t clear_profile_buffers(

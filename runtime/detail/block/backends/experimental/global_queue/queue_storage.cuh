@@ -2,6 +2,7 @@
 
 #include "../../../../common/checked_size.cuh"
 #include "../../../../common/device_memory.cuh"
+#include "../../../../common/init_error.cuh"
 #include "../../../../common/runtime_config.cuh"
 #include "../../../../common/runtime_error.cuh"
 
@@ -79,28 +80,52 @@ inline size_t queue_storage_allocation_bytes(const launch_config& config) {
 inline cudaError_t stage_queue_storage(
     const launch_config& config,
     cudaStream_t stream,
-    queue_storage_buffers* buffers
+    queue_storage_buffers* buffers,
+    init_error& error
 ) {
     const size_t slot_bytes = queue_slot_bytes(config);
     const size_t generated_bytes = generated_task_id_bytes(config);
     if (slot_bytes == SIZE_MAX || generated_bytes == SIZE_MAX) {
-        return cudaErrorInvalidValue;
+        return error.fail(cudaErrorInvalidValue, "queue storage size overflowed");
     }
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, slot_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->slots, 0, slot_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->generated, generated_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->generated, 0, generated_bytes, stream));
-    return cudaSuccess;
+    cudaError_t status = check_init(
+        error,
+        alloc_device(&buffers->slots, slot_bytes),
+        "failed to allocate queue slots (%zu bytes)",
+        slot_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream),
+        "failed to clear queue slots (%zu bytes)",
+        slot_bytes);
+    if (status != cudaSuccess) return status;
+    status = check_init(
+        error,
+        alloc_device(&buffers->generated, generated_bytes),
+        "failed to allocate the generated task-id buffer (%zu bytes)",
+        generated_bytes);
+    if (status != cudaSuccess) return status;
+    return check_init(
+        error,
+        cudaMemsetAsync(buffers->generated, 0, generated_bytes, stream),
+        "failed to clear the generated task-id buffer (%zu bytes)",
+        generated_bytes);
 }
 
-inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_global_task_queue, &buffers.slots, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_task_id_generated, &buffers.generated, sizeof(int*)));
-    return cudaSuccess;
+inline cudaError_t publish_queue_storage(
+    const queue_storage_buffers& buffers,
+    init_error& error
+) {
+    cudaError_t status = check_init(
+        error,
+        cudaMemcpyToSymbol(d_global_task_queue, &buffers.slots, sizeof(int*)),
+        "failed to publish queue slots");
+    if (status != cudaSuccess) return status;
+    return check_init(
+        error,
+        cudaMemcpyToSymbol(d_task_id_generated, &buffers.generated, sizeof(int*)),
+        "failed to publish the generated task-id buffer");
 }
 
 inline cudaError_t clear_queue_storage(
@@ -153,13 +178,12 @@ inline void release_staged_queue_storage(queue_storage_buffers* buffers) {
 
 inline cudaError_t reset_queue_counters() {
     unsigned int zero = 0;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_queue_head, &zero, sizeof(unsigned int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_queue_tail, &zero, sizeof(unsigned int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_queue_alloc, &zero, sizeof(unsigned int)));
-    return cudaSuccess;
+    cudaError_t status = cudaMemcpyToSymbol(
+        d_queue_head, &zero, sizeof(unsigned int));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyToSymbol(d_queue_tail, &zero, sizeof(unsigned int));
+    if (status != cudaSuccess) return status;
+    return cudaMemcpyToSymbol(d_queue_alloc, &zero, sizeof(unsigned int));
 }
 
 }  // namespace gtap::detail::block

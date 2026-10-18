@@ -3,6 +3,7 @@
 #include "../../../common/checked_size.cuh"
 #include "../../../common/cuda_primitives.cuh"
 #include "../../../common/device_memory.cuh"
+#include "../../../common/init_error.cuh"
 #include "../../../common/runtime_config.cuh"
 #include "../../../common/runtime_error.cuh"
 
@@ -80,12 +81,14 @@ inline size_t queue_storage_allocation_bytes(const launch_config& config) {
 // Symbols are published later.
 inline cudaError_t stage_queue_storage(
     const launch_config& config,
-    cudaStream_t stream, queue_storage_buffers* buffers
+    cudaStream_t stream,
+    queue_storage_buffers* buffers,
+    init_error& error
 ) {
     const size_t metadata_bytes = queue_metadata_bytes(config);
     const size_t slot_bytes = queue_slot_bytes(config);
     if (metadata_bytes == SIZE_MAX || slot_bytes == SIZE_MAX) {
-        return cudaErrorInvalidValue;
+        return error.fail(cudaErrorInvalidValue, "queue storage size overflowed");
     }
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
@@ -97,7 +100,12 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->metadata, metadata_bytes));
+    cudaError_t status = check_init(
+        error,
+        alloc_device(&buffers->metadata, metadata_bytes),
+        "failed to allocate queue metadata (%zu bytes)",
+        metadata_bytes);
+    if (status != cudaSuccess) return status;
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
@@ -107,8 +115,12 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start, stream);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->metadata, 0, metadata_bytes, stream));
+    status = check_init(
+        error,
+        cudaMemsetAsync(buffers->metadata, 0, metadata_bytes, stream),
+        "failed to clear queue metadata (%zu bytes)",
+        metadata_bytes);
+    if (status != cudaSuccess) return status;
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
@@ -118,7 +130,12 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, slot_bytes));
+    status = check_init(
+        error,
+        alloc_device(&buffers->slots, slot_bytes),
+        "failed to allocate queue slots (%zu bytes)",
+        slot_bytes);
+    if (status != cudaSuccess) return status;
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
@@ -128,8 +145,12 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start, stream);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->slots, 0, slot_bytes, stream));
+    status = check_init(
+        error,
+        cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream),
+        "failed to clear queue slots (%zu bytes)",
+        slot_bytes);
+    if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
@@ -141,12 +162,20 @@ inline cudaError_t stage_queue_storage(
     return cudaSuccess;
 }
 
-inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_warp_task_queue_metadata, &buffers.metadata, sizeof(WarpTaskQueueMetadata*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_warp_task_queue_storage, &buffers.slots, sizeof(int*)));
-    return cudaSuccess;
+inline cudaError_t publish_queue_storage(
+    const queue_storage_buffers& buffers,
+    init_error& error
+) {
+    cudaError_t status = check_init(
+        error,
+        cudaMemcpyToSymbol(
+            d_warp_task_queue_metadata, &buffers.metadata, sizeof(WarpTaskQueueMetadata*)),
+        "failed to publish queue metadata");
+    if (status != cudaSuccess) return status;
+    return check_init(
+        error,
+        cudaMemcpyToSymbol(d_warp_task_queue_storage, &buffers.slots, sizeof(int*)),
+        "failed to publish queue slots");
 }
 
 inline cudaError_t clear_queue_storage(

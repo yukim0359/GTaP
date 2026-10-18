@@ -1,6 +1,7 @@
 #pragma once
 
 #include <climits>
+#include <cstdio>
 
 #include "../common/cuda_primitives.cuh"
 #include "../common/host_api.cuh"
@@ -20,20 +21,45 @@ struct gtap_block_config {
 
 namespace gtap::detail::block {
 
-inline cudaError_t validate_config(const gtap_block_config& config) {
-    if (config.grid_size <= 0 ||
-        config.block_size <= 0 ||
-        config.block_size > GTAP_MAX_THREADS_PER_BLOCK ||
-        config.block_size % gtap::detail::warp_size != 0) {
-        return cudaErrorInvalidConfiguration;
+inline cudaError_t validate_config(
+    const gtap_block_config& config,
+    init_error& error
+) {
+    if (config.grid_size <= 0) {
+        return error.fail(
+            cudaErrorInvalidConfiguration,
+            "grid_size=%d must be greater than zero",
+            config.grid_size);
+    }
+    if (config.block_size <= 0 ||
+        config.block_size > GTAP_MAX_THREADS_PER_BLOCK) {
+        return error.fail(
+            cudaErrorInvalidConfiguration,
+            "block_size=%d must be in (0, %d]",
+            config.block_size,
+            GTAP_MAX_THREADS_PER_BLOCK);
+    }
+    if (config.block_size % gtap::detail::warp_size != 0) {
+        return error.fail(
+            cudaErrorInvalidConfiguration,
+            "block_size=%d must be a multiple of %d",
+            config.block_size,
+            gtap::detail::warp_size);
     }
     if (config.max_tasks_per_block < 0) {
-        return cudaErrorInvalidValue;
+        return error.fail(
+            cudaErrorInvalidValue,
+            "max_tasks_per_block=%d must be greater than or equal to zero",
+            config.max_tasks_per_block);
     }
 #ifdef GTAP_ENABLE_PROFILING
     if (config.profile_capacity_per_block <= 0 ||
         config.profile_capacity_per_block > INT_MAX / 2) {
-        return cudaErrorInvalidValue;
+        return error.fail(
+            cudaErrorInvalidValue,
+            "profile_capacity_per_block=%d must be in (0, %d]",
+            config.profile_capacity_per_block,
+            INT_MAX / 2);
     }
 #endif
     return cudaSuccess;
@@ -41,9 +67,10 @@ inline cudaError_t validate_config(const gtap_block_config& config) {
 
 inline cudaError_t resolve_launch_config(
     const gtap_block_config& config,
-    launch_config* out
+    launch_config* out,
+    init_error& error
 ) {
-    cudaError_t status = validate_config(config);
+    cudaError_t status = validate_config(config, error);
     if (status != cudaSuccess) return status;
 
     const int warps_per_block = config.block_size / warp_size;
@@ -62,7 +89,9 @@ inline cudaError_t resolve_launch_config(
     size_t fixed_bytes = 0;
     size_t bytes_per_task = 0;
     if (!runtime_fixed_and_per_task_bytes(resolved, &fixed_bytes, &bytes_per_task)) {
-        return cudaErrorInvalidValue;
+        return error.fail(
+            cudaErrorInvalidValue,
+            "queue and task-pool size overflowed");
     }
     status = resolve_tasks_per_unit(
         config.max_tasks_per_block,
@@ -71,13 +100,48 @@ inline cudaError_t resolve_launch_config(
         resolved.num_queues,
         fixed_bytes,
         bytes_per_task,
-        &resolved.tasks_per_scheduling_unit);
+        "max_tasks_per_block",
+        &resolved.tasks_per_scheduling_unit,
+        error);
     if (status != cudaSuccess) return status;
 
     resolved.queue_capacity = resolved.tasks_per_scheduling_unit;
     resolved.dynamic_shared_bytes = config.dynamic_shared_bytes;
 
     *out = resolved;
+    return cudaSuccess;
+}
+
+inline cudaError_t initialize_impl(
+    const gtap_block_config& config,
+    size_t* device_bytes_allocated,
+    init_error& error
+) {
+    if (h_runtime_initialized) {
+        return error.fail(
+            cudaErrorInitializationError,
+            "GTaP is already initialized");
+    }
+
+    launch_config resolved{};
+    cudaError_t status = resolve_launch_config(config, &resolved, error);
+    if (status != cudaSuccess) return status;
+
+    status = publish_launch_config(resolved, error);
+    if (status != cudaSuccess) return status;
+
+    h_stream = config.stream;
+    status = initialize_runtime(error);
+    if (status != cudaSuccess) {
+        h_stream = nullptr;
+        return status;
+    }
+
+    h_runtime_initialized = true;
+    h_runtime_error_reported = false;
+    if (device_bytes_allocated != nullptr) {
+        *device_bytes_allocated = runtime_device_allocation_bytes();
+    }
     return cudaSuccess;
 }
 
@@ -97,27 +161,24 @@ inline cudaError_t gtap_initialize(
     const gtap_block_config& config,
     size_t* device_bytes_allocated
 ) {
-    if (gtap::detail::h_runtime_initialized) return cudaErrorInitializationError;
-
-    gtap::detail::launch_config resolved{};
-    cudaError_t status = gtap::detail::block::resolve_launch_config(config, &resolved);
-    if (status != cudaSuccess) return status;
-    GTAP_DETAIL_CUDA_TRY(gtap::detail::publish_launch_config(resolved));
-
-    gtap::detail::h_stream = config.stream;
-    cudaError_t err = gtap::detail::block::initialize_runtime();
-    if (err != cudaSuccess) {
-        gtap::detail::h_stream = nullptr;
-        return err;
+    gtap::detail::init_error error{};
+    cudaError_t status = gtap::detail::block::initialize_impl(
+        config, device_bytes_allocated, error);
+    if (status != cudaSuccess) {
+        if (error.message[0] != '\0') {
+            std::fprintf(
+                stderr,
+                "GTaP initialization failed: %s (%s)\n",
+                error.message,
+                cudaGetErrorString(status));
+        } else {
+            std::fprintf(
+                stderr,
+                "GTaP initialization failed: %s\n",
+                cudaGetErrorString(status));
+        }
     }
-
-    gtap::detail::h_runtime_initialized = true;
-    gtap::detail::h_runtime_error_reported = false;
-    if (device_bytes_allocated != nullptr) {
-        *device_bytes_allocated =
-            gtap::detail::block::runtime_device_allocation_bytes();
-    }
-    return cudaSuccess;
+    return status;
 }
 
 inline cudaError_t gtap_finalize() {
