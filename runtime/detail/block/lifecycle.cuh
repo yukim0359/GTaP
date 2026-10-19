@@ -224,6 +224,11 @@ cudaError_t reset_runtime(host_api_error& error) {
     if (status != cudaSuccess) return status;
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
+    status = record_error_if_failed(
+        error,
+        cudaGetLastError(),
+        "failed to reset task storage");
+    if (status != cudaSuccess) return status;
     // TODO: cudaDeviceSynchronize waits for every stream.
     status = record_error_if_failed(
         error,

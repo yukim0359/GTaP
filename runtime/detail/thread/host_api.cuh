@@ -149,7 +149,7 @@ inline cudaError_t initialize_impl(
         case runtime_state::reset_failed:
             return error.fail(
                 cudaErrorInitializationError,
-                "GTaP cannot be initialized again after a failed reset");
+                "Call gtap_finalize before reinitializing after a failed reset");
     }
 
     launch_config resolved{};
