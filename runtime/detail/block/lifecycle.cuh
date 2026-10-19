@@ -73,10 +73,11 @@ cudaError_t initialize_runtime(host_api_error& error) {
         return status;
     };
 
-    cudaError_t status = initialize_runtime_error_record();
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to initialize runtime error reporting"));
-    }
+    cudaError_t status = record_error_if_failed(
+        error,
+        initialize_runtime_error_record(),
+        "failed to initialize runtime error reporting");
+    if (status != cudaSuccess) return fail(status);
     const launch_config& runtime_config = h_launch_config;
 
     cudaStream_t stream = h_stream;
@@ -87,10 +88,11 @@ cudaError_t initialize_runtime(host_api_error& error) {
     if (status != cudaSuccess) return fail(status);
     status = stage_profile_buffers(runtime_config, stream, &profile, error);
     if (status != cudaSuccess) return fail(status);
-    status = cudaStreamSynchronize(stream);
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to initialize runtime storage"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaStreamSynchronize(stream),
+        "failed to initialize runtime storage");
+    if (status != cudaSuccess) return fail(status);
 
     status = record_error_if_failed(
         error,
@@ -109,42 +111,50 @@ cudaError_t initialize_runtime(host_api_error& error) {
     if (status != cudaSuccess) return fail(status);
 
     int zero = 0;
-    status = cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
-    status = cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
-    status = cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
-    status = reset_queue_counters();
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to initialize queue storage"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
+        reset_queue_counters(),
+        "failed to initialize queue storage");
+    if (status != cudaSuccess) return fail(status);
     int one = 1;
-    status = cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
-    status = cudaGetLastError();
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to initialize task storage"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaGetLastError(),
+        "failed to initialize task storage");
+    if (status != cudaSuccess) return fail(status);
     // TODO: cudaDeviceSynchronize waits for every stream.
-    status = cudaDeviceSynchronize();
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to initialize task storage"));
-    }
-    status = cudaGetLastError();
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "initialization left a CUDA error"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaDeviceSynchronize(),
+        "failed to initialize task storage");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
+        cudaGetLastError(),
+        "initialization left a CUDA error");
+    if (status != cudaSuccess) return fail(status);
     return cudaSuccess;
 }
 

@@ -71,10 +71,11 @@ cudaError_t initialize_runtime(host_api_error& error) {
         abandon_initialize(&queues, &task_pool, &profile);
         return status;
     };
-    cudaError_t status = initialize_runtime_error_record();
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to initialize runtime error reporting"));
-    }
+    cudaError_t status = record_error_if_failed(
+        error,
+        initialize_runtime_error_record(),
+        "failed to initialize runtime error reporting");
+    if (status != cudaSuccess) return fail(status);
     const launch_config& runtime_config = h_launch_config;
     cudaStream_t stream = h_stream;
 
@@ -93,10 +94,11 @@ cudaError_t initialize_runtime(host_api_error& error) {
     if (status != cudaSuccess) return fail(status);
     status = stage_profile_buffers(runtime_config, stream, &profile, error);
     if (status != cudaSuccess) return fail(status);
-    status = cudaStreamSynchronize(stream);
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to initialize runtime storage"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaStreamSynchronize(stream),
+        "failed to initialize runtime storage");
+    if (status != cudaSuccess) return fail(status);
     status = record_error_if_failed(
         error,
         publish_queue_storage(queues),
@@ -117,18 +119,21 @@ cudaError_t initialize_runtime(host_api_error& error) {
     cudaEventRecord(start);
 #endif
     int zero = 0;
-    status = cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
-    status = cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
-    status = cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -138,10 +143,11 @@ cudaError_t initialize_runtime(host_api_error& error) {
     // Initialize d_active_warp_count to 1 to prevent early termination
     // before the initial task is pushed by the master thread
     int one = 1;
-    status = cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int));
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to configure the runtime"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)),
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -152,10 +158,11 @@ cudaError_t initialize_runtime(host_api_error& error) {
     printf("=== initialize_runtime profiling complete ===\n\n");
 #endif
 
-    status = cudaGetLastError();
-    if (status != cudaSuccess) {
-        return fail(error.fail(status, "initialization left a CUDA error"));
-    }
+    status = record_error_if_failed(
+        error,
+        cudaGetLastError(),
+        "initialization left a CUDA error");
+    if (status != cudaSuccess) return fail(status);
     return cudaSuccess;
 }
 
