@@ -2,56 +2,13 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-enum class gtap_profile_export_status {
-    success = 0,
-    invalid_label,
-    invalid_output_directory,
-    path_too_long,
-    already_exists,
-    cuda_error,
-    out_of_memory,
-    io_error,
-    no_data,
-    profiling_disabled,
-    runtime_not_ready,
-};
-
-static inline const char* gtap_profile_export_status_string(
-    gtap_profile_export_status status
-) {
-    switch (status) {
-        case gtap_profile_export_status::success:
-            return "success";
-        case gtap_profile_export_status::invalid_label:
-            return "invalid_label";
-        case gtap_profile_export_status::invalid_output_directory:
-            return "invalid_output_directory";
-        case gtap_profile_export_status::path_too_long:
-            return "path_too_long";
-        case gtap_profile_export_status::already_exists:
-            return "already_exists";
-        case gtap_profile_export_status::cuda_error:
-            return "cuda_error";
-        case gtap_profile_export_status::out_of_memory:
-            return "out_of_memory";
-        case gtap_profile_export_status::io_error:
-            return "io_error";
-        case gtap_profile_export_status::no_data:
-            return "no_data";
-        case gtap_profile_export_status::profiling_disabled:
-            return "profiling_disabled";
-        case gtap_profile_export_status::runtime_not_ready:
-            return "runtime_not_ready";
-    }
-    return "unknown";
-}
 
 struct gtap_profile_export_options {
     const char* output_directory = "./profile";
@@ -60,8 +17,7 @@ struct gtap_profile_export_options {
 };
 
 struct gtap_profile_export_result {
-    gtap_profile_export_status status =
-        gtap_profile_export_status::io_error;
+    bool success = false;
     size_t recorded_intervals = 0;
     size_t dropped_intervals = 0;
     char result_directory[512] = {};
@@ -214,21 +170,47 @@ static inline bool resolve_output(
     return mkdir(output, 0755) == 0;
 }
 
-static inline gtap_profile_export_status prepare_profile_output(
+// Host-side reason for one profile export failure. The first recorded message
+// is kept. Callers still return gtap_profile_export_result.
+struct profile_export_error {
+    char message[512] = {};
+
+    void fail(const char* format, ...) {
+        if (message[0] != '\0') return;
+        va_list args;
+        va_start(args, format);
+        vsnprintf(message, sizeof(message), format, args);
+        va_end(args);
+    }
+};
+
+static inline void print_profile_export_result(
+    const gtap_profile_export_result& result,
+    const profile_export_error& error
+) {
+    if (result.success) {
+        printf("GTaP profile written to %s\n", result.result_directory);
+        return;
+    }
+    if (error.message[0] != '\0') {
+        fprintf(stderr, "GTaP profile not written: %s\n", error.message);
+    }
+}
+
+static inline bool prepare_profile_output(
     const gtap_profile_export_options& options,
-    gtap_profile_export_result& result
+    gtap_profile_export_result& result,
+    profile_export_error& error
 ) {
     if (!valid_label(options.label)) {
-        result.status = gtap_profile_export_status::invalid_label;
-        printf("GTaP profile not written: invalid label\n");
-        return result.status;
+        error.fail("invalid label");
+        return false;
     }
     if (!resolve_output(
             options.output_directory, result.result_directory,
             sizeof(result.result_directory))) {
-        result.status = gtap_profile_export_status::invalid_output_directory;
-        printf("GTaP profile not written: invalid output directory\n");
-        return result.status;
+        error.fail("invalid output directory");
+        return false;
     }
     const int metadata_len = snprintf(
         result.profile_path, sizeof(result.profile_path), "%s/profile.json",
@@ -243,27 +225,41 @@ static inline gtap_profile_export_status prepare_profile_output(
         static_cast<size_t>(metadata_len) >= sizeof(result.profile_path) ||
         static_cast<size_t>(timeline_len) >= sizeof(result.intervals_path) ||
         static_cast<size_t>(statistics_len) >= sizeof(result.aggregates_path)) {
-        result.status = gtap_profile_export_status::path_too_long;
-        printf("GTaP profile not written: output path is too long\n");
-        return result.status;
+        error.fail("output path is too long");
+        return false;
     }
     if (!options.overwrite &&
         (path_exists(result.profile_path) ||
          path_exists(result.intervals_path) ||
          path_exists(result.aggregates_path))) {
-        result.status = gtap_profile_export_status::already_exists;
-        printf("GTaP profile not written: files already exist in %s\n",
-               result.result_directory);
-        return result.status;
+        error.fail(
+            "files already exist in %s", result.result_directory);
+        return false;
     }
-    return gtap_profile_export_status::success;
+    return true;
 }
 
-// Closes the stream after checking its error flag.
-static inline bool close_profile_file(FILE* file) {
-    const bool write_error = ferror(file) != 0;
-    const bool closed = fclose(file) == 0;
-    return !write_error && closed;
+// Reads errno immediately. Call before any later libc call can replace it.
+static inline void record_profile_open_failure(
+    profile_export_error& error,
+    const char* path
+) {
+    const int open_errno = errno;
+    error.fail(
+        "failed to open '%s' for writing: %s",
+        path,
+        strerror(open_errno));
+}
+
+static inline void record_profile_write_failure(
+    profile_export_error& error,
+    const char* path
+) {
+    const int write_errno = errno;
+    error.fail(
+        "failed to write '%s': %s",
+        path,
+        strerror(write_errno));
 }
 
 }  // namespace gtap::detail

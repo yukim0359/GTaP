@@ -5,7 +5,6 @@
 #include "../common/host_api_error.cuh"
 #include "../common/profile_buffer.cuh"
 #include "../common/runtime_config.cuh"
-#include "../common/runtime_error.cuh"
 
 namespace gtap::detail::thread {
 
@@ -37,7 +36,8 @@ __device__ __forceinline__ void record_task_id_allocation_count(
 
 cudaError_t get_warp_working_time_data(long long* host_working_time) {
     long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_working_time, ptr,
         sizeof(long long) * h_launch_config.total_scheduling_units * profile_timestamp_capacity(),
@@ -46,7 +46,8 @@ cudaError_t get_warp_working_time_data(long long* host_working_time) {
 
 cudaError_t get_warp_tasks_processed_count_data(int* host_counts) {
     int* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, tasks_processed_count, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(&ptr, tasks_processed_count, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_counts, ptr,
         sizeof(int) * h_launch_config.total_scheduling_units * profile_timestamp_capacity(),
@@ -57,8 +58,9 @@ cudaError_t get_warp_profile_dropped_events_data(
     unsigned long long* host_counts
 ) {
     unsigned long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, profile_dropped_events, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &ptr, profile_dropped_events, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_counts, ptr,
         sizeof(unsigned long long) * h_launch_config.total_scheduling_units,
@@ -67,8 +69,9 @@ cudaError_t get_warp_profile_dropped_events_data(
 
 cudaError_t get_warp_task_pool_peak_usage(int* host_peak_usage) {
     int* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, task_pool_peak_usage, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &ptr, task_pool_peak_usage, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_peak_usage, ptr,
         sizeof(int) * h_launch_config.total_scheduling_units,
@@ -77,8 +80,9 @@ cudaError_t get_warp_task_pool_peak_usage(int* host_peak_usage) {
 
 cudaError_t get_warp_task_id_allocation_count(int* host_task_id_allocation_count) {
     int* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, task_id_allocation_count, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &ptr, task_id_allocation_count, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_task_id_allocation_count, ptr,
         sizeof(int) * h_launch_config.total_scheduling_units,
