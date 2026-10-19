@@ -34,6 +34,7 @@ enum class runtime_state {
     uninitialized,
     ready,
     launched,
+    synchronize_failed,
     reset_failed,
     finalize_failed,
 };

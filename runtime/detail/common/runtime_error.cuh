@@ -235,37 +235,7 @@ inline void print_failed_cuda_call(cudaError_t st) {
     fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
 }
 
-inline int cuda_try_nesting = 0;
-
 }  // namespace gtap::detail
-
-#ifndef GTAP_DETAIL_CUDA_TRY
-#define GTAP_DETAIL_CUDA_TRY(call) do { \
-    ++gtap::detail::cuda_try_nesting; \
-    cudaError_t __st = (call); \
-    --gtap::detail::cuda_try_nesting; \
-    if (__st != cudaSuccess) { \
-        if (gtap::detail::cuda_try_nesting == 0) { \
-            gtap::detail::print_failed_cuda_call(__st); \
-        } \
-        return __st; \
-    } \
-} while (0)
-#endif
-
-// Like GTAP_DETAIL_CUDA_TRY, then runs on_fail before returning.
-#define GTAP_DETAIL_CUDA_TRY_OR(call, on_fail) do { \
-    ++gtap::detail::cuda_try_nesting; \
-    cudaError_t __st = (call); \
-    --gtap::detail::cuda_try_nesting; \
-    if (__st != cudaSuccess) { \
-        if (gtap::detail::cuda_try_nesting == 0) { \
-            gtap::detail::print_failed_cuda_call(__st); \
-        } \
-        on_fail; \
-        return __st; \
-    } \
-} while (0)
 
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(tid, queue_idx, num_queues) \
     gtap::detail::record_runtime_error_and_trap( \

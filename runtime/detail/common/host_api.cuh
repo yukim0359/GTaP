@@ -62,6 +62,9 @@ inline cudaError_t gtap_launch(void (*kernel)(Params...), Args&&... args) {
             case gtap::detail::runtime_state::launched:
                 rejection = "call gtap_reset before launching again";
                 break;
+            case gtap::detail::runtime_state::synchronize_failed:
+                rejection = "GTaP cannot be launched after a failed synchronization";
+                break;
             case gtap::detail::runtime_state::reset_failed:
                 rejection =
                     "call gtap_finalize before reinitializing after a failed reset";
@@ -105,7 +108,38 @@ inline cudaError_t gtap_launch(void (*kernel)(Params...), Args&&... args) {
 }
 
 inline cudaError_t gtap_synchronize() {
-    cudaError_t st = cudaDeviceSynchronize();
-    gtap::detail::print_failed_cuda_call(st);
-    return st;
+    gtap::detail::host_api_error error{};
+    const char* rejection = nullptr;
+    switch (gtap::detail::h_runtime_state) {
+        case gtap::detail::runtime_state::ready:
+        case gtap::detail::runtime_state::launched:
+            break;
+        case gtap::detail::runtime_state::uninitialized:
+            rejection = "GTaP is not initialized";
+            break;
+        case gtap::detail::runtime_state::synchronize_failed:
+            rejection =
+                "GTaP cannot be synchronized again after a failed synchronization";
+            break;
+        case gtap::detail::runtime_state::reset_failed:
+            rejection = "GTaP cannot be synchronized after a failed reset";
+            break;
+        case gtap::detail::runtime_state::finalize_failed:
+            rejection = "GTaP cannot be synchronized after a failed finalization";
+            break;
+    }
+    if (rejection != nullptr) {
+        cudaError_t status = error.fail(
+            cudaErrorInitializationError, "%s", rejection);
+        gtap::detail::print_host_api_error("synchronize", status, error);
+        return status;
+    }
+
+    cudaError_t status = cudaDeviceSynchronize();
+    if (status != cudaSuccess) {
+        gtap::detail::h_runtime_state =
+            gtap::detail::runtime_state::synchronize_failed;
+    }
+    gtap::detail::print_failed_cuda_call(status);
+    return status;
 }

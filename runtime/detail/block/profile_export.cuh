@@ -411,6 +411,9 @@ static inline bool export_profile_impl(
         case runtime_state::uninitialized:
             rejection = "GTaP is not initialized";
             break;
+        case runtime_state::synchronize_failed:
+            rejection = "profile data is unavailable after a failed synchronization";
+            break;
         case runtime_state::reset_failed:
             rejection = "profile data is unavailable after a failed reset";
             break;

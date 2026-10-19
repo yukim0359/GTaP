@@ -124,14 +124,18 @@ inline cudaError_t initialize_impl(
             return error.fail(
                 cudaErrorInitializationError,
                 "GTaP is already initialized");
-        case runtime_state::finalize_failed:
+        case runtime_state::synchronize_failed:
             return error.fail(
                 cudaErrorInitializationError,
-                "GTaP cannot be initialized again after a failed finalization");
+                "GTaP cannot be initialized after a failed synchronization");
         case runtime_state::reset_failed:
             return error.fail(
                 cudaErrorInitializationError,
                 "Call gtap_finalize before reinitializing after a failed reset");
+        case runtime_state::finalize_failed:
+            return error.fail(
+                cudaErrorInitializationError,
+                "GTaP cannot be initialized again after a failed finalization");
     }
 
     launch_config resolved{};
@@ -163,6 +167,7 @@ inline cudaError_t finalize_impl(host_api_error& error) {
     switch (h_runtime_state) {
         case runtime_state::ready:
         case runtime_state::launched:
+        case runtime_state::synchronize_failed:
         case runtime_state::reset_failed:
             break;
         case runtime_state::uninitialized:
@@ -192,6 +197,10 @@ inline cudaError_t reset_impl(host_api_error& error) {
             return error.fail(
                 cudaErrorInitializationError,
                 "GTaP is not initialized");
+        case runtime_state::synchronize_failed:
+            return error.fail(
+                cudaErrorInitializationError,
+                "GTaP cannot be reset after a failed synchronization");
         case runtime_state::reset_failed:
             return error.fail(
                 cudaErrorInitializationError,
