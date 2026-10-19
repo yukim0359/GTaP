@@ -94,7 +94,9 @@ __global__ void get_warp_working_time_counts(int* counts) {
         int wid = blockIdx.x;
         int count = 0;
         for (int i = 0; i < profile_timestamp_capacity(); i++) {
-            if (working_time[wid * profile_timestamp_capacity() + i] > 0) count++;
+            const size_t profile_idx =
+                static_cast<size_t>(wid) * profile_timestamp_capacity() + i;
+            if (working_time[profile_idx] > 0) count++;
         }
         counts[wid] = count;
     }

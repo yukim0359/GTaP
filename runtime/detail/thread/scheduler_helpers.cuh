@@ -20,8 +20,8 @@ __device__ __forceinline__ void record_execution_start(
     if (lane == 0) {
         if (working_time_idx[warp_id_in_block] + 1 <
             profile_timestamp_capacity()) {
-            const int profile_idx =
-                warp_id_global * profile_timestamp_capacity() +
+            const size_t profile_idx =
+                static_cast<size_t>(warp_id_global) * profile_timestamp_capacity() +
                 working_time_idx[warp_id_in_block];
             working_time[profile_idx] = get_global_time();
             tasks_processed_count[profile_idx] = execute_task_count;
@@ -41,8 +41,8 @@ __device__ __forceinline__ void record_execution_end(
 ) {
     if (lane == 0) {
         if (working_time_idx[warp_id_in_block] < profile_timestamp_capacity()) {
-            const int profile_idx =
-                warp_id_global * profile_timestamp_capacity() +
+            const size_t profile_idx =
+                static_cast<size_t>(warp_id_global) * profile_timestamp_capacity() +
                 working_time_idx[warp_id_in_block];
             working_time[profile_idx] = get_global_time();
             tasks_processed_count[profile_idx] = execute_task_count;

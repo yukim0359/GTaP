@@ -96,7 +96,9 @@ __global__ void get_block_working_time_counts(int* counts) {
     if (threadIdx.x == 0) {
         int count = 0;
         for (int i = 0; i < profile_timestamp_capacity(); i++) {
-            if (working_time[blockIdx.x * profile_timestamp_capacity() + i] > 0) {
+            const size_t profile_idx =
+                static_cast<size_t>(blockIdx.x) * profile_timestamp_capacity() + i;
+            if (working_time[profile_idx] > 0) {
                 count++;
             }
         }
