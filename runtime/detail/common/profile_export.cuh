@@ -178,6 +178,8 @@ static inline bool prepare_profile_output(
     std::string& aggregates_path,
     profile_export_error& error
 ) {
+    // TODO: Catch std::bad_alloc from path construction, record the failure,
+    // and return false.
     if (!valid_label(options.label)) {
         error.fail("invalid label");
         return false;
