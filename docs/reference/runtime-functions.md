@@ -183,9 +183,9 @@ gtap_finalize();
 ## `gtap_finalize`
 
 Attempts to release all runtime-owned device and host memory and clears the
-stored CUDA stream. On success, the runtime can be initialized again. On failure,
-it cannot be reused or finalized again, and unreleased memory remains allocated
-until the process exits.
+stored CUDA stream. On success, the runtime can be initialized again. If cleanup
+fails, it cannot be reused or finalized again, and unreleased memory remains
+allocated until the process exits.
 
 ### Signature
 

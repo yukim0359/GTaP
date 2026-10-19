@@ -89,7 +89,7 @@ cudaError_t initialize_runtime(host_api_error& error) {
     if (status != cudaSuccess) return fail(status);
     status = cudaStreamSynchronize(stream);
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to finish allocating runtime storage"));
+        return fail(error.fail(status, "failed to initialize runtime storage"));
     }
 
     status = record_error_if_failed(
