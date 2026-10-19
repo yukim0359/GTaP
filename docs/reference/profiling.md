@@ -11,8 +11,9 @@ writes a result directory.
 ### Signature
 
 ```cpp
-gtap_profile_export_result gtap_export_profile(
-    const gtap_profile_export_options& options = {}
+bool gtap_export_profile(
+    const gtap_profile_export_options& options = {},
+    std::string* result_directory = nullptr
 );
 ```
 
@@ -21,31 +22,29 @@ gtap_profile_export_result gtap_export_profile(
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `options` | `const gtap_profile_export_options&` | Output location, optional label, and overwrite policy. Uses defaults when omitted. |
+| `result_directory` | `std::string*` | Optional pointer that receives the resolved output directory. A null pointer leaves the directory unreported. |
 
 ### Return value
 
-Returns a [`gtap_profile_export_result`](#gtap-profile-export-result). Inspect
-its `status` before using any generated path.
+Returns `true` when the profile was written. Otherwise,
+returns `false` and reports the reason to standard error once, including when
+profiling is disabled. Partial output files may remain on failure.
 
 ### Requirements
 
 - Compile with `GTAP_ENABLE_PROFILING` to record data.
 - Call `gtap_synchronize()` before exporting.
-- Export while the runtime is initialized, before `gtap_reset()` or
-  `gtap_finalize()`, which clear or release the GTaP profiler buffers.
+- Export after [`gtap_launch`](./runtime-functions#gtap-launch) and before
+  `gtap_reset()` or `gtap_finalize()`, which clear or release the GTaP profiler
+  buffers.
 
 ### Example
 
 ```cpp
-gtap_profile_export_result result = gtap_export_profile({
-    .output_directory = "./profile/fib_%i",
-    .overwrite = false,
-});
-
-if (result.status != gtap_profile_export_status::success) {
-    fprintf(stderr, "Profile export failed: %s\n",
-            gtap_profile_export_status_string(result.status));
-}
+std::string directory;
+bool success = gtap_export_profile(
+    {.output_directory = "./profile/fib_%i", .overwrite = false},
+    &directory);
 ```
 
 ## `gtap_profile_export_options`
@@ -69,71 +68,7 @@ struct gtap_profile_export_options {
 A non-null label must contain 1–128 characters. Only ASCII letters, digits,
 hyphen (`-`), underscore (`_`), and period (`.`) are accepted.
 
-`output_directory` must be non-empty and fit within the 512-byte result path
-buffers. At most one `%i` marker is allowed.
-
-## `gtap_profile_export_result`
-
-```cpp
-struct gtap_profile_export_result {
-    gtap_profile_export_status status;
-    size_t recorded_intervals;
-    size_t dropped_intervals;
-    char result_directory[512];
-    char profile_path[512];
-    char intervals_path[512];
-    char aggregates_path[512];
-};
-```
-
-### Fields
-
-| Field | Description |
-| --- | --- |
-| `status` | Final export status |
-| `recorded_intervals` | Number of complete task-execution intervals written |
-| `dropped_intervals` | Number of intervals omitted because a CUDA warp or thread block's profile buffer was full |
-| `result_directory` | Resolved output directory |
-| `profile_path` | Path to `profile.json` |
-| `intervals_path` | Path to `task_execution_intervals.csv` |
-| `aggregates_path` | Path to `task_execution_aggregates.csv` |
-
-Paths are meaningful only when the corresponding stage of export succeeded.
-
-## `gtap_profile_export_status`
-
-```cpp
-enum class gtap_profile_export_status {
-    success = 0,
-    invalid_label,
-    invalid_output_directory,
-    path_too_long,
-    already_exists,
-    cuda_error,
-    out_of_memory,
-    io_error,
-    no_data,
-    profiling_disabled,
-    runtime_not_ready,
-};
-```
-
-| Value | Meaning |
-| --- | --- |
-| `success` | All output files were written successfully |
-| `invalid_label` | `label` is empty, too long, or contains unsupported characters |
-| `invalid_output_directory` | The directory pattern is invalid or cannot be created/resolved |
-| `path_too_long` | A generated output-file path does not fit in its 512-byte buffer |
-| `already_exists` | An output file exists and `overwrite` is false |
-| `cuda_error` | Copying or preparing profile data failed in CUDA |
-| `out_of_memory` | A required host allocation failed |
-| `io_error` | Opening, writing, or closing an output file failed |
-| `no_data` | No complete task-execution interval was recorded |
-| `profiling_disabled` | The program was compiled without `GTAP_ENABLE_PROFILING` |
-| `runtime_not_ready` | The runtime is not initialized, or a previous finalization or reset failed |
-
-Use `gtap_profile_export_status_string(status)` to obtain a printable lowercase
-status name.
+`output_directory` must be non-empty. At most one `%i` marker is allowed.
 
 ## Generated files
 
