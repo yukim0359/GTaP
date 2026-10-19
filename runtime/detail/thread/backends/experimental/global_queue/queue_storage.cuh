@@ -226,35 +226,18 @@ inline cudaError_t stage_queue_storage(
         "failed to initialize queue storage");
 }
 
-inline cudaError_t publish_queue_storage(
-    const queue_storage_buffers& buffers,
-    init_error& error
-) {
-    cudaError_t status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_global_task_queue, &buffers.slots, sizeof(int*)),
-        "failed to configure queue storage");
+inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
+    cudaError_t status = cudaMemcpyToSymbol(
+        d_global_task_queue, &buffers.slots, sizeof(int*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_queue_head, &buffers.head, sizeof(int*)),
-        "failed to configure queue storage");
+    status = cudaMemcpyToSymbol(d_queue_head, &buffers.head, sizeof(int*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_queue_tail, &buffers.tail, sizeof(int*)),
-        "failed to configure queue storage");
+    status = cudaMemcpyToSymbol(d_queue_tail, &buffers.tail, sizeof(int*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_queue_alloc, &buffers.alloc, sizeof(int*)),
-        "failed to configure queue storage");
+    status = cudaMemcpyToSymbol(d_queue_alloc, &buffers.alloc, sizeof(int*));
     if (status != cudaSuccess) return status;
-    return check_init(
-        error,
-        cudaMemcpyToSymbol(
-            d_task_id_generated_by_queue_idx, &buffers.generated, sizeof(int*)),
-        "failed to configure queue storage");
+    return cudaMemcpyToSymbol(
+        d_task_id_generated_by_queue_idx, &buffers.generated, sizeof(int*));
 }
 
 inline cudaError_t clear_queue_storage(

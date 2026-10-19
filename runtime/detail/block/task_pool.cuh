@@ -254,40 +254,20 @@ inline cudaError_t stage_task_pool(
         "failed to initialize task storage");
 }
 
-inline cudaError_t publish_task_pool(
-    const task_pool_buffers& buffers,
-    init_error& error
-) {
-    cudaError_t status = check_init(
-        error,
-        cudaMemcpyToSymbol(
-            d_task_id_list_free_positions, &buffers.id_list_free_positions, sizeof(int*)),
-        "failed to configure task storage");
+inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
+    cudaError_t status = cudaMemcpyToSymbol(
+        d_task_id_list_free_positions, &buffers.id_list_free_positions, sizeof(int*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_task_id_storage, &buffers.id_storage, sizeof(int*)),
-        "failed to configure task storage");
+    status = cudaMemcpyToSymbol(d_task_id_storage, &buffers.id_storage, sizeof(int*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_task_headers, &buffers.headers, sizeof(TaskHeader*)),
-        "failed to configure task storage");
+    status = cudaMemcpyToSymbol(d_task_headers, &buffers.headers, sizeof(TaskHeader*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_task_data_bytes, &buffers.task_data, sizeof(char*)),
-        "failed to configure task storage");
+    status = cudaMemcpyToSymbol(d_task_data_bytes, &buffers.task_data, sizeof(char*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_entry_result_bytes, &buffers.entry_result, sizeof(char*)),
-        "failed to configure task storage");
+    status = cudaMemcpyToSymbol(
+        d_entry_result_bytes, &buffers.entry_result, sizeof(char*));
     if (status != cudaSuccess) return status;
-    return check_init(
-        error,
-        publish_task_data_stride(),
-        "failed to configure task storage");
+    return publish_task_data_stride();
 }
 
 inline cudaError_t clear_task_pool(

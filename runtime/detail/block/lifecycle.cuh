@@ -90,11 +90,20 @@ cudaError_t initialize_runtime(init_error& error) {
         return fail(error.fail(status, "failed to finish allocating runtime storage"));
     }
 
-    status = publish_queue_storage(queues, error);
+    status = check_init(
+        error,
+        publish_queue_storage(queues),
+        "failed to configure task queues");
     if (status != cudaSuccess) return fail(status);
-    status = publish_task_pool(task_pool, error);
+    status = check_init(
+        error,
+        publish_task_pool(task_pool),
+        "failed to configure task storage");
     if (status != cudaSuccess) return fail(status);
-    status = publish_profile_buffers(profile, error);
+    status = check_init(
+        error,
+        publish_profile_buffers(profile),
+        "failed to configure profiling");
     if (status != cudaSuccess) return fail(status);
 
     int zero = 0;

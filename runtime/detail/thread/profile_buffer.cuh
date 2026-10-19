@@ -194,46 +194,27 @@ inline cudaError_t stage_profile_buffers(
 #endif
 }
 
-inline cudaError_t publish_profile_buffers(
-    const profile_buffers& buffers,
-    init_error& error
-) {
+inline cudaError_t publish_profile_buffers(const profile_buffers& buffers) {
 #ifdef GTAP_ENABLE_PROFILING
-    cudaError_t status = check_init(
-        error,
-        cudaMemcpyToSymbol(
-            working_time, &buffers.working_time, sizeof(buffers.working_time)),
-        "failed to configure profile buffers");
+    cudaError_t status = cudaMemcpyToSymbol(
+        working_time, &buffers.working_time, sizeof(buffers.working_time));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(
-            tasks_processed_count, &buffers.tasks_processed_count,
-            sizeof(buffers.tasks_processed_count)),
-        "failed to configure profile buffers");
+    status = cudaMemcpyToSymbol(
+        tasks_processed_count, &buffers.tasks_processed_count,
+        sizeof(buffers.tasks_processed_count));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(
-            profile_dropped_events, &buffers.dropped_events,
-            sizeof(buffers.dropped_events)),
-        "failed to configure profile buffers");
+    status = cudaMemcpyToSymbol(
+        profile_dropped_events, &buffers.dropped_events,
+        sizeof(buffers.dropped_events));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(
-            task_pool_peak_usage, &buffers.peak_usage, sizeof(buffers.peak_usage)),
-        "failed to configure profile buffers");
+    status = cudaMemcpyToSymbol(
+        task_pool_peak_usage, &buffers.peak_usage, sizeof(buffers.peak_usage));
     if (status != cudaSuccess) return status;
-    return check_init(
-        error,
-        cudaMemcpyToSymbol(
-            task_id_allocation_count, &buffers.task_id_allocation_count,
-            sizeof(buffers.task_id_allocation_count)),
-        "failed to configure profile buffers");
+    return cudaMemcpyToSymbol(
+        task_id_allocation_count, &buffers.task_id_allocation_count,
+        sizeof(buffers.task_id_allocation_count));
 #else
     (void)buffers;
-    (void)error;
     return cudaSuccess;
 #endif
 }

@@ -176,29 +176,17 @@ inline cudaError_t stage_task_pool(
         "failed to initialize task storage");
 }
 
-inline cudaError_t publish_task_pool(
-    const task_pool_buffers& buffers,
-    init_error& error
-) {
-    cudaError_t status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_task_headers, &buffers.headers, sizeof(TaskHeader*)),
-        "failed to configure task storage");
+inline cudaError_t publish_task_pool(const task_pool_buffers& buffers) {
+    cudaError_t status = cudaMemcpyToSymbol(
+        d_task_headers, &buffers.headers, sizeof(TaskHeader*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        cudaMemcpyToSymbol(d_task_data_bytes, &buffers.task_data, sizeof(char*)),
-        "failed to configure task storage");
+    status = cudaMemcpyToSymbol(
+        d_task_data_bytes, &buffers.task_data, sizeof(char*));
     if (status != cudaSuccess) return status;
-    status = check_init(
-        error,
-        publish_task_data_stride(),
-        "failed to configure task storage");
+    status = publish_task_data_stride();
     if (status != cudaSuccess) return status;
-    return check_init(
-        error,
-        cudaMemcpyToSymbol(d_task_id_storage, &buffers.id_storage, sizeof(int*)),
-        "failed to configure task storage");
+    return cudaMemcpyToSymbol(
+        d_task_id_storage, &buffers.id_storage, sizeof(int*));
 }
 
 inline cudaError_t clear_task_pool(

@@ -161,20 +161,12 @@ inline cudaError_t stage_queue_storage(
     return cudaSuccess;
 }
 
-inline cudaError_t publish_queue_storage(
-    const queue_storage_buffers& buffers,
-    init_error& error
-) {
-    cudaError_t status = check_init(
-        error,
-        cudaMemcpyToSymbol(
-            d_warp_task_queue_metadata, &buffers.metadata, sizeof(WarpTaskQueueMetadata*)),
-        "failed to configure queue storage");
+inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
+    cudaError_t status = cudaMemcpyToSymbol(
+        d_warp_task_queue_metadata, &buffers.metadata, sizeof(WarpTaskQueueMetadata*));
     if (status != cudaSuccess) return status;
-    return check_init(
-        error,
-        cudaMemcpyToSymbol(d_warp_task_queue_storage, &buffers.slots, sizeof(int*)),
-        "failed to configure queue storage");
+    return cudaMemcpyToSymbol(
+        d_warp_task_queue_storage, &buffers.slots, sizeof(int*));
 }
 
 inline cudaError_t clear_queue_storage(
