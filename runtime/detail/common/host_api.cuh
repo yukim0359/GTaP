@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "host_api_error.cuh"
 #include "runtime_config.cuh"
 #include "runtime_error.cuh"
 
@@ -49,29 +50,96 @@ inline cudaError_t gtap_launch(void (*kernel)(Params...), Args&&... args) {
         static_assert(sizeof...(Params) == sizeof...(Args),
             "gtap_launch argument count does not match the kernel");
         return cudaErrorInvalidValue;
-    } else if (!gtap::detail::h_runtime_initialized) {
-        return cudaErrorInitializationError;
-    } else if constexpr (sizeof...(Params) == 0) {
-        const gtap::detail::launch_config& config = gtap::detail::h_launch_config;
-        return cudaLaunchKernel(
-            reinterpret_cast<const void*>(kernel),
-            dim3(static_cast<unsigned int>(config.grid_size)),
-            dim3(static_cast<unsigned int>(config.block_size)),
-            nullptr,
-            config.dynamic_shared_bytes,
-            gtap::detail::h_stream);
     } else {
-        std::tuple<Params...> prepared{
-            gtap::detail::convert_launch_argument<Params>(
-                std::forward<Args>(args))...
-        };
-        return gtap::detail::launch_prepared_kernel(
-            kernel, prepared, std::index_sequence_for<Params...>{});
+        gtap::detail::host_api_error error{};
+        const char* rejection = nullptr;
+        switch (gtap::detail::h_runtime_state) {
+            case gtap::detail::runtime_state::ready:
+                break;
+            case gtap::detail::runtime_state::uninitialized:
+                rejection = "GTaP is not initialized; call gtap_initialize before launching";
+                break;
+            case gtap::detail::runtime_state::launched:
+                rejection = "call gtap_reset before launching again";
+                break;
+            case gtap::detail::runtime_state::synchronize_failed:
+                rejection = "GTaP cannot be launched after a failed synchronization";
+                break;
+            case gtap::detail::runtime_state::reset_failed:
+                rejection =
+                    "call gtap_finalize before reinitializing after a failed reset";
+                break;
+            case gtap::detail::runtime_state::finalize_failed:
+                rejection = "GTaP cannot be launched after a failed finalization";
+                break;
+        }
+        if (rejection != nullptr) {
+            cudaError_t status = error.fail(
+                cudaErrorInitializationError, "%s", rejection);
+            gtap::detail::print_host_api_error("launch", status, error);
+            return status;
+        }
+        cudaError_t status = cudaSuccess;
+        if constexpr (sizeof...(Params) == 0) {
+            const gtap::detail::launch_config& config = gtap::detail::h_launch_config;
+            status = cudaLaunchKernel(
+                reinterpret_cast<const void*>(kernel),
+                dim3(static_cast<unsigned int>(config.grid_size)),
+                dim3(static_cast<unsigned int>(config.block_size)),
+                nullptr,
+                config.dynamic_shared_bytes,
+                gtap::detail::h_stream);
+        } else {
+            std::tuple<Params...> prepared{
+                gtap::detail::convert_launch_argument<Params>(
+                    std::forward<Args>(args))...
+            };
+            status = gtap::detail::launch_prepared_kernel(
+                kernel, prepared, std::index_sequence_for<Params...>{});
+        }
+        status = gtap::detail::record_error_if_failed(
+            error, status, "failed to launch the kernel");
+        if (status == cudaSuccess) {
+            gtap::detail::h_runtime_state = gtap::detail::runtime_state::launched;
+        }
+        gtap::detail::print_host_api_error("launch", status, error);
+        return status;
     }
 }
 
 inline cudaError_t gtap_synchronize() {
-    cudaError_t st = cudaDeviceSynchronize();
-    gtap::detail::print_failed_cuda_call(st);
-    return st;
+    gtap::detail::host_api_error error{};
+    const char* rejection = nullptr;
+    switch (gtap::detail::h_runtime_state) {
+        case gtap::detail::runtime_state::ready:
+        case gtap::detail::runtime_state::launched:
+            break;
+        case gtap::detail::runtime_state::uninitialized:
+            rejection = "GTaP is not initialized";
+            break;
+        case gtap::detail::runtime_state::synchronize_failed:
+            rejection =
+                "GTaP cannot be synchronized again after a failed synchronization";
+            break;
+        case gtap::detail::runtime_state::reset_failed:
+            rejection = "GTaP cannot be synchronized after a failed reset";
+            break;
+        case gtap::detail::runtime_state::finalize_failed:
+            rejection = "GTaP cannot be synchronized after a failed finalization";
+            break;
+    }
+    if (rejection != nullptr) {
+        cudaError_t status = error.fail(
+            cudaErrorInitializationError, "%s", rejection);
+        gtap::detail::print_host_api_error("synchronize", status, error);
+        return status;
+    }
+
+    cudaError_t status = cudaDeviceSynchronize();
+    if (status != cudaSuccess) {
+        gtap::detail::h_runtime_state =
+            gtap::detail::runtime_state::synchronize_failed;
+    }
+    gtap::detail::print_failed_cuda_call(status);
+    return status;
 }

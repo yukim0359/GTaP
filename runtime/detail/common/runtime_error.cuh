@@ -38,10 +38,6 @@ __constant__ runtime_error_record* d_runtime_error_record;
 
 static runtime_error_record* h_runtime_error_record = nullptr;
 
-// True after the GTaP record has been printed. Stays set until the next
-// successful gtap_initialize, so that trap is not printed again.
-inline bool h_runtime_error_reported = false;
-
 inline cudaError_t initialize_runtime_error_record() {
     if (h_runtime_error_record == nullptr) {
         cudaError_t st = cudaHostAlloc(reinterpret_cast<void**>(&h_runtime_error_record),
@@ -227,45 +223,13 @@ inline void print_failed_cuda_call(cudaError_t st) {
     if (read_runtime_error_record(&record)) {
         print_runtime_error_record(&record);
         reset_runtime_error_record();
-        h_runtime_error_reported = true;
         return;
     }
     if (st == cudaSuccess) return;
-    if (h_runtime_error_reported && st == cudaErrorLaunchFailure) return;
     fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
 }
 
-inline int cuda_try_nesting = 0;
-
 }  // namespace gtap::detail
-
-#ifndef GTAP_DETAIL_CUDA_TRY
-#define GTAP_DETAIL_CUDA_TRY(call) do { \
-    ++gtap::detail::cuda_try_nesting; \
-    cudaError_t __st = (call); \
-    --gtap::detail::cuda_try_nesting; \
-    if (__st != cudaSuccess) { \
-        if (gtap::detail::cuda_try_nesting == 0) { \
-            gtap::detail::print_failed_cuda_call(__st); \
-        } \
-        return __st; \
-    } \
-} while (0)
-#endif
-
-// Like GTAP_DETAIL_CUDA_TRY, then runs on_fail before returning.
-#define GTAP_DETAIL_CUDA_TRY_OR(call, on_fail) do { \
-    ++gtap::detail::cuda_try_nesting; \
-    cudaError_t __st = (call); \
-    --gtap::detail::cuda_try_nesting; \
-    if (__st != cudaSuccess) { \
-        if (gtap::detail::cuda_try_nesting == 0) { \
-            gtap::detail::print_failed_cuda_call(__st); \
-        } \
-        on_fail; \
-        return __st; \
-    } \
-} while (0)
 
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(tid, queue_idx, num_queues) \
     gtap::detail::record_runtime_error_and_trap( \

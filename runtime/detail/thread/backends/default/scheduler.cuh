@@ -304,6 +304,8 @@ __device__ __forceinline__ void push_batch_multi_queue(
         WarpTaskQueueMetadata* q = warp_queue_metadata_ptr(kind, warp_id_global);
         int total = ctx->generated_task_counts[kind];
         int staged_n = min(total, warp_size);
+        // TODO: Capacity-check a non-selected queue before moving its staged IDs.
+        // The first 32 skip the check in stage_task_id, and this move has none either.
         if (kind != k_max) {
             for (int j = lane; j < staged_n; j += warp_size) {
                 *warp_queue_slot_ptr(

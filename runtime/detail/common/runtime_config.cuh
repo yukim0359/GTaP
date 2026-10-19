@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cuda_runtime.h>
 
-#define GTAP_MAX_THREADS_PER_BLOCK 1024
+#define GTAP_DETAIL_MAX_THREADS_PER_BLOCK 1024
 
 // #define GTAP_DETAIL_INTERNAL_DEBUG
 
@@ -30,7 +30,16 @@ __constant__ launch_config d_launch_config;
 
 inline cudaStream_t h_stream = nullptr;
 
-inline bool h_runtime_initialized = false;
+enum class runtime_state {
+    uninitialized,
+    ready,
+    launched,
+    synchronize_failed,
+    reset_failed,
+    finalize_failed,
+};
+
+inline runtime_state h_runtime_state = runtime_state::uninitialized;
 
 inline cudaError_t publish_launch_config(const launch_config& config) {
     cudaError_t status =

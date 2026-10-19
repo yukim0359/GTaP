@@ -2,9 +2,9 @@
 
 #include "../common/cuda_primitives.cuh"
 #include "../common/device_memory.cuh"
+#include "../common/host_api_error.cuh"
 #include "../common/profile_buffer.cuh"
 #include "../common/runtime_config.cuh"
-#include "../common/runtime_error.cuh"
 
 namespace gtap::detail::block {
 
@@ -35,7 +35,8 @@ __device__ __forceinline__ void record_task_id_allocation_count(
 
 cudaError_t get_working_time_data(long long* host_working_time) {
     long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_working_time, ptr,
         sizeof(long long) * h_launch_config.grid_size *
@@ -47,8 +48,9 @@ cudaError_t get_block_profile_dropped_events_data(
     unsigned long long* host_counts
 ) {
     unsigned long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, profile_dropped_events, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &ptr, profile_dropped_events, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_counts, ptr,
         sizeof(unsigned long long) * h_launch_config.grid_size,
@@ -57,8 +59,9 @@ cudaError_t get_block_profile_dropped_events_data(
 
 cudaError_t get_block_task_pool_peak_usage(int* host_peak_usage) {
     int* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, task_pool_peak_usage, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &ptr, task_pool_peak_usage, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_peak_usage, ptr,
         sizeof(int) * h_launch_config.grid_size,
@@ -67,8 +70,9 @@ cudaError_t get_block_task_pool_peak_usage(int* host_peak_usage) {
 
 cudaError_t get_block_task_id_allocation_count(int* host_task_id_allocation_count) {
     int* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &ptr, task_id_allocation_count, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &ptr, task_id_allocation_count, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     return cudaMemcpy(
         host_task_id_allocation_count, ptr,
         sizeof(int) * h_launch_config.grid_size,
@@ -79,7 +83,8 @@ cudaError_t get_block_working_time_data(
     int block_id, long long* host_working_time, int max_samples
 ) {
     long long* ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr)));
+    cudaError_t status = cudaMemcpyFromSymbol(&ptr, working_time, sizeof(ptr));
+    if (status != cudaSuccess) return status;
     const int count = max_samples < profile_timestamp_capacity() ? max_samples : profile_timestamp_capacity();
     return cudaMemcpy(
         host_working_time,
@@ -91,7 +96,9 @@ __global__ void get_block_working_time_counts(int* counts) {
     if (threadIdx.x == 0) {
         int count = 0;
         for (int i = 0; i < profile_timestamp_capacity(); i++) {
-            if (working_time[blockIdx.x * profile_timestamp_capacity() + i] > 0) {
+            const size_t profile_idx =
+                static_cast<size_t>(blockIdx.x) * profile_timestamp_capacity() + i;
+            if (working_time[profile_idx] > 0) {
                 count++;
             }
         }
@@ -123,51 +130,86 @@ struct profile_buffers {
 inline cudaError_t stage_profile_buffers(
     const launch_config& config,
     cudaStream_t stream,
-    profile_buffers* buffers
+    profile_buffers* buffers,
+    host_api_error& error
 ) {
 #ifdef GTAP_ENABLE_PROFILING
     const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
     const size_t timestamps = static_cast<size_t>(config.profile_interval_capacity) * 2;
     const size_t profile_bytes = sizeof(long long) * scheduling_units * timestamps;
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->working_time, profile_bytes));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->dropped_events, sizeof(unsigned long long) * scheduling_units));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->peak_usage, sizeof(int) * scheduling_units));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(
-        &buffers->task_id_allocation_count, sizeof(int) * scheduling_units));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->working_time, 0, profile_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->dropped_events, 0,
-        sizeof(unsigned long long) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->peak_usage, 0, sizeof(int) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->task_id_allocation_count, 0, sizeof(int) * scheduling_units, stream));
+    const size_t dropped_bytes = sizeof(unsigned long long) * scheduling_units;
+    const size_t unit_int_bytes = sizeof(int) * scheduling_units;
+    cudaError_t status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->working_time, profile_bytes),
+        "failed to allocate profile buffers (allocation size: %zu bytes)",
+        profile_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->dropped_events, dropped_bytes),
+        "failed to allocate profile buffers (allocation size: %zu bytes)",
+        dropped_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->peak_usage, unit_int_bytes),
+        "failed to allocate profile buffers (allocation size: %zu bytes)",
+        unit_int_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->task_id_allocation_count, unit_int_bytes),
+        "failed to allocate profile buffers (allocation size: %zu bytes)",
+        unit_int_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->working_time, 0, profile_bytes, stream),
+        "failed to initialize profile buffers");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->dropped_events, 0, dropped_bytes, stream),
+        "failed to initialize profile buffers");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->peak_usage, 0, unit_int_bytes, stream),
+        "failed to initialize profile buffers");
+    if (status != cudaSuccess) return status;
+    return record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->task_id_allocation_count, 0, unit_int_bytes, stream),
+        "failed to initialize profile buffers");
 #else
     (void)config;
     (void)stream;
     (void)buffers;
-#endif
+    (void)error;
     return cudaSuccess;
+#endif
 }
 
 inline cudaError_t publish_profile_buffers(const profile_buffers& buffers) {
 #ifdef GTAP_ENABLE_PROFILING
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        working_time, &buffers.working_time, sizeof(buffers.working_time)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
+    cudaError_t status = cudaMemcpyToSymbol(
+        working_time, &buffers.working_time, sizeof(buffers.working_time));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyToSymbol(
         profile_dropped_events, &buffers.dropped_events,
-        sizeof(buffers.dropped_events)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        task_pool_peak_usage, &buffers.peak_usage, sizeof(buffers.peak_usage)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        task_id_allocation_count, &buffers.task_id_allocation_count, sizeof(buffers.task_id_allocation_count)));
+        sizeof(buffers.dropped_events));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyToSymbol(
+        task_pool_peak_usage, &buffers.peak_usage, sizeof(buffers.peak_usage));
+    if (status != cudaSuccess) return status;
+    return cudaMemcpyToSymbol(
+        task_id_allocation_count, &buffers.task_id_allocation_count,
+        sizeof(buffers.task_id_allocation_count));
 #else
     (void)buffers;
-#endif
     return cudaSuccess;
+#endif
 }
 
 inline cudaError_t clear_profile_buffers(
@@ -181,28 +223,36 @@ inline cudaError_t clear_profile_buffers(
     unsigned long long* profile_dropped_events_ptr = nullptr;
     int* task_pool_peak_usage_ptr = nullptr;
     int* task_id_allocation_count_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &working_time_ptr, working_time, sizeof(working_time_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &working_time_ptr, working_time, sizeof(working_time_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(
         &profile_dropped_events_ptr, profile_dropped_events,
-        sizeof(profile_dropped_events_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(profile_dropped_events_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(
         &task_pool_peak_usage_ptr, task_pool_peak_usage,
-        sizeof(task_pool_peak_usage_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(task_pool_peak_usage_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(
         &task_id_allocation_count_ptr, task_id_allocation_count,
-        sizeof(task_id_allocation_count_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
+        sizeof(task_id_allocation_count_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
         working_time_ptr, 0,
         sizeof(long long) * scheduling_units * timestamps,
-        stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
+        stream);
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
         profile_dropped_events_ptr, 0,
-        sizeof(unsigned long long) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        task_pool_peak_usage_ptr, 0, sizeof(int) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        task_id_allocation_count_ptr, 0, sizeof(int) * scheduling_units, stream));
+        sizeof(unsigned long long) * scheduling_units, stream);
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
+        task_pool_peak_usage_ptr, 0, sizeof(int) * scheduling_units, stream);
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
+        task_id_allocation_count_ptr, 0, sizeof(int) * scheduling_units, stream);
+    if (status != cudaSuccess) return status;
 #else
     (void)config;
     (void)stream;
@@ -211,36 +261,42 @@ inline cudaError_t clear_profile_buffers(
 }
 
 inline cudaError_t free_profile_buffers() {
+    cudaError_t result = cudaSuccess;
+
 #ifdef GTAP_ENABLE_PROFILING
     long long* working_time_ptr = nullptr;
+    cudaError_t working_time_read_status = cudaMemcpyFromSymbol(
+        &working_time_ptr, working_time, sizeof(working_time_ptr));
+    keep_first_error(working_time_read_status, &result);
     unsigned long long* profile_dropped_events_ptr = nullptr;
-    int* task_pool_peak_usage_ptr = nullptr;
-    int* task_id_allocation_count_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &working_time_ptr, working_time, sizeof(working_time_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+    cudaError_t dropped_events_read_status = cudaMemcpyFromSymbol(
         &profile_dropped_events_ptr, profile_dropped_events,
-        sizeof(profile_dropped_events_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(profile_dropped_events_ptr));
+    keep_first_error(dropped_events_read_status, &result);
+    int* task_pool_peak_usage_ptr = nullptr;
+    cudaError_t peak_usage_read_status = cudaMemcpyFromSymbol(
         &task_pool_peak_usage_ptr, task_pool_peak_usage,
-        sizeof(task_pool_peak_usage_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(task_pool_peak_usage_ptr));
+    keep_first_error(peak_usage_read_status, &result);
+    int* task_id_allocation_count_ptr = nullptr;
+    cudaError_t allocation_count_read_status = cudaMemcpyFromSymbol(
         &task_id_allocation_count_ptr, task_id_allocation_count,
-        sizeof(task_id_allocation_count_ptr)));
-    if (working_time_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(working_time_ptr));
+        sizeof(task_id_allocation_count_ptr));
+    keep_first_error(allocation_count_read_status, &result);
+    if (working_time_read_status == cudaSuccess && working_time_ptr != nullptr) {
+        keep_first_error(cudaFree(working_time_ptr), &result);
     }
-    if (profile_dropped_events_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(profile_dropped_events_ptr));
+    if (dropped_events_read_status == cudaSuccess && profile_dropped_events_ptr != nullptr) {
+        keep_first_error(cudaFree(profile_dropped_events_ptr), &result);
     }
-    if (task_pool_peak_usage_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(task_pool_peak_usage_ptr));
+    if (peak_usage_read_status == cudaSuccess && task_pool_peak_usage_ptr != nullptr) {
+        keep_first_error(cudaFree(task_pool_peak_usage_ptr), &result);
     }
-    if (task_id_allocation_count_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(task_id_allocation_count_ptr));
+    if (allocation_count_read_status == cudaSuccess && task_id_allocation_count_ptr != nullptr) {
+        keep_first_error(cudaFree(task_id_allocation_count_ptr), &result);
     }
 #endif
-    return cudaSuccess;
+    return result;
 }
 
 inline void release_staged_profile_buffers(profile_buffers* buffers) {

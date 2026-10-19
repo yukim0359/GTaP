@@ -3,6 +3,7 @@
 #include "../../../../common/checked_size.cuh"
 #include "../../../../common/cuda_primitives.cuh"
 #include "../../../../common/device_memory.cuh"
+#include "../../../../common/host_api_error.cuh"
 #include "../../../../common/runtime_config.cuh"
 #include "../../../../common/runtime_error.cuh"
 
@@ -118,14 +119,15 @@ inline size_t queue_storage_allocation_bytes(const launch_config& config) {
 inline cudaError_t stage_queue_storage(
     const launch_config& config,
     cudaStream_t stream,
-    queue_storage_buffers* buffers
+    queue_storage_buffers* buffers,
+    host_api_error& error
 ) {
     const size_t slot_bytes = queue_slot_bytes(config);
     const size_t generated_bytes = generated_task_id_bytes(config);
     const size_t cursor_bytes = queue_cursor_bytes(config);
     if (slot_bytes == SIZE_MAX || generated_bytes == SIZE_MAX ||
         cursor_bytes == SIZE_MAX) {
-        return cudaErrorInvalidValue;
+        return error.fail(cudaErrorInvalidValue, "queue storage size overflowed");
     }
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
@@ -137,7 +139,12 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->slots, slot_bytes));
+    cudaError_t status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->slots, slot_bytes),
+        "failed to allocate queue storage (allocation size: %zu bytes)",
+        slot_bytes);
+    if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -145,7 +152,11 @@ inline cudaError_t stage_queue_storage(
     printf("  cudaMalloc(global queue, %zu bytes): %.3f ms\n", slot_bytes, elapsed);
     cudaEventRecord(start, stream);
 #endif
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream));
+    status = record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream),
+        "failed to initialize queue storage");
+    if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
@@ -154,7 +165,12 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->generated, generated_bytes));
+    status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->generated, generated_bytes),
+        "failed to allocate queue storage (allocation size: %zu bytes)",
+        generated_bytes);
+    if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -162,8 +178,11 @@ inline cudaError_t stage_queue_storage(
     printf("  cudaMalloc(task_id_generated, %zu bytes): %.3f ms\n", generated_bytes, elapsed);
     cudaEventRecord(start, stream);
 #endif
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        buffers->generated, 0, generated_bytes, stream));
+    status = record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->generated, 0, generated_bytes, stream),
+        "failed to initialize queue storage");
+    if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
     cudaEventSynchronize(stop);
@@ -173,27 +192,52 @@ inline cudaError_t stage_queue_storage(
     cudaEventDestroy(stop);
 #endif
 
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->head, cursor_bytes));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->tail, cursor_bytes));
-    GTAP_DETAIL_CUDA_TRY(alloc_device(&buffers->alloc, cursor_bytes));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->head, 0, cursor_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->tail, 0, cursor_bytes, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(buffers->alloc, 0, cursor_bytes, stream));
-    return cudaSuccess;
+    status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->head, cursor_bytes),
+        "failed to allocate queue storage (allocation size: %zu bytes)",
+        cursor_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->tail, cursor_bytes),
+        "failed to allocate queue storage (allocation size: %zu bytes)",
+        cursor_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        alloc_device(&buffers->alloc, cursor_bytes),
+        "failed to allocate queue storage (allocation size: %zu bytes)",
+        cursor_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->head, 0, cursor_bytes, stream),
+        "failed to initialize queue storage");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->tail, 0, cursor_bytes, stream),
+        "failed to initialize queue storage");
+    if (status != cudaSuccess) return status;
+    return record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->alloc, 0, cursor_bytes, stream),
+        "failed to initialize queue storage");
 }
 
 inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_global_task_queue, &buffers.slots, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_queue_head, &buffers.head, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_queue_tail, &buffers.tail, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_queue_alloc, &buffers.alloc, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_task_id_generated_by_queue_idx, &buffers.generated, sizeof(int*)));
-    return cudaSuccess;
+    cudaError_t status = cudaMemcpyToSymbol(
+        d_global_task_queue, &buffers.slots, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyToSymbol(d_queue_head, &buffers.head, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyToSymbol(d_queue_tail, &buffers.tail, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyToSymbol(d_queue_alloc, &buffers.alloc, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    return cudaMemcpyToSymbol(
+        d_task_id_generated_by_queue_idx, &buffers.generated, sizeof(int*));
 }
 
 inline cudaError_t clear_queue_storage(
@@ -209,58 +253,86 @@ inline cudaError_t clear_queue_storage(
     }
 
     int* slots = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &slots, d_global_task_queue, sizeof(int*)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &slots, d_global_task_queue, sizeof(int*));
+    if (status != cudaSuccess) return status;
     int* generated = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &generated, d_task_id_generated_by_queue_idx, sizeof(int*)));
+    status = cudaMemcpyFromSymbol(
+        &generated, d_task_id_generated_by_queue_idx, sizeof(int*));
+    if (status != cudaSuccess) return status;
     int* head = nullptr;
     int* tail = nullptr;
     int* alloc = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&head, d_queue_head, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&tail, d_queue_tail, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&alloc, d_queue_alloc, sizeof(int*)));
+    status = cudaMemcpyFromSymbol(&head, d_queue_head, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(&tail, d_queue_tail, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(&alloc, d_queue_alloc, sizeof(int*));
+    if (status != cudaSuccess) return status;
 
     if (slots != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, slot_bytes, stream));
+        status = cudaMemsetAsync(slots, 0, slot_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (generated != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            generated, 0, generated_bytes, stream));
+        status = cudaMemsetAsync(generated, 0, generated_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (head != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(head, 0, cursor_bytes, stream));
+        status = cudaMemsetAsync(head, 0, cursor_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (tail != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(tail, 0, cursor_bytes, stream));
+        status = cudaMemsetAsync(tail, 0, cursor_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (alloc != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(alloc, 0, cursor_bytes, stream));
+        status = cudaMemsetAsync(alloc, 0, cursor_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     return cudaSuccess;
 }
 
 inline cudaError_t free_queue_storage() {
-    int* slots = nullptr;
-    int* head = nullptr;
-    int* tail = nullptr;
-    int* alloc = nullptr;
-    int* generated = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &slots, d_global_task_queue, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&head, d_queue_head, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&tail, d_queue_tail, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&alloc, d_queue_alloc, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &generated, d_task_id_generated_by_queue_idx, sizeof(int*)));
+    cudaError_t result = cudaSuccess;
 
-    if (slots != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(slots));
-    if (generated != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(generated));
-    if (head != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(head));
-    if (tail != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(tail));
-    if (alloc != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(alloc));
-    return cudaSuccess;
+    int* slots = nullptr;
+    cudaError_t slots_read_status = cudaMemcpyFromSymbol(
+        &slots, d_global_task_queue, sizeof(int*));
+    keep_first_error(slots_read_status, &result);
+    int* head = nullptr;
+    cudaError_t head_read_status = cudaMemcpyFromSymbol(
+        &head, d_queue_head, sizeof(int*));
+    keep_first_error(head_read_status, &result);
+    int* tail = nullptr;
+    cudaError_t tail_read_status = cudaMemcpyFromSymbol(
+        &tail, d_queue_tail, sizeof(int*));
+    keep_first_error(tail_read_status, &result);
+    int* alloc = nullptr;
+    cudaError_t alloc_read_status = cudaMemcpyFromSymbol(
+        &alloc, d_queue_alloc, sizeof(int*));
+    keep_first_error(alloc_read_status, &result);
+    int* generated = nullptr;
+    cudaError_t generated_read_status = cudaMemcpyFromSymbol(
+        &generated, d_task_id_generated_by_queue_idx, sizeof(int*));
+    keep_first_error(generated_read_status, &result);
+
+    if (slots_read_status == cudaSuccess && slots != nullptr) {
+        keep_first_error(cudaFree(slots), &result);
+    }
+    if (generated_read_status == cudaSuccess && generated != nullptr) {
+        keep_first_error(cudaFree(generated), &result);
+    }
+    if (head_read_status == cudaSuccess && head != nullptr) {
+        keep_first_error(cudaFree(head), &result);
+    }
+    if (tail_read_status == cudaSuccess && tail != nullptr) {
+        keep_first_error(cudaFree(tail), &result);
+    }
+    if (alloc_read_status == cudaSuccess && alloc != nullptr) {
+        keep_first_error(cudaFree(alloc), &result);
+    }
+    return result;
 }
 
 inline void release_staged_queue_storage(queue_storage_buffers* buffers) {

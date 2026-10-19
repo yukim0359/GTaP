@@ -6,6 +6,7 @@
 #include <cstdlib>
 
 #include "checked_size.cuh"
+#include "host_api_error.cuh"
 #include "runtime_config.cuh"
 
 namespace gtap::detail {
@@ -78,20 +79,67 @@ inline bool parse_memory_budget(const char* text, size_t* bytes) {
     return true;
 }
 
-inline bool read_memory_budget_env(size_t* bytes, bool* is_set) {
+// config_budget_bytes, then GTAP_MEMORY_BUDGET, then the 5 GiB default.
+inline cudaError_t resolve_memory_budget(
+    size_t config_budget_bytes,
+    size_t* budget_bytes,
+    host_api_error& error
+) {
+    if (config_budget_bytes != 0) {
+        *budget_bytes = config_budget_bytes;
+        return cudaSuccess;
+    }
     const char* text = std::getenv("GTAP_MEMORY_BUDGET");
     if (text == nullptr) {
-        *is_set = false;
-        return true;
+        *budget_bytes = default_memory_budget_bytes;
+        return cudaSuccess;
     }
-    *is_set = true;
-    return parse_memory_budget(text, bytes);
+    if (!parse_memory_budget(text, budget_bytes)) {
+        return error.fail(
+            cudaErrorInvalidValue,
+            "invalid or out-of-range GTAP_MEMORY_BUDGET=\"%s\"; example: 5GiB",
+            text);
+    }
+    return cudaSuccess;
 }
 
-// TODO: Each cudaErrorInvalidValue return below is a different check, but
-// gtap_initialize only hands the caller that code. cudaGetErrorString then
-// says "invalid argument". Keep a host-side reason and report it from
-// gtap_initialize. validate_config has the same gap.
+// Bytes required for the minimum task capacity. Overflow returns SIZE_MAX.
+inline size_t minimum_required_bytes(
+    size_t fixed_bytes,
+    size_t bytes_per_task,
+    size_t units,
+    size_t queues
+) {
+    const size_t min_queue_slots =
+        static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN) + 1;
+    size_t min_tasks_per_unit = 0;
+    if (!checked_mul(queues, min_queue_slots, &min_tasks_per_unit)) return SIZE_MAX;
+    if (min_tasks_per_unit < static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
+        min_tasks_per_unit = static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
+    }
+    size_t bytes = mul_memory_bytes(bytes_per_task, min_tasks_per_unit);
+    bytes = mul_memory_bytes(bytes, units);
+    return add_memory_bytes(fixed_bytes, bytes);
+}
+
+inline cudaError_t fail_insufficient_budget(
+    host_api_error& error,
+    size_t budget_bytes,
+    size_t required_bytes
+) {
+    if (required_bytes == SIZE_MAX) {
+        return error.fail(
+            cudaErrorInvalidValue,
+            "memory budget of %zu bytes cannot cover the minimum task capacity for this configuration",
+            budget_bytes);
+    }
+    return error.fail(
+        cudaErrorInvalidValue,
+        "memory budget of %zu bytes is below the %zu bytes required for this configuration",
+        budget_bytes,
+        required_bytes);
+}
+
 inline cudaError_t resolve_tasks_per_unit(
     int requested_tasks,
     size_t config_budget_bytes,
@@ -99,11 +147,16 @@ inline cudaError_t resolve_tasks_per_unit(
     int num_queues,
     size_t fixed_bytes,
     size_t bytes_per_task,
-    int* tasks_per_unit
+    const char* task_capacity_name,
+    int* tasks_per_unit,
+    host_api_error& error
 ) {
-    if (requested_tasks < 0 || scheduling_units <= 0 || num_queues <= 0 ||
-        bytes_per_task == 0) {
-        return cudaErrorInvalidValue;
+    // validate_config rejects a negative task capacity, a non-positive
+    // scheduling-unit count, and a non-positive queue count.
+    if (bytes_per_task == 0) {
+        return error.fail(
+            cudaErrorInvalidValue,
+            "internal error: invalid task-storage size");
     }
 
     const size_t units = static_cast<size_t>(scheduling_units);
@@ -121,21 +174,60 @@ inline cudaError_t resolve_tasks_per_unit(
     // requested_tasks > 0 ignores the budget.
     if (requested_tasks > 0) {
         resolved_tasks_per_unit = static_cast<size_t>(requested_tasks);
-    } else {
-        size_t budget_bytes = config_budget_bytes;
-        if (budget_bytes == 0) {
-            bool env_is_set = false;
-            size_t env_budget_bytes = 0;
-            if (!read_memory_budget_env(&env_budget_bytes, &env_is_set)) {
-                return cudaErrorInvalidValue;
-            }
-            budget_bytes = env_is_set ? env_budget_bytes : default_memory_budget_bytes;
+        if (resolved_tasks_per_unit > max_tasks_per_unit) {
+            return error.fail(
+                cudaErrorInvalidValue,
+                "%s=%d exceeds the limit of %zu tasks per scheduling unit",
+                task_capacity_name,
+                requested_tasks,
+                max_tasks_per_unit);
         }
-        if (budget_bytes < fixed_bytes) return cudaErrorInvalidValue;
+        if (resolved_tasks_per_unit % queues != 0) {
+            return error.fail(
+                cudaErrorInvalidValue,
+                "%s=%d must be a multiple of num_queues=%d",
+                task_capacity_name,
+                requested_tasks,
+                num_queues);
+        }
+        const size_t queue_capacity = resolved_tasks_per_unit / queues;
+        if (queue_capacity <= static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN)) {
+            return error.fail(
+                cudaErrorInvalidValue,
+                "%s=%d provides %zu slots per queue; more than %d are required when num_queues=%d",
+                task_capacity_name,
+                requested_tasks,
+                queue_capacity,
+                GTAP_DETAIL_QUEUE_MARGIN,
+                num_queues);
+        }
+        if (resolved_tasks_per_unit <
+            static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
+            return error.fail(
+                cudaErrorInvalidValue,
+                "%s=%d is below the minimum of %d tasks per scheduling unit",
+                task_capacity_name,
+                requested_tasks,
+                GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
+        }
+    } else {
+        size_t budget_bytes = 0;
+        cudaError_t status = resolve_memory_budget(
+            config_budget_bytes, &budget_bytes, error);
+        if (status != cudaSuccess) return status;
+        if (budget_bytes < fixed_bytes) {
+            return fail_insufficient_budget(
+                error,
+                budget_bytes,
+                minimum_required_bytes(
+                    fixed_bytes, bytes_per_task, units, queues));
+        }
 
         size_t bytes_per_capacity_increment = 0;
         if (!checked_mul(bytes_per_task, units, &bytes_per_capacity_increment)) {
-            return cudaErrorInvalidValue;
+            return error.fail(
+                cudaErrorInvalidValue,
+                "queue and task storage size overflowed");
         }
         resolved_tasks_per_unit =
             (budget_bytes - fixed_bytes) / bytes_per_capacity_increment;
@@ -144,19 +236,20 @@ inline cudaError_t resolve_tasks_per_unit(
             resolved_tasks_per_unit = max_tasks_per_unit;
         }
         resolved_tasks_per_unit = (resolved_tasks_per_unit / queues) * queues;
-    }
+        const size_t queue_capacity = resolved_tasks_per_unit / queues;
 
-    // Explicit capacities are not clamped above, so reject one past this limit.
-    if (resolved_tasks_per_unit > max_tasks_per_unit ||
-        resolved_tasks_per_unit % queues != 0) {
-        return cudaErrorInvalidValue;
-    }
-
-    const size_t queue_capacity = resolved_tasks_per_unit / queues;
-    if (queue_capacity <= static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN) ||
-        resolved_tasks_per_unit <
-            static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
-        return cudaErrorInvalidValue;
+        // TODO: Distinguish insufficient memory budgets from configurations whose
+        // minimum task capacity exceeds the task-count limit. Increasing the budget
+        // cannot fix the latter.
+        if (queue_capacity <= static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN) ||
+            resolved_tasks_per_unit <
+                static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
+            return fail_insufficient_budget(
+                error,
+                budget_bytes,
+                minimum_required_bytes(
+                    fixed_bytes, bytes_per_task, units, queues));
+        }
     }
 
     *tasks_per_unit = static_cast<int>(resolved_tasks_per_unit);

@@ -6,6 +6,7 @@
 // A failed initialize releases staged buffers. The caller owns h_stream.
 
 #include "../common/checked_size.cuh"
+#include "../common/host_api_error.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 
@@ -62,13 +63,19 @@ inline void abandon_initialize(
     cudaGetLastError();
 }
 
-cudaError_t initialize_runtime() {
+cudaError_t initialize_runtime(host_api_error& error) {
     queue_storage_buffers queues{};
     task_pool_buffers task_pool{};
     profile_buffers profile{};
-    GTAP_DETAIL_CUDA_TRY_OR(
+    auto fail = [&](cudaError_t status) {
+        abandon_initialize(&queues, &task_pool, &profile);
+        return status;
+    };
+    cudaError_t status = record_error_if_failed(
+        error,
         initialize_runtime_error_record(),
-        abandon_initialize(&queues, &task_pool, &profile));
+        "failed to initialize runtime error reporting");
+    if (status != cudaSuccess) return fail(status);
     const launch_config& runtime_config = h_launch_config;
     cudaStream_t stream = h_stream;
 
@@ -81,41 +88,52 @@ cudaError_t initialize_runtime() {
     float elapsed;
 #endif
 
-    GTAP_DETAIL_CUDA_TRY_OR(
-        stage_queue_storage(runtime_config, stream, &queues),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        stage_task_pool(runtime_config, stream, &task_pool),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
-        stage_profile_buffers(runtime_config, stream, &profile),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
+    status = stage_queue_storage(runtime_config, stream, &queues, error);
+    if (status != cudaSuccess) return fail(status);
+    status = stage_task_pool(runtime_config, stream, &task_pool, error);
+    if (status != cudaSuccess) return fail(status);
+    status = stage_profile_buffers(runtime_config, stream, &profile, error);
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
         cudaStreamSynchronize(stream),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
+        "failed to initialize runtime storage");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
         publish_queue_storage(queues),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
+        "failed to configure task queues");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
         publish_task_pool(task_pool),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
+        "failed to configure task storage");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
         publish_profile_buffers(profile),
-        abandon_initialize(&queues, &task_pool, &profile));
+        "failed to configure profiling");
+    if (status != cudaSuccess) return fail(status);
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(start);
 #endif
     int zero = 0;
-    GTAP_DETAIL_CUDA_TRY_OR(
+    status = record_error_if_failed(
+        error,
         cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
         cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
-    GTAP_DETAIL_CUDA_TRY_OR(
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
+    status = record_error_if_failed(
+        error,
         cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -125,9 +143,11 @@ cudaError_t initialize_runtime() {
     // Initialize d_active_warp_count to 1 to prevent early termination
     // before the initial task is pushed by the master thread
     int one = 1;
-    GTAP_DETAIL_CUDA_TRY_OR(
+    status = record_error_if_failed(
+        error,
         cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)),
-        abandon_initialize(&queues, &task_pool, &profile));
+        "failed to configure the runtime");
+    if (status != cudaSuccess) return fail(status);
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -138,38 +158,86 @@ cudaError_t initialize_runtime() {
     printf("=== initialize_runtime profiling complete ===\n\n");
 #endif
 
-    GTAP_DETAIL_CUDA_TRY_OR(
+    status = record_error_if_failed(
+        error,
         cudaGetLastError(),
-        abandon_initialize(&queues, &task_pool, &profile));
+        "initialization left a CUDA error");
+    if (status != cudaSuccess) return fail(status);
     return cudaSuccess;
 }
 
-cudaError_t finalize_runtime() {
-    GTAP_DETAIL_CUDA_TRY(free_queue_storage());
-    GTAP_DETAIL_CUDA_TRY(free_task_pool());
-    GTAP_DETAIL_CUDA_TRY(free_profile_buffers());
-    GTAP_DETAIL_CUDA_TRY(finalize_runtime_error_record());
-    return cudaGetLastError();
+cudaError_t finalize_runtime(host_api_error& error) {
+    cudaError_t result = cudaSuccess;
+
+    auto record_first_error = [&](cudaError_t status, const char* message) {
+        if (status != cudaSuccess && result == cudaSuccess) {
+            result = error.fail(status, "%s", message);
+        }
+    };
+
+    record_first_error(free_queue_storage(),
+            "failed to release task queues");
+    record_first_error(free_task_pool(),
+            "failed to release task storage");
+    record_first_error(free_profile_buffers(),
+            "failed to release profile buffers");
+    record_first_error(finalize_runtime_error_record(),
+            "failed to release runtime error reporting resources");
+
+    return result;
 }
 
-cudaError_t reset_runtime() {
+cudaError_t reset_runtime(host_api_error& error) {
     reset_runtime_error_record();
     const launch_config& runtime_config = h_launch_config;
     cudaStream_t stream = h_stream;
 
-    GTAP_DETAIL_CUDA_TRY(clear_queue_storage(runtime_config, stream));
-    GTAP_DETAIL_CUDA_TRY(clear_task_pool(runtime_config, stream));
+    cudaError_t status = record_error_if_failed(
+        error,
+        clear_queue_storage(runtime_config, stream),
+        "failed to reset task queues");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        clear_task_pool(runtime_config, stream),
+        "failed to reset task storage");
+    if (status != cudaSuccess) return status;
 
     int zero = 0;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)));
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
     int one = 1;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)));
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
 
-    GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(runtime_config, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
-    return cudaGetLastError();
+    status = record_error_if_failed(
+        error,
+        clear_profile_buffers(runtime_config, stream),
+        "failed to reset profile buffers");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaStreamSynchronize(stream),
+        "failed to synchronize the runtime");
+    if (status != cudaSuccess) return status;
+    return record_error_if_failed(
+        error, cudaGetLastError(), "failed to reset the runtime");
 }
 
 }  // namespace gtap::detail::thread

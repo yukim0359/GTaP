@@ -13,9 +13,10 @@ using namespace gtap::detail;
 __device__ __forceinline__ void record_execution_start(int* working_time_idx) {
     if (threadIdx.x == 0) {
         if (*working_time_idx + 1 < profile_timestamp_capacity()) {
-            working_time[
-                blockIdx.x * profile_timestamp_capacity() +
-                *working_time_idx] = get_global_time();
+            const size_t profile_idx =
+                static_cast<size_t>(blockIdx.x) * profile_timestamp_capacity() +
+                *working_time_idx;
+            working_time[profile_idx] = get_global_time();
             (*working_time_idx)++;
         } else {
             atomicAdd(&profile_dropped_events[blockIdx.x], 1ULL);
@@ -26,9 +27,10 @@ __device__ __forceinline__ void record_execution_start(int* working_time_idx) {
 __device__ __forceinline__ void record_execution_end(int* working_time_idx) {
     if (threadIdx.x == 0) {
         if (*working_time_idx < profile_timestamp_capacity()) {
-            working_time[
-                blockIdx.x * profile_timestamp_capacity() +
-                *working_time_idx] = get_global_time();
+            const size_t profile_idx =
+                static_cast<size_t>(blockIdx.x) * profile_timestamp_capacity() +
+                *working_time_idx;
+            working_time[profile_idx] = get_global_time();
             (*working_time_idx)++;
         }
     }

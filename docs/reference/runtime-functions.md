@@ -40,8 +40,12 @@ application allocations or the CUDA context.
 | `cudaSuccess` | Runtime initialization completed successfully |
 | `cudaErrorInvalidConfiguration` | Launch geometry is invalid |
 | `cudaErrorInvalidValue` | A task capacity, queue count, memory budget, or profiling capacity is invalid |
-| `cudaErrorInitializationError` | GTaP is already initialized in this process |
+| `cudaErrorInitializationError` | GTaP is already initialized, or a previous finalization, synchronization, or reset failed and the runtime cannot be initialized again |
 | Other CUDA error | A CUDA allocation, copy, symbol, or initialization operation failed |
+
+On failure, `gtap_initialize` writes an error message to standard error. The
+message names the rejected field, budget, or allocation and appends the CUDA
+error string.
 
 ### Preconditions
 
@@ -72,8 +76,8 @@ and stream settings stored by [`gtap_initialize`](#gtap-initialize).
 ### Signature
 
 ```cpp
-template<class Kernel, class... Args>
-cudaError_t gtap_launch(Kernel kernel, Args&&... args);
+template<class... Params, class... Args>
+cudaError_t gtap_launch(void (*kernel)(Params...), Args&&... args);
 ```
 
 ### Parameters
@@ -85,12 +89,17 @@ cudaError_t gtap_launch(Kernel kernel, Args&&... args);
 
 ### Return value
 
-- `cudaErrorInitializationError` if GTaP has not been initialized.
-- Otherwise, the result of `cudaLaunchKernel`.
+If GTaP is uninitialized, a kernel has already been launched since initialization
+or reset, or a previous reset, synchronization, or finalization failed, returns
+`cudaErrorInitializationError` without launching a kernel or changing the
+runtime state. Otherwise, returns the result of `cudaLaunchKernel`.
 
-The launch is asynchronous. A successful return means the kernel was submitted,
-not that execution finished successfully. Call [`gtap_synchronize`](#gtap-synchronize)
-before reading results or exporting a profile.
+All failures are reported to standard error.
+
+A successful return means the kernel was submitted, not that execution finished.
+Call [`gtap_synchronize`](#gtap-synchronize) before reading results, exporting a
+profile, resetting, or finalizing. Call [`gtap_reset`](#gtap-reset) before
+launching again.
 
 ### Example
 
@@ -116,32 +125,27 @@ cudaError_t gtap_synchronize();
 
 ### Return value
 
-Returns the result of device synchronization. Diagnostics are written to
-stderr. If CUDA reports a failure, GTaP prints the captured task-runtime
-details when available and returns that CUDA error.
+Returns `cudaSuccess` when all preceding device work has completed successfully.
+If synchronization fails, returns the original CUDA error and reports it to
+standard error, including GTaP runtime details when available. Only
+[`gtap_finalize`](#gtap-finalize) is accepted afterward.
+
+If the runtime is not initialized, or a previous synchronization, reset, or
+finalization failed, returns `cudaErrorInitializationError` and reports the
+reason to standard error, without synchronizing or changing the runtime state.
+
+Finalization attempts to release GTaP resources. Some CUDA errors require
+restarting the process regardless of finalization.
 
 ### Notes
 
 - Synchronization is device-wide because the implementation uses
   `cudaDeviceSynchronize`, even when `config.stream` is non-null.
-- Call it after every [`gtap_launch`](#gtap-launch) before reading application
-  results.
-- Call it before
-  [`gtap_export_profile`](./profiling#gtap-export-profile),
-  [`gtap_reset`](#gtap-reset), or [`gtap_finalize`](#gtap-finalize).
-
-```cpp
-cudaError_t status = gtap_synchronize();
-if (status != cudaSuccess) {
-    fprintf(stderr, "GTaP execution failed: %s\n",
-            cudaGetErrorString(status));
-}
-```
 
 ## `gtap_reset`
 
-Clears task queues, task IDs, task storage, completion state, error state, and
-profiling buffers without releasing and reallocating the runtime memory.
+Resets GTaP's runtime state and profiling buffers without reallocating memory.
+Application-owned data is unchanged.
 
 ### Signature
 
@@ -151,17 +155,21 @@ cudaError_t gtap_reset();
 
 ### Return value
 
-Returns `cudaSuccess` when all runtime state was reset. Otherwise, returns the
-CUDA error produced by a memory operation, helper-kernel launch, synchronization,
-or stream operation used during reset.
+Returns `cudaSuccess` on success. If an operation during reset fails, returns
+its CUDA error and leaves the runtime unusable.
+[`gtap_finalize`](#gtap-finalize) remains available for cleanup.
+
+If GTaP is uninitialized or a previous reset, synchronization, or finalization
+failed, returns `cudaErrorInitializationError` without changing the runtime
+state.
+
+All failures are reported to standard error.
 
 ### Preconditions
 
 - GTaP must already be initialized.
 - No GTaP kernel may still be executing. Call
   [`gtap_synchronize()`](#gtap-synchronize) first.
-- Application-owned device data is not reset; only GTaP runtime state is
-  cleared.
 
 ### Repeated execution
 
@@ -179,8 +187,10 @@ gtap_finalize();
 
 ## `gtap_finalize`
 
-Releases device and host memory owned by the GTaP runtime. On success, it also
-clears the initialized state and stored CUDA stream.
+Attempts to release all runtime-owned device and host memory and clears the
+stored CUDA stream. On success, the runtime can be initialized again. If cleanup
+fails, it cannot be reused or finalized again, and unreleased memory remains
+allocated until the process exits.
 
 ### Signature
 
@@ -190,17 +200,22 @@ cudaError_t gtap_finalize();
 
 ### Return value
 
-Returns `cudaSuccess` after all runtime resources have been released. Otherwise,
-returns the CUDA error produced during cleanup. The runtime only clears its
-initialized flag when finalization succeeds.
+Returns `cudaSuccess` on success, or the first CUDA error encountered during
+cleanup.
+
+If GTaP is uninitialized or a previous finalization failed, returns
+`cudaErrorInitializationError` without releasing any resources.
+
+All failures are reported to standard error.
 
 ### Preconditions
 
-- The runtime must have been initialized.
-- Complete outstanding execution with
-  [`gtap_synchronize()`](#gtap-synchronize) before finalizing.
-- Export required profiling data before finalization because the GTaP profiler
-  buffers are released here.
+- The runtime is initialized, a reset has failed, or a synchronization has failed.
+- During normal execution, complete outstanding work with
+  [`gtap_synchronize()`](#gtap-synchronize) and export any required profiling
+  data before finalizing. Finalization releases the GTaP profiler buffers.
+- After a failed synchronization or reset, call `gtap_finalize()` directly.
+  Another synchronization or a profile export is rejected in those states.
 
 ```cpp
 gtap_launch(exec_kernel, input);

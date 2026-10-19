@@ -6,65 +6,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 
-enum class gtap_profile_export_status {
-    success = 0,
-    invalid_label,
-    invalid_output_directory,
-    path_too_long,
-    already_exists,
-    cuda_error,
-    out_of_memory,
-    io_error,
-    no_data,
-    profiling_disabled
-};
-
-static inline const char* gtap_profile_export_status_string(
-    gtap_profile_export_status status
-) {
-    switch (status) {
-        case gtap_profile_export_status::success:
-            return "success";
-        case gtap_profile_export_status::invalid_label:
-            return "invalid_label";
-        case gtap_profile_export_status::invalid_output_directory:
-            return "invalid_output_directory";
-        case gtap_profile_export_status::path_too_long:
-            return "path_too_long";
-        case gtap_profile_export_status::already_exists:
-            return "already_exists";
-        case gtap_profile_export_status::cuda_error:
-            return "cuda_error";
-        case gtap_profile_export_status::out_of_memory:
-            return "out_of_memory";
-        case gtap_profile_export_status::io_error:
-            return "io_error";
-        case gtap_profile_export_status::no_data:
-            return "no_data";
-        case gtap_profile_export_status::profiling_disabled:
-            return "profiling_disabled";
-    }
-    return "unknown";
-}
+#include "profile_export_error.cuh"
 
 struct gtap_profile_export_options {
     const char* output_directory = "./profile";
     const char* label = nullptr;
     bool overwrite = false;
-};
-
-struct gtap_profile_export_result {
-    gtap_profile_export_status status =
-        gtap_profile_export_status::io_error;
-    size_t recorded_intervals = 0;
-    size_t dropped_intervals = 0;
-    char result_directory[512] = {};
-    char profile_path[512] = {};
-    char intervals_path[512] = {};
-    char aggregates_path[512] = {};
 };
 
 namespace gtap::detail {
@@ -166,101 +117,88 @@ static inline bool path_exists(const char* path) {
 }
 
 static inline bool create_parents(const char* path) {
-    if (!path || !path[0] || strlen(path) >= 512) return false;
-    char copy[512] = {};
-    memcpy(copy, path, strlen(path) + 1);
-    for (char* p = copy + 1; *p; ++p) {
-        if (*p != '/') continue;
-        *p = '\0';
-        if (copy[0] && mkdir(copy, 0755) != 0 &&
-            !(errno == EEXIST && is_directory(copy))) {
+    if (!path || !path[0]) return false;
+    std::string copy(path);
+    for (size_t i = 1; i < copy.size(); ++i) {
+        if (copy[i] != '/') continue;
+        copy[i] = '\0';
+        if (copy[0] != '\0' && mkdir(copy.c_str(), 0755) != 0 &&
+            !(errno == EEXIST && is_directory(copy.c_str()))) {
             return false;
         }
-        *p = '/';
+        copy[i] = '/';
     }
     return true;
 }
 
-static inline bool resolve_output(
-    const char* pattern, char* output, size_t output_size
-) {
-    if (!pattern || !pattern[0] || strlen(pattern) >= output_size) return false;
+static inline bool resolve_output(const char* pattern, std::string& output) {
+    if (!pattern || !pattern[0]) return false;
     const char* marker = strstr(pattern, "%i");
     if (marker && strstr(marker + 2, "%i")) return false;
     if (marker) {
         const size_t prefix = static_cast<size_t>(marker - pattern);
         for (int index = 1; index < INT_MAX; ++index) {
-            const int written = snprintf(
-                output, output_size, "%.*s%d%s", static_cast<int>(prefix),
-                pattern, index, marker + 2);
-            if (written < 0 || static_cast<size_t>(written) >= output_size) {
-                return false;
-            }
+            output = std::string(pattern, prefix) + std::to_string(index) + (marker + 2);
             struct stat st = {};
-            if (stat(output, &st) != 0 && errno == ENOENT) break;
+            if (stat(output.c_str(), &st) == 0) continue;
+            if (errno == ENOENT) break;
+            return false;
         }
     } else {
-        memcpy(output, pattern, strlen(pattern) + 1);
+        output = pattern;
         struct stat st = {};
-        if (stat(output, &st) == 0) {
+        if (stat(output.c_str(), &st) == 0) {
             return S_ISDIR(st.st_mode);
         }
         if (errno != ENOENT) return false;
     }
-    if (!create_parents(output)) return false;
-    return mkdir(output, 0755) == 0;
+    if (!create_parents(output.c_str())) return false;
+    return mkdir(output.c_str(), 0755) == 0;
 }
 
-static inline gtap_profile_export_status prepare_profile_output(
-    const gtap_profile_export_options& options,
-    gtap_profile_export_result& result
+static inline void print_profile_export_result(
+    bool success,
+    const char* result_directory,
+    const profile_export_error& error
 ) {
-    if (!valid_label(options.label)) {
-        result.status = gtap_profile_export_status::invalid_label;
-        printf("GTaP profile not written: invalid label\n");
-        return result.status;
+    if (success) {
+        printf("GTaP profile written to %s\n", result_directory);
+        return;
     }
-    if (!resolve_output(
-            options.output_directory, result.result_directory,
-            sizeof(result.result_directory))) {
-        result.status = gtap_profile_export_status::invalid_output_directory;
-        printf("GTaP profile not written: invalid output directory\n");
-        return result.status;
+    if (error.message[0] != '\0') {
+        fprintf(stderr, "GTaP profile not written: %s\n", error.message);
     }
-    const int metadata_len = snprintf(
-        result.profile_path, sizeof(result.profile_path), "%s/profile.json",
-        result.result_directory);
-    const int timeline_len = snprintf(
-        result.intervals_path, sizeof(result.intervals_path),
-        "%s/task_execution_intervals.csv", result.result_directory);
-    const int statistics_len = snprintf(
-        result.aggregates_path, sizeof(result.aggregates_path),
-        "%s/task_execution_aggregates.csv", result.result_directory);
-    if (metadata_len < 0 || timeline_len < 0 || statistics_len < 0 ||
-        static_cast<size_t>(metadata_len) >= sizeof(result.profile_path) ||
-        static_cast<size_t>(timeline_len) >= sizeof(result.intervals_path) ||
-        static_cast<size_t>(statistics_len) >= sizeof(result.aggregates_path)) {
-        result.status = gtap_profile_export_status::path_too_long;
-        printf("GTaP profile not written: output path is too long\n");
-        return result.status;
-    }
-    if (!options.overwrite &&
-        (path_exists(result.profile_path) ||
-         path_exists(result.intervals_path) ||
-         path_exists(result.aggregates_path))) {
-        result.status = gtap_profile_export_status::already_exists;
-        printf("GTaP profile not written: files already exist in %s\n",
-               result.result_directory);
-        return result.status;
-    }
-    return gtap_profile_export_status::success;
 }
 
-// Closes the stream after checking its error flag.
-static inline bool close_profile_file(FILE* file) {
-    const bool write_error = ferror(file) != 0;
-    const bool closed = fclose(file) == 0;
-    return !write_error && closed;
+static inline bool prepare_profile_output(
+    const gtap_profile_export_options& options,
+    std::string& result_directory,
+    std::string& profile_path,
+    std::string& intervals_path,
+    std::string& aggregates_path,
+    profile_export_error& error
+) {
+    // TODO: Catch std::bad_alloc from path construction, record the failure,
+    // and return false.
+    if (!valid_label(options.label)) {
+        error.fail("invalid label");
+        return false;
+    }
+    if (!resolve_output(options.output_directory, result_directory)) {
+        error.fail("invalid output directory");
+        return false;
+    }
+    profile_path = result_directory + "/profile.json";
+    intervals_path = result_directory + "/task_execution_intervals.csv";
+    aggregates_path = result_directory + "/task_execution_aggregates.csv";
+    if (!options.overwrite &&
+        (path_exists(profile_path.c_str()) ||
+         path_exists(intervals_path.c_str()) ||
+         path_exists(aggregates_path.c_str()))) {
+        error.fail("files already exist in %s", result_directory.c_str());
+        return false;
+    }
+    return true;
 }
 
 }  // namespace gtap::detail

@@ -101,7 +101,7 @@ Compile with `-DGTAP_ENABLE_PROFILING` to enable profiling.
 After executing and synchronizing the GTaP kernel, call:
 
 ```cpp
-gtap_profile_export_result result = gtap_export_profile();
+gtap_export_profile();
 ```
 
 The profiler writes each run to a result directory under `./profile/`.

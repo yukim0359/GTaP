@@ -40,7 +40,7 @@ Compile a GTaP application with:
 After launching and synchronizing the kernel, export the collected profile:
 
 ```cpp
-gtap_profile_export_result result = gtap_export_profile({
+gtap_export_profile({
     .output_directory = "./profile/fib_thread",
     .overwrite = true,
 });
@@ -56,9 +56,8 @@ Each scheduling unit has a fixed-capacity interval buffer:
 - thread mode uses `config.profile_capacity_per_warp`
 - block mode uses `config.profile_capacity_per_block`
 
-Intervals that do not fit are omitted and reported in
-`result.dropped_intervals`. Increasing the capacity also increases profiling
-memory usage.
+Intervals that do not fit are omitted and counted in the exported profile.
+Increasing the capacity also increases profiling memory usage.
 
 ## Visualize a profile
 
@@ -77,5 +76,5 @@ For example, the thread-mode Fibonacci profile produces a timeline like this:
 Profiling changes runtime behavior and should be treated as an analysis mode,
 not as the source of final performance numbers.
 
-For all export options, result fields, and status values, see the
+For the export options and return value, see the
 [Profiling API Reference](../reference/profiling).
