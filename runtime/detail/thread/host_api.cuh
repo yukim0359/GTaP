@@ -175,7 +175,6 @@ inline cudaError_t initialize_impl(
     }
 
     h_runtime_state = runtime_state::ready;
-    h_runtime_error_reported = false;
     if (device_bytes_allocated != nullptr) {
         *device_bytes_allocated = runtime_device_allocation_bytes();
     }

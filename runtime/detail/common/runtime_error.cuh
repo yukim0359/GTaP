@@ -38,10 +38,6 @@ __constant__ runtime_error_record* d_runtime_error_record;
 
 static runtime_error_record* h_runtime_error_record = nullptr;
 
-// True after the GTaP record has been printed. Stays set until the next
-// successful gtap_initialize, so that trap is not printed again.
-inline bool h_runtime_error_reported = false;
-
 inline cudaError_t initialize_runtime_error_record() {
     if (h_runtime_error_record == nullptr) {
         cudaError_t st = cudaHostAlloc(reinterpret_cast<void**>(&h_runtime_error_record),
@@ -227,11 +223,9 @@ inline void print_failed_cuda_call(cudaError_t st) {
     if (read_runtime_error_record(&record)) {
         print_runtime_error_record(&record);
         reset_runtime_error_record();
-        h_runtime_error_reported = true;
         return;
     }
     if (st == cudaSuccess) return;
-    if (h_runtime_error_reported && st == cudaErrorLaunchFailure) return;
     fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
 }
 
