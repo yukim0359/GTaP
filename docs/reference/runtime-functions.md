@@ -43,8 +43,9 @@ application allocations or the CUDA context.
 | `cudaErrorInitializationError` | GTaP is already initialized in this process |
 | Other CUDA error | A CUDA allocation, copy, symbol, or initialization operation failed |
 
-On failure, `gtap_initialize` writes one line to standard error. The line names
-the rejected field, budget, or allocation and appends the CUDA error string.
+On failure, `gtap_initialize` writes an error message to standard error. The
+message names the rejected field, budget, or allocation and appends the CUDA
+error string.
 
 ### Preconditions
 
