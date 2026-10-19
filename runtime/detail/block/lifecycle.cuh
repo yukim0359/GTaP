@@ -87,7 +87,7 @@ cudaError_t initialize_runtime(init_error& error) {
     if (status != cudaSuccess) return fail(status);
     status = cudaStreamSynchronize(stream);
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to finish staged initialization"));
+        return fail(error.fail(status, "failed to finish allocating runtime storage"));
     }
 
     status = publish_queue_storage(queues, error);
@@ -100,36 +100,35 @@ cudaError_t initialize_runtime(init_error& error) {
     int zero = 0;
     status = cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to publish root-task completion flag"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
     status = cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to publish completion flag"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
     status = cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to publish the runtime error code"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
     status = reset_queue_counters();
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to reset queue counters"));
+        return fail(error.fail(status, "failed to initialize queue storage"));
     }
     int one = 1;
     status = cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(
-            status, "failed to publish the active scheduling-unit count"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
     status = cudaGetLastError();
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to launch task-id pool initialization"));
+        return fail(error.fail(status, "failed to initialize task storage"));
     }
     // TODO: cudaDeviceSynchronize waits for every stream.
     status = cudaDeviceSynchronize();
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to finish task-id pool initialization"));
+        return fail(error.fail(status, "failed to initialize task storage"));
     }
     status = cudaGetLastError();
     if (status != cudaSuccess) {

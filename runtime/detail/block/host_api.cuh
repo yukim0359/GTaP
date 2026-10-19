@@ -90,7 +90,7 @@ inline cudaError_t resolve_launch_config(
     if (!runtime_fixed_and_per_task_bytes(resolved, &fixed_bytes, &bytes_per_task)) {
         return error.fail(
             cudaErrorInvalidValue,
-            "queue and task-pool size overflowed");
+            "queue and task storage size overflowed");
     }
     status = resolve_tasks_per_unit(
         config.max_tasks_per_block,

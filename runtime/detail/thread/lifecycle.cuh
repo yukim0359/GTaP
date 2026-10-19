@@ -95,7 +95,7 @@ cudaError_t initialize_runtime(init_error& error) {
     if (status != cudaSuccess) return fail(status);
     status = cudaStreamSynchronize(stream);
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to finish staged initialization"));
+        return fail(error.fail(status, "failed to finish allocating runtime storage"));
     }
     status = publish_queue_storage(queues, error);
     if (status != cudaSuccess) return fail(status);
@@ -110,15 +110,15 @@ cudaError_t initialize_runtime(init_error& error) {
     int zero = 0;
     status = cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to publish root-task completion flag"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
     status = cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to publish completion flag"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
     status = cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(status, "failed to publish the runtime error code"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);
@@ -131,8 +131,7 @@ cudaError_t initialize_runtime(init_error& error) {
     int one = 1;
     status = cudaMemcpyToSymbol(d_active_warp_count, &one, sizeof(int));
     if (status != cudaSuccess) {
-        return fail(error.fail(
-            status, "failed to publish the active scheduling-unit count"));
+        return fail(error.fail(status, "failed to configure the runtime"));
     }
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop);

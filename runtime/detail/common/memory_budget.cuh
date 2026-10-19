@@ -137,27 +137,8 @@ inline cudaError_t resolve_tasks_per_unit(
     int* tasks_per_unit,
     init_error& error
 ) {
-    // Preconditions. validate_config already rejects a negative task capacity,
-    // a non-positive scheduling-unit count, and a non-positive queue count.
-    if (requested_tasks < 0) {
-        return error.fail(
-            cudaErrorInvalidValue,
-            "%s=%d must be greater than or equal to zero",
-            task_capacity_name,
-            requested_tasks);
-    }
-    if (scheduling_units <= 0) {
-        return error.fail(
-            cudaErrorInvalidValue,
-            "scheduling unit count %d must be greater than zero",
-            scheduling_units);
-    }
-    if (num_queues <= 0) {
-        return error.fail(
-            cudaErrorInvalidValue,
-            "num_queues=%d must be greater than zero",
-            num_queues);
-    }
+    // validate_config rejects a negative task capacity, a non-positive
+    // scheduling-unit count, and a non-positive queue count.
     if (bytes_per_task == 0) {
         return error.fail(
             cudaErrorInvalidValue,
@@ -241,9 +222,7 @@ inline cudaError_t resolve_tasks_per_unit(
         if (!checked_mul(bytes_per_task, units, &bytes_per_capacity_increment)) {
             return error.fail(
                 cudaErrorInvalidValue,
-                "per-task size %zu times %d scheduling units overflows",
-                bytes_per_task,
-                scheduling_units);
+                "queue and task storage size overflowed");
         }
         resolved_tasks_per_unit =
             (budget_bytes - fixed_bytes) / bytes_per_capacity_increment;

@@ -137,46 +137,43 @@ inline cudaError_t stage_task_pool(
     const size_t id_storage_bytes = task_pool_component_bytes(config, sizeof(int));
     if (header_bytes == SIZE_MAX || record_bytes == SIZE_MAX ||
         id_storage_bytes == SIZE_MAX) {
-        return error.fail(cudaErrorInvalidValue, "task pool size overflowed");
+        return error.fail(cudaErrorInvalidValue, "task storage size overflowed");
     }
 
     cudaError_t status = check_init(
         error,
         alloc_device(&buffers->headers, header_bytes),
-        "failed to allocate task headers (%zu bytes)",
+        "failed to allocate task storage (allocation size: %zu bytes)",
         header_bytes);
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemsetAsync(buffers->headers, 0, header_bytes, stream),
-        "failed to clear task headers (%zu bytes)",
-        header_bytes);
+        "failed to initialize task storage");
     if (status != cudaSuccess) return status;
 
     status = check_init(
         error,
         alloc_device(&buffers->task_data, record_bytes),
-        "failed to allocate task records (%zu bytes)",
+        "failed to allocate task storage (allocation size: %zu bytes)",
         record_bytes);
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemsetAsync(buffers->task_data, 0, record_bytes, stream),
-        "failed to clear task records (%zu bytes)",
-        record_bytes);
+        "failed to initialize task storage");
     if (status != cudaSuccess) return status;
 
     status = check_init(
         error,
         alloc_device(&buffers->id_storage, id_storage_bytes),
-        "failed to allocate task-id storage (%zu bytes)",
+        "failed to allocate task storage (allocation size: %zu bytes)",
         id_storage_bytes);
     if (status != cudaSuccess) return status;
     return check_init(
         error,
         cudaMemsetAsync(buffers->id_storage, 0, id_storage_bytes, stream),
-        "failed to clear task-id storage (%zu bytes)",
-        id_storage_bytes);
+        "failed to initialize task storage");
 }
 
 inline cudaError_t publish_task_pool(
@@ -186,22 +183,22 @@ inline cudaError_t publish_task_pool(
     cudaError_t status = check_init(
         error,
         cudaMemcpyToSymbol(d_task_headers, &buffers.headers, sizeof(TaskHeader*)),
-        "failed to publish task headers");
+        "failed to configure task storage");
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemcpyToSymbol(d_task_data_bytes, &buffers.task_data, sizeof(char*)),
-        "failed to publish task records");
+        "failed to configure task storage");
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         publish_task_data_stride(),
-        "failed to publish the task-record stride");
+        "failed to configure task storage");
     if (status != cudaSuccess) return status;
     return check_init(
         error,
         cudaMemcpyToSymbol(d_task_id_storage, &buffers.id_storage, sizeof(int*)),
-        "failed to publish task-id storage");
+        "failed to configure task storage");
 }
 
 inline cudaError_t clear_task_pool(

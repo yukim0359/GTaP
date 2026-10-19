@@ -103,7 +103,7 @@ inline cudaError_t stage_queue_storage(
     cudaError_t status = check_init(
         error,
         alloc_device(&buffers->metadata, metadata_bytes),
-        "failed to allocate queue metadata (%zu bytes)",
+        "failed to allocate queue storage (allocation size: %zu bytes)",
         metadata_bytes);
     if (status != cudaSuccess) return status;
 
@@ -118,8 +118,7 @@ inline cudaError_t stage_queue_storage(
     status = check_init(
         error,
         cudaMemsetAsync(buffers->metadata, 0, metadata_bytes, stream),
-        "failed to clear queue metadata (%zu bytes)",
-        metadata_bytes);
+        "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
 
 #ifdef GTAP_INTERNAL_PROFILE_INIT
@@ -133,7 +132,7 @@ inline cudaError_t stage_queue_storage(
     status = check_init(
         error,
         alloc_device(&buffers->slots, slot_bytes),
-        "failed to allocate queue slots (%zu bytes)",
+        "failed to allocate queue storage (allocation size: %zu bytes)",
         slot_bytes);
     if (status != cudaSuccess) return status;
 
@@ -148,8 +147,7 @@ inline cudaError_t stage_queue_storage(
     status = check_init(
         error,
         cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream),
-        "failed to clear queue slots (%zu bytes)",
-        slot_bytes);
+        "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
@@ -170,12 +168,12 @@ inline cudaError_t publish_queue_storage(
         error,
         cudaMemcpyToSymbol(
             d_warp_task_queue_metadata, &buffers.metadata, sizeof(WarpTaskQueueMetadata*)),
-        "failed to publish queue metadata");
+        "failed to configure queue storage");
     if (status != cudaSuccess) return status;
     return check_init(
         error,
         cudaMemcpyToSymbol(d_warp_task_queue_storage, &buffers.slots, sizeof(int*)),
-        "failed to publish queue slots");
+        "failed to configure queue storage");
 }
 
 inline cudaError_t clear_queue_storage(

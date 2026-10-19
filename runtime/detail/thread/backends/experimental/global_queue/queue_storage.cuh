@@ -142,7 +142,7 @@ inline cudaError_t stage_queue_storage(
     cudaError_t status = check_init(
         error,
         alloc_device(&buffers->slots, slot_bytes),
-        "failed to allocate queue slots (%zu bytes)",
+        "failed to allocate queue storage (allocation size: %zu bytes)",
         slot_bytes);
     if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
@@ -155,8 +155,7 @@ inline cudaError_t stage_queue_storage(
     status = check_init(
         error,
         cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream),
-        "failed to clear queue slots (%zu bytes)",
-        slot_bytes);
+        "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
@@ -169,7 +168,7 @@ inline cudaError_t stage_queue_storage(
     status = check_init(
         error,
         alloc_device(&buffers->generated, generated_bytes),
-        "failed to allocate the generated task-id buffer (%zu bytes)",
+        "failed to allocate queue storage (allocation size: %zu bytes)",
         generated_bytes);
     if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
@@ -182,8 +181,7 @@ inline cudaError_t stage_queue_storage(
     status = check_init(
         error,
         cudaMemsetAsync(buffers->generated, 0, generated_bytes, stream),
-        "failed to clear the generated task-id buffer (%zu bytes)",
-        generated_bytes);
+        "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
 #ifdef GTAP_INTERNAL_PROFILE_INIT
     cudaEventRecord(stop, stream);
@@ -197,38 +195,35 @@ inline cudaError_t stage_queue_storage(
     status = check_init(
         error,
         alloc_device(&buffers->head, cursor_bytes),
-        "failed to allocate queue head cursors (%zu bytes)",
+        "failed to allocate queue storage (allocation size: %zu bytes)",
         cursor_bytes);
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         alloc_device(&buffers->tail, cursor_bytes),
-        "failed to allocate queue tail cursors (%zu bytes)",
+        "failed to allocate queue storage (allocation size: %zu bytes)",
         cursor_bytes);
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         alloc_device(&buffers->alloc, cursor_bytes),
-        "failed to allocate queue allocation cursors (%zu bytes)",
+        "failed to allocate queue storage (allocation size: %zu bytes)",
         cursor_bytes);
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemsetAsync(buffers->head, 0, cursor_bytes, stream),
-        "failed to clear queue head cursors (%zu bytes)",
-        cursor_bytes);
+        "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemsetAsync(buffers->tail, 0, cursor_bytes, stream),
-        "failed to clear queue tail cursors (%zu bytes)",
-        cursor_bytes);
+        "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
     return check_init(
         error,
         cudaMemsetAsync(buffers->alloc, 0, cursor_bytes, stream),
-        "failed to clear queue allocation cursors (%zu bytes)",
-        cursor_bytes);
+        "failed to initialize queue storage");
 }
 
 inline cudaError_t publish_queue_storage(
@@ -238,28 +233,28 @@ inline cudaError_t publish_queue_storage(
     cudaError_t status = check_init(
         error,
         cudaMemcpyToSymbol(d_global_task_queue, &buffers.slots, sizeof(int*)),
-        "failed to publish queue slots");
+        "failed to configure queue storage");
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemcpyToSymbol(d_queue_head, &buffers.head, sizeof(int*)),
-        "failed to publish queue head cursors");
+        "failed to configure queue storage");
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemcpyToSymbol(d_queue_tail, &buffers.tail, sizeof(int*)),
-        "failed to publish queue tail cursors");
+        "failed to configure queue storage");
     if (status != cudaSuccess) return status;
     status = check_init(
         error,
         cudaMemcpyToSymbol(d_queue_alloc, &buffers.alloc, sizeof(int*)),
-        "failed to publish queue allocation cursors");
+        "failed to configure queue storage");
     if (status != cudaSuccess) return status;
     return check_init(
         error,
         cudaMemcpyToSymbol(
             d_task_id_generated_by_queue_idx, &buffers.generated, sizeof(int*)),
-        "failed to publish the generated task-id buffer");
+        "failed to configure queue storage");
 }
 
 inline cudaError_t clear_queue_storage(
