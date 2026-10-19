@@ -253,34 +253,42 @@ inline cudaError_t clear_queue_storage(
     }
 
     int* slots = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &slots, d_global_task_queue, sizeof(int*)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &slots, d_global_task_queue, sizeof(int*));
+    if (status != cudaSuccess) return status;
     int* generated = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &generated, d_task_id_generated_by_queue_idx, sizeof(int*)));
+    status = cudaMemcpyFromSymbol(
+        &generated, d_task_id_generated_by_queue_idx, sizeof(int*));
+    if (status != cudaSuccess) return status;
     int* head = nullptr;
     int* tail = nullptr;
     int* alloc = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&head, d_queue_head, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&tail, d_queue_tail, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&alloc, d_queue_alloc, sizeof(int*)));
+    status = cudaMemcpyFromSymbol(&head, d_queue_head, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(&tail, d_queue_tail, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(&alloc, d_queue_alloc, sizeof(int*));
+    if (status != cudaSuccess) return status;
 
     if (slots != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, slot_bytes, stream));
+        status = cudaMemsetAsync(slots, 0, slot_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (generated != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            generated, 0, generated_bytes, stream));
+        status = cudaMemsetAsync(generated, 0, generated_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (head != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(head, 0, cursor_bytes, stream));
+        status = cudaMemsetAsync(head, 0, cursor_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (tail != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(tail, 0, cursor_bytes, stream));
+        status = cudaMemsetAsync(tail, 0, cursor_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (alloc != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(alloc, 0, cursor_bytes, stream));
+        status = cudaMemsetAsync(alloc, 0, cursor_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     return cudaSuccess;
 }

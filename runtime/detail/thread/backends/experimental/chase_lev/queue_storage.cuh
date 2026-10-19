@@ -180,19 +180,21 @@ inline cudaError_t clear_queue_storage(
     }
 
     WarpTaskQueueMetadata* metadata = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &metadata, d_warp_task_queue_metadata, sizeof(WarpTaskQueueMetadata*)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &metadata, d_warp_task_queue_metadata, sizeof(WarpTaskQueueMetadata*));
+    if (status != cudaSuccess) return status;
     int* slots = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &slots, d_warp_task_queue_storage, sizeof(int*)));
+    status = cudaMemcpyFromSymbol(
+        &slots, d_warp_task_queue_storage, sizeof(int*));
+    if (status != cudaSuccess) return status;
 
     if (metadata != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            metadata, 0, metadata_bytes, stream));
+        status = cudaMemsetAsync(metadata, 0, metadata_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (slots != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            slots, 0, slot_bytes, stream));
+        status = cudaMemsetAsync(slots, 0, slot_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     return cudaSuccess;
 }

@@ -116,15 +116,21 @@ inline cudaError_t initialize_impl(
     size_t* device_bytes_allocated,
     host_api_error& error
 ) {
-    if (h_runtime_state == runtime_state::ready) {
-        return error.fail(
-            cudaErrorInitializationError,
-            "GTaP is already initialized");
-    }
-    if (h_runtime_state == runtime_state::failed) {
-        return error.fail(
-            cudaErrorInitializationError,
-            "GTaP cannot be initialized again after a failed finalization");
+    switch (h_runtime_state) {
+        case runtime_state::uninitialized:
+            break;
+        case runtime_state::ready:
+            return error.fail(
+                cudaErrorInitializationError,
+                "GTaP is already initialized");
+        case runtime_state::finalize_failed:
+            return error.fail(
+                cudaErrorInitializationError,
+                "GTaP cannot be initialized again after a failed finalization");
+        case runtime_state::reset_failed:
+            return error.fail(
+                cudaErrorInitializationError,
+                "GTaP cannot be initialized again after a failed reset");
     }
 
     launch_config resolved{};
@@ -177,29 +183,56 @@ inline cudaError_t gtap_initialize(
 
 inline cudaError_t gtap_finalize() {
     gtap::detail::host_api_error error{};
-    if (gtap::detail::h_runtime_state != gtap::detail::runtime_state::ready) {
-        const char* message =
-            gtap::detail::h_runtime_state == gtap::detail::runtime_state::failed
-                ? "GTaP cannot be finalized again after a failed finalization"
-                : "GTaP is not initialized";
+
+    auto reject = [&](const char* message) {
         cudaError_t status = error.fail(
             cudaErrorInitializationError, "%s", message);
         gtap::detail::print_host_api_error("finalization", status, error);
         return status;
+    };
+    switch (gtap::detail::h_runtime_state) {
+        case gtap::detail::runtime_state::ready:
+        case gtap::detail::runtime_state::reset_failed:
+            break;
+        case gtap::detail::runtime_state::uninitialized:
+            return reject("GTaP is not initialized");
+        case gtap::detail::runtime_state::finalize_failed:
+            return reject("GTaP cannot be finalized again after a failed finalization");
     }
 
     cudaError_t status = gtap::detail::block::finalize_runtime(error);
     gtap::detail::h_runtime_state = status == cudaSuccess
         ? gtap::detail::runtime_state::uninitialized
-        : gtap::detail::runtime_state::failed;
+        : gtap::detail::runtime_state::finalize_failed;
     gtap::detail::h_stream = nullptr;
     gtap::detail::print_host_api_error("finalization", status, error);
     return status;
 }
 
 inline cudaError_t gtap_reset() {
-    if (gtap::detail::h_runtime_state != gtap::detail::runtime_state::ready) {
-        return cudaErrorInitializationError;
+    gtap::detail::host_api_error error{};
+
+    auto reject = [&](const char* message) {
+        cudaError_t status = error.fail(
+            cudaErrorInitializationError, "%s", message);
+        gtap::detail::print_host_api_error("reset", status, error);
+        return status;
+    };
+    switch (gtap::detail::h_runtime_state) {
+        case gtap::detail::runtime_state::ready:
+            break;
+        case gtap::detail::runtime_state::uninitialized:
+            return reject("GTaP is not initialized");
+        case gtap::detail::runtime_state::reset_failed:
+            return reject("GTaP cannot be reset again after a failed reset");
+        case gtap::detail::runtime_state::finalize_failed:
+            return reject("GTaP cannot be reset after a failed finalization");
     }
-    return gtap::detail::block::reset_runtime();
+
+    cudaError_t status = gtap::detail::block::reset_runtime(error);
+    if (status != cudaSuccess) {
+        gtap::detail::h_runtime_state = gtap::detail::runtime_state::reset_failed;
+    }
+    gtap::detail::print_host_api_error("reset", status, error);
+    return status;
 }

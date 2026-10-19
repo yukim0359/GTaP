@@ -217,28 +217,36 @@ inline cudaError_t clear_profile_buffers(
     unsigned long long* profile_dropped_events_ptr = nullptr;
     int* task_pool_peak_usage_ptr = nullptr;
     int* task_id_allocation_count_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &working_time_ptr, working_time, sizeof(working_time_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &working_time_ptr, working_time, sizeof(working_time_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(
         &profile_dropped_events_ptr, profile_dropped_events,
-        sizeof(profile_dropped_events_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(profile_dropped_events_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(
         &task_pool_peak_usage_ptr, task_pool_peak_usage,
-        sizeof(task_pool_peak_usage_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(task_pool_peak_usage_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(
         &task_id_allocation_count_ptr, task_id_allocation_count,
-        sizeof(task_id_allocation_count_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
+        sizeof(task_id_allocation_count_ptr));
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
         working_time_ptr, 0,
         sizeof(long long) * scheduling_units * timestamps,
-        stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
+        stream);
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
         profile_dropped_events_ptr, 0,
-        sizeof(unsigned long long) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        task_pool_peak_usage_ptr, 0, sizeof(int) * scheduling_units, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-        task_id_allocation_count_ptr, 0, sizeof(int) * scheduling_units, stream));
+        sizeof(unsigned long long) * scheduling_units, stream);
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
+        task_pool_peak_usage_ptr, 0, sizeof(int) * scheduling_units, stream);
+    if (status != cudaSuccess) return status;
+    status = cudaMemsetAsync(
+        task_id_allocation_count_ptr, 0, sizeof(int) * scheduling_units, stream);
+    if (status != cudaSuccess) return status;
 #else
     (void)config;
     (void)stream;

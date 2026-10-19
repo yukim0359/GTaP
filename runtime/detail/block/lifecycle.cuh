@@ -169,33 +169,69 @@ cudaError_t finalize_runtime(host_api_error& error) {
     return result;
 }
 
-cudaError_t reset_runtime() {
+cudaError_t reset_runtime(host_api_error& error) {
     reset_runtime_error_record();
     const launch_config& runtime_config = h_launch_config;
-
     cudaStream_t stream = h_stream;
 
-    GTAP_DETAIL_CUDA_TRY(clear_queue_storage(runtime_config, stream));
-    GTAP_DETAIL_CUDA_TRY(clear_task_pool(runtime_config, stream));
-    GTAP_DETAIL_CUDA_TRY(clear_profile_buffers(runtime_config, stream));
-    GTAP_DETAIL_CUDA_TRY(cudaStreamSynchronize(stream));
+    cudaError_t status = record_error_if_failed(
+        error,
+        clear_queue_storage(runtime_config, stream),
+        "failed to reset task queues");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        clear_task_pool(runtime_config, stream),
+        "failed to reset task storage");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        clear_profile_buffers(runtime_config, stream),
+        "failed to reset profile buffers");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaStreamSynchronize(stream),
+        "failed to synchronize the runtime");
+    if (status != cudaSuccess) return status;
 
     int zero = 0;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_root_task_finished, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_all_tasks_finished, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_runtime_error_code, &zero, sizeof(int)));
-    GTAP_DETAIL_CUDA_TRY(reset_queue_counters());
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_root_task_finished, &zero, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_all_tasks_finished, &zero, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
+        reset_queue_counters(),
+        "failed to reset task queues");
+    if (status != cudaSuccess) return status;
     int one = 1;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyToSymbol(
-        d_active_block_count, &one, sizeof(int)));
+    status = record_error_if_failed(
+        error,
+        cudaMemcpyToSymbol(d_active_block_count, &one, sizeof(int)),
+        "failed to reset the runtime");
+    if (status != cudaSuccess) return status;
 
     init_block_id_pools_metadata<<<runtime_config.grid_size, 1, 0, stream>>>();
     // TODO: cudaDeviceSynchronize waits for every stream.
-    GTAP_DETAIL_CUDA_TRY(cudaDeviceSynchronize());
-    return cudaGetLastError();
+    status = record_error_if_failed(
+        error,
+        cudaDeviceSynchronize(),
+        "failed to reset task storage");
+    if (status != cudaSuccess) return status;
+    return record_error_if_failed(
+        error, cudaGetLastError(), "failed to reset the runtime");
 }
 
 }  // namespace gtap::detail::block

@@ -33,7 +33,8 @@ inline cudaStream_t h_stream = nullptr;
 enum class runtime_state {
     uninitialized,
     ready,
-    failed,
+    reset_failed,
+    finalize_failed,
 };
 
 inline runtime_state h_runtime_state = runtime_state::uninitialized;

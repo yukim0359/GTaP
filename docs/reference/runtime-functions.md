@@ -40,7 +40,7 @@ application allocations or the CUDA context.
 | `cudaSuccess` | Runtime initialization completed successfully |
 | `cudaErrorInvalidConfiguration` | Launch geometry is invalid |
 | `cudaErrorInvalidValue` | A task capacity, queue count, memory budget, or profiling capacity is invalid |
-| `cudaErrorInitializationError` | GTaP is already initialized, or a previous finalization failed and the runtime cannot be initialized again |
+| `cudaErrorInitializationError` | GTaP is already initialized, or a previous finalization or reset failed and the runtime cannot be initialized again |
 | Other CUDA error | A CUDA allocation, copy, symbol, or initialization operation failed |
 
 On failure, `gtap_initialize` writes an error message to standard error. The
@@ -90,7 +90,7 @@ cudaError_t gtap_launch(Kernel kernel, Args&&... args);
 ### Return value
 
 - `cudaErrorInitializationError` if GTaP is not initialized, or if a previous
-  finalization failed and the runtime can no longer be used.
+  finalization or reset failed and the runtime can no longer be used.
 - Otherwise, the result of `cudaLaunchKernel`.
 
 The launch is asynchronous. A successful return means the kernel was submitted,
@@ -155,10 +155,14 @@ cudaError_t gtap_reset();
 
 ### Return value
 
-Returns `cudaSuccess` when all runtime state was reset. Otherwise, returns the
-CUDA error produced by an operation during reset. If the runtime is not
-initialized, or if a previous finalization failed, returns
-`cudaErrorInitializationError`.
+Returns `cudaSuccess` on success. If an operation during reset fails, returns
+its CUDA error and leaves the runtime unusable.
+[`gtap_finalize`](#gtap-finalize) remains available for cleanup.
+
+If GTaP is uninitialized or a previous reset or finalization failed, returns
+`cudaErrorInitializationError` without changing the runtime state.
+
+All failures are reported to standard error.
 
 ### Preconditions
 
@@ -195,15 +199,17 @@ cudaError_t gtap_finalize();
 
 ### Return value
 
-Returns `cudaSuccess` after all runtime resources have been released. If a
-cleanup operation fails, returns the CUDA error from the first failed cleanup
-operation and writes an error message to standard error. If the runtime is not
-initialized, or if a previous finalization failed, returns
-`cudaErrorInitializationError`, writes that reason, and releases nothing.
+Returns `cudaSuccess` on success, or the first CUDA error encountered during
+cleanup.
+
+If GTaP is uninitialized or a previous finalization failed, returns
+`cudaErrorInitializationError` without releasing any resources.
+
+All failures are reported to standard error.
 
 ### Preconditions
 
-- The runtime must have been initialized.
+- The runtime is initialized, or a reset has failed.
 - Complete outstanding execution with
   [`gtap_synchronize()`](#gtap-synchronize) before finalizing.
 - Export required profiling data before finalization because the GTaP profiler

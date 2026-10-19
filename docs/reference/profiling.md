@@ -130,7 +130,7 @@ enum class gtap_profile_export_status {
 | `io_error` | Opening, writing, or closing an output file failed |
 | `no_data` | No complete task-execution interval was recorded |
 | `profiling_disabled` | The program was compiled without `GTAP_ENABLE_PROFILING` |
-| `runtime_not_ready` | The runtime is not initialized, or a previous finalization failed |
+| `runtime_not_ready` | The runtime is not initialized, or a previous finalization or reset failed |
 
 Use `gtap_profile_export_status_string(status)` to obtain a printable lowercase
 status name.

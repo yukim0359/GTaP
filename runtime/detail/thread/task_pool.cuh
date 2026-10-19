@@ -202,26 +202,29 @@ inline cudaError_t clear_task_pool(
     }
 
     TaskHeader* headers = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &headers, d_task_headers, sizeof(TaskHeader*)));
+    cudaError_t status = cudaMemcpyFromSymbol(
+        &headers, d_task_headers, sizeof(TaskHeader*));
+    if (status != cudaSuccess) return status;
     char* task_data = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &task_data, d_task_data_bytes, sizeof(char*)));
+    status = cudaMemcpyFromSymbol(
+        &task_data, d_task_data_bytes, sizeof(char*));
+    if (status != cudaSuccess) return status;
     int* id_storage = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_storage, d_task_id_storage, sizeof(int*)));
+    status = cudaMemcpyFromSymbol(
+        &id_storage, d_task_id_storage, sizeof(int*));
+    if (status != cudaSuccess) return status;
 
     if (headers != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            headers, 0, header_bytes, stream));
+        status = cudaMemsetAsync(headers, 0, header_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (task_data != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            task_data, 0, task_data_bytes, stream));
+        status = cudaMemsetAsync(task_data, 0, task_data_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     if (id_storage != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            id_storage, 0, id_storage_bytes, stream));
+        status = cudaMemsetAsync(id_storage, 0, id_storage_bytes, stream);
+        if (status != cudaSuccess) return status;
     }
     return cudaSuccess;
 }
