@@ -15,7 +15,8 @@ static inline gtap_profile_export_result gtap_export_profile(
     const gtap_profile_export_options& options = {}
 ) {
     gtap_profile_export_result result;
-    if (gtap::detail::h_runtime_state != gtap::detail::runtime_state::ready) {
+    if (gtap::detail::h_runtime_state != gtap::detail::runtime_state::ready &&
+        gtap::detail::h_runtime_state != gtap::detail::runtime_state::launched) {
         result.status = gtap_profile_export_status::runtime_not_ready;
         printf("GTaP profile not written: runtime is not ready\n");
         return result;

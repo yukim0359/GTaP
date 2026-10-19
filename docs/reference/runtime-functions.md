@@ -89,13 +89,16 @@ cudaError_t gtap_launch(Kernel kernel, Args&&... args);
 
 ### Return value
 
-- `cudaErrorInitializationError` if GTaP is not initialized, or if a previous
-  finalization or reset failed and the runtime can no longer be used.
-- Otherwise, the result of `cudaLaunchKernel`.
+If GTaP is uninitialized, a kernel has already been launched since initialization
+or reset, or a previous reset or finalization failed, returns
+`cudaErrorInitializationError`. These failures are reported to standard error
+without launching a kernel or changing the runtime state. Otherwise, returns
+the result of `cudaLaunchKernel`.
 
-The launch is asynchronous. A successful return means the kernel was submitted,
-not that execution finished successfully. Call [`gtap_synchronize`](#gtap-synchronize)
-before reading results or exporting a profile.
+A successful return means the kernel was submitted, not that execution finished.
+Call [`gtap_synchronize`](#gtap-synchronize) before reading results, exporting a
+profile, resetting, or finalizing. Call [`gtap_reset`](#gtap-reset) before
+launching again.
 
 ### Example
 

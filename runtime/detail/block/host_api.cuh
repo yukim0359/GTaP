@@ -120,6 +120,7 @@ inline cudaError_t initialize_impl(
         case runtime_state::uninitialized:
             break;
         case runtime_state::ready:
+        case runtime_state::launched:
             return error.fail(
                 cudaErrorInitializationError,
                 "GTaP is already initialized");
@@ -161,6 +162,7 @@ inline cudaError_t initialize_impl(
 inline cudaError_t finalize_impl(host_api_error& error) {
     switch (h_runtime_state) {
         case runtime_state::ready:
+        case runtime_state::launched:
         case runtime_state::reset_failed:
             break;
         case runtime_state::uninitialized:
@@ -184,6 +186,7 @@ inline cudaError_t finalize_impl(host_api_error& error) {
 inline cudaError_t reset_impl(host_api_error& error) {
     switch (h_runtime_state) {
         case runtime_state::ready:
+        case runtime_state::launched:
             break;
         case runtime_state::uninitialized:
             return error.fail(
@@ -200,9 +203,9 @@ inline cudaError_t reset_impl(host_api_error& error) {
     }
 
     cudaError_t status = reset_runtime(error);
-    if (status != cudaSuccess) {
-        h_runtime_state = runtime_state::reset_failed;
-    }
+    h_runtime_state = status == cudaSuccess
+        ? runtime_state::ready
+        : runtime_state::reset_failed;
     return status;
 }
 
