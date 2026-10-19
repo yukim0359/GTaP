@@ -16,12 +16,12 @@
 namespace gtap::detail::thread {
 
 struct profile_data {
-    int* indices = nullptr;
-    unsigned long long* dropped = nullptr;
-    long long* times = nullptr;
-    int* task_counts = nullptr;
-    int* task_pool_peak_usage = nullptr;
-    int* task_id_allocation_count = nullptr;
+    int* timestamp_counts = nullptr;          // int[num_warps]
+    unsigned long long* dropped = nullptr;    // unsigned long long[num_warps]
+    long long* times = nullptr;               // long long[num_warps * profile_timestamp_capacity]
+    int* task_counts = nullptr;               // int[num_warps * profile_timestamp_capacity]
+    int* task_pool_peak_usage = nullptr;      // int[num_warps]
+    int* task_id_allocation_count = nullptr;  // int[num_warps]
 };
 
 struct profile_statistics {
@@ -52,7 +52,7 @@ static inline bool write_profile_intervals(
     bool wrote = fprintf(file,
             "warp_id,start_ns,end_ns,batch_task_count\n") >= 0;
     for (int warp = 0; wrote && warp < warps; ++warp) {
-        for (int i = 0; wrote && i < data.indices[warp]; i += 2) {
+        for (int i = 0; wrote && i < data.timestamp_counts[warp]; i += 2) {
             const size_t offset =
                 static_cast<size_t>(warp) * profile_timestamp_capacity() + i;
             wrote = fprintf(file, "%d,%lld,%lld,%d\n", warp,
@@ -91,7 +91,7 @@ static inline bool write_profile_aggregates(
         long long recorded_task_execution_ns = 0;
         long long first_execution_ns = 0;
         long long last_execution_ns = 0;
-        for (int i = 0; i < data.indices[warp]; i += 2) {
+        for (int i = 0; i < data.timestamp_counts[warp]; i += 2) {
             const size_t offset =
                 static_cast<size_t>(warp) * profile_timestamp_capacity() + i;
             const long long start_ns = data.times[offset] - origin;
@@ -102,7 +102,7 @@ static inline bool write_profile_aggregates(
             tasks_executed += data.task_counts[offset + 1];
         }
         if (fprintf(file, "%d,%d,%llu,%lld,%lld,%lld,%lld,%d,%d\n", warp,
-                data.indices[warp] / 2, data.dropped[warp], tasks_executed,
+                data.timestamp_counts[warp] / 2, data.dropped[warp], tasks_executed,
                 recorded_task_execution_ns, first_execution_ns,
                 last_execution_ns, data.task_pool_peak_usage[warp],
                 data.task_id_allocation_count[warp]) < 0) {
@@ -243,7 +243,7 @@ static inline bool write_profile_metadata(
 }
 
 static inline void free_profile_data(profile_data& data) {
-    free(data.indices);
+    free(data.timestamp_counts);
     free(data.dropped);
     free(data.times);
     free(data.task_counts);
@@ -258,7 +258,7 @@ static inline bool collect_profile_data(
     profile_data& data
 ) {
     int* device_indices = nullptr;
-    data.indices = static_cast<int*>(malloc(sizeof(int) * warps));
+    data.timestamp_counts = static_cast<int*>(malloc(sizeof(int) * warps));
     data.dropped = static_cast<unsigned long long*>(
         malloc(sizeof(unsigned long long) * warps));
     data.times = static_cast<long long*>(malloc(
@@ -267,7 +267,7 @@ static inline bool collect_profile_data(
         sizeof(int) * warps * profile_timestamp_capacity()));
     data.task_pool_peak_usage = static_cast<int*>(malloc(sizeof(int) * warps));
     data.task_id_allocation_count = static_cast<int*>(malloc(sizeof(int) * warps));
-    if (!data.indices || !data.dropped || !data.times || !data.task_counts ||
+    if (!data.timestamp_counts || !data.dropped || !data.times || !data.task_counts ||
         !data.task_pool_peak_usage || !data.task_id_allocation_count) {
         free_profile_data(data);
         error.fail("host memory allocation failed");
@@ -285,7 +285,7 @@ static inline bool collect_profile_data(
     }
     if (status == cudaSuccess) status = cudaDeviceSynchronize();
     if (status == cudaSuccess) {
-        status = cudaMemcpy(data.indices, device_indices, sizeof(int) * warps,
+        status = cudaMemcpy(data.timestamp_counts, device_indices, sizeof(int) * warps,
                             cudaMemcpyDeviceToHost);
     }
     if (status == cudaSuccess) status = get_warp_working_time_data(data.times);
@@ -330,10 +330,10 @@ static inline bool compute_profile_statistics(
     statistics = {};
     long long profile_end = 0;
     for (int warp = 0; warp < warps; ++warp) {
-        if (data.indices[warp] > 0) statistics.warps_with_executed_tasks++;
-        statistics.recorded_intervals += static_cast<size_t>(data.indices[warp] / 2);
+        if (data.timestamp_counts[warp] > 0) statistics.warps_with_executed_tasks++;
+        statistics.recorded_intervals += static_cast<size_t>(data.timestamp_counts[warp] / 2);
         statistics.dropped_intervals += static_cast<size_t>(data.dropped[warp]);
-        for (int i = 0; i < data.indices[warp]; ++i) {
+        for (int i = 0; i < data.timestamp_counts[warp]; ++i) {
             const long long value =
                 data.times[static_cast<size_t>(warp) * profile_timestamp_capacity() + i];
             if (value > 0 && (statistics.origin == 0 || value < statistics.origin)) {
@@ -377,7 +377,7 @@ static inline bool compute_profile_statistics(
     size_t active_warp_index = 0;
     for (int warp = 0; warp < warps; ++warp) {
         long long execution_ns = 0;
-        for (int i = 0; i < data.indices[warp]; i += 2) {
+        for (int i = 0; i < data.timestamp_counts[warp]; i += 2) {
             const size_t offset =
                 static_cast<size_t>(warp) * profile_timestamp_capacity() + i;
             const long long duration = data.times[offset + 1] - data.times[offset];
@@ -389,7 +389,7 @@ static inline bool compute_profile_statistics(
         const double ratio = profile_span > 0.0
             ? static_cast<double>(execution_ns) / profile_span : 0.0;
         all_warp_ratios[warp] = ratio;
-        if (data.indices[warp] > 0)
+        if (data.timestamp_counts[warp] > 0)
             active_warp_ratios[active_warp_index++] = ratio;
     }
     statistics.duration_stats =

@@ -16,11 +16,11 @@
 namespace gtap::detail::block {
 
 struct profile_data {
-    int* indices = nullptr;
-    unsigned long long* dropped = nullptr;
-    long long* times = nullptr;
-    int* task_pool_peak_usage = nullptr;
-    int* task_id_allocation_count = nullptr;
+    int* timestamp_counts = nullptr;          // int[num_blocks]
+    unsigned long long* dropped = nullptr;    // unsigned long long[num_blocks]
+    long long* times = nullptr;               // long long[num_blocks * profile_timestamp_capacity]
+    int* task_pool_peak_usage = nullptr;      // int[num_blocks]
+    int* task_id_allocation_count = nullptr;  // int[num_blocks]
 };
 
 struct profile_statistics {
@@ -49,7 +49,7 @@ static inline bool write_profile_intervals(
     }
     bool wrote = fprintf(file, "block_id,start_ns,end_ns\n") >= 0;
     for (int block = 0; wrote && block < blocks; ++block) {
-        for (int i = 0; wrote && i < data.indices[block]; i += 2) {
+        for (int i = 0; wrote && i < data.timestamp_counts[block]; i += 2) {
             const size_t offset =
                 static_cast<size_t>(block) * profile_timestamp_capacity() + i;
             wrote = fprintf(file, "%d,%lld,%lld\n", block,
@@ -87,7 +87,7 @@ static inline bool write_profile_aggregates(
         long long recorded_task_execution_ns = 0;
         long long first_execution_ns = 0;
         long long last_execution_ns = 0;
-        for (int i = 0; i < data.indices[block]; i += 2) {
+        for (int i = 0; i < data.timestamp_counts[block]; i += 2) {
             const size_t offset =
                 static_cast<size_t>(block) * profile_timestamp_capacity() + i;
             const long long start_ns = data.times[offset] - origin;
@@ -97,8 +97,8 @@ static inline bool write_profile_aggregates(
             last_execution_ns = end_ns;
         }
         if (fprintf(file, "%d,%d,%llu,%d,%lld,%lld,%lld,%d,%d\n", block,
-                data.indices[block] / 2, data.dropped[block],
-                data.indices[block] / 2,
+                data.timestamp_counts[block] / 2, data.dropped[block],
+                data.timestamp_counts[block] / 2,
                 recorded_task_execution_ns, first_execution_ns,
                 last_execution_ns, data.task_pool_peak_usage[block],
                 data.task_id_allocation_count[block]) < 0) {
@@ -230,7 +230,7 @@ static inline bool write_profile_metadata(
 }
 
 static inline void free_profile_data(profile_data& data) {
-    free(data.indices);
+    free(data.timestamp_counts);
     free(data.dropped);
     free(data.times);
     free(data.task_pool_peak_usage);
@@ -244,14 +244,14 @@ static inline bool collect_profile_data(
     profile_data& data
 ) {
     int* device_indices = nullptr;
-    data.indices = static_cast<int*>(malloc(sizeof(int) * blocks));
+    data.timestamp_counts = static_cast<int*>(malloc(sizeof(int) * blocks));
     data.dropped = static_cast<unsigned long long*>(
         malloc(sizeof(unsigned long long) * blocks));
     data.times = static_cast<long long*>(malloc(
         sizeof(long long) * blocks * profile_timestamp_capacity()));
     data.task_pool_peak_usage = static_cast<int*>(malloc(sizeof(int) * blocks));
     data.task_id_allocation_count = static_cast<int*>(malloc(sizeof(int) * blocks));
-    if (!data.indices || !data.dropped || !data.times ||
+    if (!data.timestamp_counts || !data.dropped || !data.times ||
         !data.task_pool_peak_usage || !data.task_id_allocation_count) {
         free_profile_data(data);
         error.fail("host memory allocation failed");
@@ -269,7 +269,7 @@ static inline bool collect_profile_data(
     }
     if (status == cudaSuccess) status = cudaDeviceSynchronize();
     if (status == cudaSuccess) status = cudaMemcpy(
-        data.indices, device_indices, sizeof(int) * blocks, cudaMemcpyDeviceToHost);
+        data.timestamp_counts, device_indices, sizeof(int) * blocks, cudaMemcpyDeviceToHost);
     if (status == cudaSuccess) status = get_working_time_data(data.times);
     if (status == cudaSuccess) {
         status = get_block_profile_dropped_events_data(data.dropped);
@@ -309,11 +309,11 @@ static inline bool compute_profile_statistics(
     statistics = {};
     long long profile_end = 0;
     for (int block = 0; block < blocks; ++block) {
-        if (data.indices[block] > 0) statistics.blocks_with_executed_tasks++;
+        if (data.timestamp_counts[block] > 0) statistics.blocks_with_executed_tasks++;
         statistics.recorded_intervals +=
-            static_cast<size_t>(data.indices[block] / 2);
+            static_cast<size_t>(data.timestamp_counts[block] / 2);
         statistics.dropped_intervals += static_cast<size_t>(data.dropped[block]);
-        for (int i = 0; i < data.indices[block]; ++i) {
+        for (int i = 0; i < data.timestamp_counts[block]; ++i) {
             const long long value = data.times[
                 static_cast<size_t>(block) * profile_timestamp_capacity() + i];
             if (value > 0 && (!statistics.origin || value < statistics.origin)) {
@@ -354,7 +354,7 @@ static inline bool compute_profile_statistics(
     size_t active_block_index = 0;
     for (int block = 0; block < blocks; ++block) {
         long long execution_ns = 0;
-        for (int i = 0; i < data.indices[block]; i += 2) {
+        for (int i = 0; i < data.timestamp_counts[block]; i += 2) {
             const size_t offset =
                 static_cast<size_t>(block) * profile_timestamp_capacity() + i;
             const long long duration = data.times[offset + 1] - data.times[offset];
@@ -364,7 +364,7 @@ static inline bool compute_profile_statistics(
         const double ratio = profile_span > 0.0
             ? static_cast<double>(execution_ns) / profile_span : 0.0;
         all_block_ratios[block] = ratio;
-        if (data.indices[block] > 0)
+        if (data.timestamp_counts[block] > 0)
             active_block_ratios[active_block_index++] = ratio;
     }
     statistics.duration_stats =
