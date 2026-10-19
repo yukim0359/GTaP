@@ -6,7 +6,7 @@
 // A failed initialize releases staged buffers. The caller owns h_stream.
 
 #include "../common/checked_size.cuh"
-#include "../common/init_error.cuh"
+#include "../common/host_api_error.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 
@@ -63,7 +63,7 @@ inline void abandon_initialize(
     cudaGetLastError();
 }
 
-cudaError_t initialize_runtime(init_error& error) {
+cudaError_t initialize_runtime(host_api_error& error) {
     queue_storage_buffers queues{};
     task_pool_buffers task_pool{};
     profile_buffers profile{};
@@ -92,17 +92,17 @@ cudaError_t initialize_runtime(init_error& error) {
         return fail(error.fail(status, "failed to finish allocating runtime storage"));
     }
 
-    status = check_init(
+    status = record_error_if_failed(
         error,
         publish_queue_storage(queues),
         "failed to configure task queues");
     if (status != cudaSuccess) return fail(status);
-    status = check_init(
+    status = record_error_if_failed(
         error,
         publish_task_pool(task_pool),
         "failed to configure task storage");
     if (status != cudaSuccess) return fail(status);
-    status = check_init(
+    status = record_error_if_failed(
         error,
         publish_profile_buffers(profile),
         "failed to configure profiling");
@@ -148,12 +148,25 @@ cudaError_t initialize_runtime(init_error& error) {
     return cudaSuccess;
 }
 
-cudaError_t finalize_runtime() {
-    GTAP_DETAIL_CUDA_TRY(free_queue_storage());
-    GTAP_DETAIL_CUDA_TRY(free_task_pool());
-    GTAP_DETAIL_CUDA_TRY(free_profile_buffers());
-    GTAP_DETAIL_CUDA_TRY(finalize_runtime_error_record());
-    return cudaGetLastError();
+cudaError_t finalize_runtime(host_api_error& error) {
+    cudaError_t result = cudaSuccess;
+
+    auto collect = [&](cudaError_t status, const char* message) {
+        if (status != cudaSuccess && result == cudaSuccess) {
+            result = error.fail(status, "%s", message);
+        }
+    };
+
+    collect(free_queue_storage(),
+            "failed to release task queues");
+    collect(free_task_pool(),
+            "failed to release task storage");
+    collect(free_profile_buffers(),
+            "failed to release profile buffers");
+    collect(finalize_runtime_error_record(),
+            "failed to release runtime error reporting resources");
+
+    return result;
 }
 
 cudaError_t reset_runtime() {

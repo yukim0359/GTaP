@@ -3,7 +3,7 @@
 #include "../../../../common/checked_size.cuh"
 #include "../../../../common/cuda_primitives.cuh"
 #include "../../../../common/device_memory.cuh"
-#include "../../../../common/init_error.cuh"
+#include "../../../../common/host_api_error.cuh"
 #include "../../../../common/runtime_config.cuh"
 #include "../../../../common/runtime_error.cuh"
 
@@ -120,7 +120,7 @@ inline cudaError_t stage_queue_storage(
     const launch_config& config,
     cudaStream_t stream,
     queue_storage_buffers* buffers,
-    init_error& error
+    host_api_error& error
 ) {
     const size_t slot_bytes = queue_slot_bytes(config);
     const size_t generated_bytes = generated_task_id_bytes(config);
@@ -139,7 +139,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    cudaError_t status = check_init(
+    cudaError_t status = record_error_if_failed(
         error,
         alloc_device(&buffers->slots, slot_bytes),
         "failed to allocate queue storage (allocation size: %zu bytes)",
@@ -152,7 +152,7 @@ inline cudaError_t stage_queue_storage(
     printf("  cudaMalloc(global queue, %zu bytes): %.3f ms\n", slot_bytes, elapsed);
     cudaEventRecord(start, stream);
 #endif
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream),
         "failed to initialize queue storage");
@@ -165,7 +165,7 @@ inline cudaError_t stage_queue_storage(
     cudaEventRecord(start);
 #endif
 
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->generated, generated_bytes),
         "failed to allocate queue storage (allocation size: %zu bytes)",
@@ -178,7 +178,7 @@ inline cudaError_t stage_queue_storage(
     printf("  cudaMalloc(task_id_generated, %zu bytes): %.3f ms\n", generated_bytes, elapsed);
     cudaEventRecord(start, stream);
 #endif
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->generated, 0, generated_bytes, stream),
         "failed to initialize queue storage");
@@ -192,35 +192,35 @@ inline cudaError_t stage_queue_storage(
     cudaEventDestroy(stop);
 #endif
 
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->head, cursor_bytes),
         "failed to allocate queue storage (allocation size: %zu bytes)",
         cursor_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->tail, cursor_bytes),
         "failed to allocate queue storage (allocation size: %zu bytes)",
         cursor_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->alloc, cursor_bytes),
         "failed to allocate queue storage (allocation size: %zu bytes)",
         cursor_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->head, 0, cursor_bytes, stream),
         "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->tail, 0, cursor_bytes, stream),
         "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
-    return check_init(
+    return record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->alloc, 0, cursor_bytes, stream),
         "failed to initialize queue storage");

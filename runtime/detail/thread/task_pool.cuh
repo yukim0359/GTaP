@@ -3,7 +3,7 @@
 #include "../common/checked_size.cuh"
 #include "../common/cuda_primitives.cuh"
 #include "../common/device_memory.cuh"
-#include "../common/init_error.cuh"
+#include "../common/host_api_error.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
 #include "../common/task_pool.cuh"
@@ -130,7 +130,7 @@ inline cudaError_t stage_task_pool(
     const launch_config& config,
     cudaStream_t stream,
     task_pool_buffers* buffers,
-    init_error& error
+    host_api_error& error
 ) {
     const size_t header_bytes = task_pool_component_bytes(config, sizeof(TaskHeader));
     const size_t record_bytes = task_pool_component_bytes(config, __gtap_task_data_stride);
@@ -140,37 +140,37 @@ inline cudaError_t stage_task_pool(
         return error.fail(cudaErrorInvalidValue, "task storage size overflowed");
     }
 
-    cudaError_t status = check_init(
+    cudaError_t status = record_error_if_failed(
         error,
         alloc_device(&buffers->headers, header_bytes),
         "failed to allocate task storage (allocation size: %zu bytes)",
         header_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->headers, 0, header_bytes, stream),
         "failed to initialize task storage");
     if (status != cudaSuccess) return status;
 
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->task_data, record_bytes),
         "failed to allocate task storage (allocation size: %zu bytes)",
         record_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->task_data, 0, record_bytes, stream),
         "failed to initialize task storage");
     if (status != cudaSuccess) return status;
 
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->id_storage, id_storage_bytes),
         "failed to allocate task storage (allocation size: %zu bytes)",
         id_storage_bytes);
     if (status != cudaSuccess) return status;
-    return check_init(
+    return record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->id_storage, 0, id_storage_bytes, stream),
         "failed to initialize task storage");

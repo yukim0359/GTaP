@@ -2,7 +2,7 @@
 
 #include "../../../common/checked_size.cuh"
 #include "../../../common/device_memory.cuh"
-#include "../../../common/init_error.cuh"
+#include "../../../common/host_api_error.cuh"
 #include "../../../common/runtime_config.cuh"
 #include "../../../common/runtime_error.cuh"
 
@@ -69,31 +69,31 @@ inline cudaError_t stage_queue_storage(
     const launch_config& config,
     cudaStream_t stream,
     queue_storage_buffers* buffers,
-    init_error& error
+    host_api_error& error
 ) {
     const size_t metadata_bytes = queue_metadata_bytes(config);
     const size_t slot_bytes = queue_slot_bytes(config);
     if (metadata_bytes == SIZE_MAX || slot_bytes == SIZE_MAX) {
         return error.fail(cudaErrorInvalidValue, "queue storage size overflowed");
     }
-    cudaError_t status = check_init(
+    cudaError_t status = record_error_if_failed(
         error,
         alloc_device(&buffers->metadata, metadata_bytes),
         "failed to allocate queue storage (allocation size: %zu bytes)",
         metadata_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->metadata, 0, metadata_bytes, stream),
         "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->slots, slot_bytes),
         "failed to allocate queue storage (allocation size: %zu bytes)",
         slot_bytes);
     if (status != cudaSuccess) return status;
-    return check_init(
+    return record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->slots, 0, slot_bytes, stream),
         "failed to initialize queue storage");

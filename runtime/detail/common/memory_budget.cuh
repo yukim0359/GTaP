@@ -6,7 +6,7 @@
 #include <cstdlib>
 
 #include "checked_size.cuh"
-#include "init_error.cuh"
+#include "host_api_error.cuh"
 #include "runtime_config.cuh"
 
 namespace gtap::detail {
@@ -83,7 +83,7 @@ inline bool parse_memory_budget(const char* text, size_t* bytes) {
 inline cudaError_t resolve_memory_budget(
     size_t config_budget_bytes,
     size_t* budget_bytes,
-    init_error& error
+    host_api_error& error
 ) {
     if (config_budget_bytes != 0) {
         *budget_bytes = config_budget_bytes;
@@ -123,7 +123,7 @@ inline size_t minimum_required_bytes(
 }
 
 inline cudaError_t fail_insufficient_budget(
-    init_error& error,
+    host_api_error& error,
     size_t budget_bytes,
     size_t required_bytes
 ) {
@@ -149,7 +149,7 @@ inline cudaError_t resolve_tasks_per_unit(
     size_t bytes_per_task,
     const char* task_capacity_name,
     int* tasks_per_unit,
-    init_error& error
+    host_api_error& error
 ) {
     // validate_config rejects a negative task capacity, a non-positive
     // scheduling-unit count, and a non-positive queue count.

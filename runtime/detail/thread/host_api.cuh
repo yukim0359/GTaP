@@ -22,7 +22,7 @@ namespace gtap::detail::thread {
 
 inline cudaError_t validate_config(
     const gtap_thread_config& config,
-    init_error& error
+    host_api_error& error
 ) {
     if (config.grid_size <= 0) {
         return error.fail(
@@ -82,7 +82,7 @@ inline cudaError_t validate_config(
 inline cudaError_t resolve_launch_config(
     const gtap_thread_config& config,
     launch_config* out,
-    init_error& error
+    host_api_error& error
 ) {
     cudaError_t status = validate_config(config, error);
     if (status != cudaSuccess) return status;
@@ -133,7 +133,7 @@ inline cudaError_t resolve_launch_config(
 inline cudaError_t initialize_impl(
     const gtap_thread_config& config,
     size_t* device_bytes_allocated,
-    init_error& error
+    host_api_error& error
 ) {
     if (h_runtime_initialized) {
         return error.fail(
@@ -145,7 +145,7 @@ inline cudaError_t initialize_impl(
     cudaError_t status = resolve_launch_config(config, &resolved, error);
     if (status != cudaSuccess) return status;
 
-    status = check_init(
+    status = record_error_if_failed(
         error,
         publish_launch_config(resolved),
         "failed to publish the launch configuration");
@@ -182,20 +182,22 @@ inline cudaError_t gtap_initialize(
     const gtap_thread_config& config,
     size_t* device_bytes_allocated
 ) {
-    gtap::detail::init_error error{};
+    gtap::detail::host_api_error error{};
     cudaError_t status = gtap::detail::thread::initialize_impl(
         config, device_bytes_allocated, error);
-    gtap::detail::print_init_error(status, error);
+    gtap::detail::print_host_api_error("initialization", status, error);
     return status;
 }
 
 inline cudaError_t gtap_finalize() {
-    cudaError_t err = gtap::detail::thread::finalize_runtime();
-    if (err == cudaSuccess) {
+    gtap::detail::host_api_error error{};
+    cudaError_t status = gtap::detail::thread::finalize_runtime(error);
+    if (status == cudaSuccess) {
         gtap::detail::h_runtime_initialized = false;
         gtap::detail::h_stream = nullptr;
     }
-    return err;
+    gtap::detail::print_host_api_error("finalization", status, error);
+    return status;
 }
 
 inline cudaError_t gtap_reset() {

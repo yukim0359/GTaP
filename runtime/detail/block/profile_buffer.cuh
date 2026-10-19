@@ -2,7 +2,7 @@
 
 #include "../common/cuda_primitives.cuh"
 #include "../common/device_memory.cuh"
-#include "../common/init_error.cuh"
+#include "../common/host_api_error.cuh"
 #include "../common/profile_buffer.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/runtime_error.cuh"
@@ -125,7 +125,7 @@ inline cudaError_t stage_profile_buffers(
     const launch_config& config,
     cudaStream_t stream,
     profile_buffers* buffers,
-    init_error& error
+    host_api_error& error
 ) {
 #ifdef GTAP_ENABLE_PROFILING
     const size_t scheduling_units = static_cast<size_t>(config.total_scheduling_units);
@@ -133,46 +133,46 @@ inline cudaError_t stage_profile_buffers(
     const size_t profile_bytes = sizeof(long long) * scheduling_units * timestamps;
     const size_t dropped_bytes = sizeof(unsigned long long) * scheduling_units;
     const size_t unit_int_bytes = sizeof(int) * scheduling_units;
-    cudaError_t status = check_init(
+    cudaError_t status = record_error_if_failed(
         error,
         alloc_device(&buffers->working_time, profile_bytes),
         "failed to allocate profile buffers (allocation size: %zu bytes)",
         profile_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->dropped_events, dropped_bytes),
         "failed to allocate profile buffers (allocation size: %zu bytes)",
         dropped_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->peak_usage, unit_int_bytes),
         "failed to allocate profile buffers (allocation size: %zu bytes)",
         unit_int_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         alloc_device(&buffers->task_id_allocation_count, unit_int_bytes),
         "failed to allocate profile buffers (allocation size: %zu bytes)",
         unit_int_bytes);
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->working_time, 0, profile_bytes, stream),
         "failed to initialize profile buffers");
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->dropped_events, 0, dropped_bytes, stream),
         "failed to initialize profile buffers");
     if (status != cudaSuccess) return status;
-    status = check_init(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->peak_usage, 0, unit_int_bytes, stream),
         "failed to initialize profile buffers");
     if (status != cudaSuccess) return status;
-    return check_init(
+    return record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->task_id_allocation_count, 0, unit_int_bytes, stream),
         "failed to initialize profile buffers");
