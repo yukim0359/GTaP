@@ -30,7 +30,13 @@ __constant__ launch_config d_launch_config;
 
 inline cudaStream_t h_stream = nullptr;
 
-inline bool h_runtime_initialized = false;
+enum class runtime_state {
+    uninitialized,
+    ready,
+    failed,
+};
+
+inline runtime_state h_runtime_state = runtime_state::uninitialized;
 
 inline cudaError_t publish_launch_config(const launch_config& config) {
     cudaError_t status =

@@ -31,8 +31,8 @@ its `status` before using any generated path.
 
 - Compile with `GTAP_ENABLE_PROFILING` to record data.
 - Call `gtap_synchronize()` before exporting.
-- Export before `gtap_reset()` or `gtap_finalize()`, which clear or release the
-  GTaP profiler buffers.
+- Export while the runtime is initialized, before `gtap_reset()` or
+  `gtap_finalize()`, which clear or release the GTaP profiler buffers.
 
 ### Example
 
@@ -113,7 +113,8 @@ enum class gtap_profile_export_status {
     out_of_memory,
     io_error,
     no_data,
-    profiling_disabled
+    profiling_disabled,
+    runtime_not_ready,
 };
 ```
 
@@ -129,6 +130,7 @@ enum class gtap_profile_export_status {
 | `io_error` | Opening, writing, or closing an output file failed |
 | `no_data` | No complete task-execution interval was recorded |
 | `profiling_disabled` | The program was compiled without `GTAP_ENABLE_PROFILING` |
+| `runtime_not_ready` | The runtime is not initialized, or a previous finalization failed |
 
 Use `gtap_profile_export_status_string(status)` to obtain a printable lowercase
 status name.

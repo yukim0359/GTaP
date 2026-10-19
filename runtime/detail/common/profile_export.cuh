@@ -19,7 +19,8 @@ enum class gtap_profile_export_status {
     out_of_memory,
     io_error,
     no_data,
-    profiling_disabled
+    profiling_disabled,
+    runtime_not_ready,
 };
 
 static inline const char* gtap_profile_export_status_string(
@@ -46,6 +47,8 @@ static inline const char* gtap_profile_export_status_string(
             return "no_data";
         case gtap_profile_export_status::profiling_disabled:
             return "profiling_disabled";
+        case gtap_profile_export_status::runtime_not_ready:
+            return "runtime_not_ready";
     }
     return "unknown";
 }

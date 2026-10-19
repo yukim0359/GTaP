@@ -49,7 +49,8 @@ inline cudaError_t gtap_launch(void (*kernel)(Params...), Args&&... args) {
         static_assert(sizeof...(Params) == sizeof...(Args),
             "gtap_launch argument count does not match the kernel");
         return cudaErrorInvalidValue;
-    } else if (!gtap::detail::h_runtime_initialized) {
+    } else if (gtap::detail::h_runtime_state != gtap::detail::runtime_state::ready) {
+        // TODO: When uninitialized, report that gtap_launch was called before gtap_initialize.
         return cudaErrorInitializationError;
     } else if constexpr (sizeof...(Params) == 0) {
         const gtap::detail::launch_config& config = gtap::detail::h_launch_config;
