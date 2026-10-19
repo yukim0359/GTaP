@@ -22,7 +22,7 @@ bool gtap_export_profile(
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `options` | `const gtap_profile_export_options&` | Output location, optional label, and overwrite policy. Uses defaults when omitted. |
-| `result_directory` | `std::string*` | Optional pointer that receives the resolved output directory. A null pointer leaves the directory unreported. |
+| `result_directory` | `std::string*` | Optional output parameter. Receives the resolved output directory on success; unchanged on failure. |
 
 ### Return value
 
@@ -30,13 +30,13 @@ Returns `true` when the profile was written. Otherwise,
 returns `false` and reports the reason to standard error once, including when
 profiling is disabled. Partial output files may remain on failure.
 
-### Requirements
+### Preconditions
 
-- Compile with `GTAP_ENABLE_PROFILING` to record data.
-- Call `gtap_synchronize()` before exporting.
-- Export after [`gtap_launch`](./runtime-functions#gtap-launch) and before
-  `gtap_reset()` or `gtap_finalize()`, which clear or release the GTaP profiler
-  buffers.
+- Export after [`gtap_launch`](./runtime-functions#gtap-launch) and a successful
+  [`gtap_synchronize`](./runtime-functions#gtap-synchronize), and before
+  [`gtap_reset`](./runtime-functions#gtap-reset) or
+  [`gtap_finalize`](./runtime-functions#gtap-finalize). Reset and finalization
+  clear or release the GTaP profiler buffers.
 
 ### Example
 

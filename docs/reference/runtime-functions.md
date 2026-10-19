@@ -76,8 +76,8 @@ and stream settings stored by [`gtap_initialize`](#gtap-initialize).
 ### Signature
 
 ```cpp
-template<class Kernel, class... Args>
-cudaError_t gtap_launch(Kernel kernel, Args&&... args);
+template<class... Params, class... Args>
+cudaError_t gtap_launch(void (*kernel)(Params...), Args&&... args);
 ```
 
 ### Parameters
@@ -91,9 +91,10 @@ cudaError_t gtap_launch(Kernel kernel, Args&&... args);
 
 If GTaP is uninitialized, a kernel has already been launched since initialization
 or reset, or a previous reset, synchronization, or finalization failed, returns
-`cudaErrorInitializationError`. These failures are reported to standard error
-without launching a kernel or changing the runtime state. Otherwise, returns
-the result of `cudaLaunchKernel`.
+`cudaErrorInitializationError` without launching a kernel or changing the
+runtime state. Otherwise, returns the result of `cudaLaunchKernel`.
+
+All failures are reported to standard error.
 
 A successful return means the kernel was submitted, not that execution finished.
 Call [`gtap_synchronize`](#gtap-synchronize) before reading results, exporting a
@@ -140,19 +141,6 @@ restarting the process regardless of finalization.
 
 - Synchronization is device-wide because the implementation uses
   `cudaDeviceSynchronize`, even when `config.stream` is non-null.
-- Call it after every [`gtap_launch`](#gtap-launch) before reading application
-  results.
-- Call it before
-  [`gtap_export_profile`](./profiling#gtap-export-profile),
-  [`gtap_reset`](#gtap-reset), or [`gtap_finalize`](#gtap-finalize).
-
-```cpp
-cudaError_t status = gtap_synchronize();
-if (status != cudaSuccess) {
-    fprintf(stderr, "GTaP execution failed: %s\n",
-            cudaGetErrorString(status));
-}
-```
 
 ## `gtap_reset`
 
@@ -223,10 +211,11 @@ All failures are reported to standard error.
 ### Preconditions
 
 - The runtime is initialized, a reset has failed, or a synchronization has failed.
-- Complete outstanding execution with
-  [`gtap_synchronize()`](#gtap-synchronize) before finalizing.
-- Export required profiling data before finalization because the GTaP profiler
-  buffers are released here.
+- During normal execution, complete outstanding work with
+  [`gtap_synchronize()`](#gtap-synchronize) and export any required profiling
+  data before finalizing. Finalization releases the GTaP profiler buffers.
+- After a failed synchronization or reset, call `gtap_finalize()` directly.
+  Another synchronization or a profile export is rejected in those states.
 
 ```cpp
 gtap_launch(exec_kernel, input);
