@@ -133,9 +133,9 @@ inline cudaError_t stage_task_pool(
     host_api_error& error
 ) {
     const size_t header_bytes = task_pool_component_bytes(config, sizeof(TaskHeader));
-    const size_t record_bytes = task_pool_component_bytes(config, __gtap_task_data_stride);
+    const size_t task_data_bytes = task_pool_component_bytes(config, __gtap_task_data_stride);
     const size_t id_storage_bytes = task_pool_component_bytes(config, sizeof(int));
-    if (header_bytes == SIZE_MAX || record_bytes == SIZE_MAX ||
+    if (header_bytes == SIZE_MAX || task_data_bytes == SIZE_MAX ||
         id_storage_bytes == SIZE_MAX) {
         return error.fail(cudaErrorInvalidValue, "task storage size overflowed");
     }
@@ -154,13 +154,13 @@ inline cudaError_t stage_task_pool(
 
     status = record_error_if_failed(
         error,
-        alloc_device(&buffers->task_data, record_bytes),
+        alloc_device(&buffers->task_data, task_data_bytes),
         "failed to allocate task storage (allocation size: %zu bytes)",
-        record_bytes);
+        task_data_bytes);
     if (status != cudaSuccess) return status;
     status = record_error_if_failed(
         error,
-        cudaMemsetAsync(buffers->task_data, 0, record_bytes, stream),
+        cudaMemsetAsync(buffers->task_data, 0, task_data_bytes, stream),
         "failed to initialize task storage");
     if (status != cudaSuccess) return status;
 
@@ -194,9 +194,9 @@ inline cudaError_t clear_task_pool(
     cudaStream_t stream
 ) {
     const size_t header_bytes = task_pool_component_bytes(config, sizeof(TaskHeader));
-    const size_t record_bytes = task_pool_component_bytes(config, __gtap_task_data_stride);
+    const size_t task_data_bytes = task_pool_component_bytes(config, __gtap_task_data_stride);
     const size_t id_storage_bytes = task_pool_component_bytes(config, sizeof(int));
-    if (header_bytes == SIZE_MAX || record_bytes == SIZE_MAX ||
+    if (header_bytes == SIZE_MAX || task_data_bytes == SIZE_MAX ||
         id_storage_bytes == SIZE_MAX) {
         return cudaErrorInvalidValue;
     }
@@ -217,7 +217,7 @@ inline cudaError_t clear_task_pool(
     }
     if (task_data != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
-            task_data, 0, record_bytes, stream));
+            task_data, 0, task_data_bytes, stream));
     }
     if (id_storage != nullptr) {
         GTAP_DETAIL_CUDA_TRY(cudaMemsetAsync(
@@ -230,25 +230,25 @@ inline cudaError_t free_task_pool() {
     cudaError_t result = cudaSuccess;
 
     TaskHeader* headers = nullptr;
-    cudaError_t headers_status = cudaMemcpyFromSymbol(
+    cudaError_t headers_read_status = cudaMemcpyFromSymbol(
         &headers, d_task_headers, sizeof(TaskHeader*));
-    keep_first_error(headers_status, &result);
+    keep_first_error(headers_read_status, &result);
     char* task_data = nullptr;
-    cudaError_t task_data_status = cudaMemcpyFromSymbol(
+    cudaError_t task_data_read_status = cudaMemcpyFromSymbol(
         &task_data, d_task_data_bytes, sizeof(char*));
-    keep_first_error(task_data_status, &result);
+    keep_first_error(task_data_read_status, &result);
     int* id_storage = nullptr;
-    cudaError_t id_storage_status = cudaMemcpyFromSymbol(
+    cudaError_t id_storage_read_status = cudaMemcpyFromSymbol(
         &id_storage, d_task_id_storage, sizeof(int*));
-    keep_first_error(id_storage_status, &result);
+    keep_first_error(id_storage_read_status, &result);
 
-    if (headers_status == cudaSuccess && headers != nullptr) {
+    if (headers_read_status == cudaSuccess && headers != nullptr) {
         keep_first_error(cudaFree(headers), &result);
     }
-    if (task_data_status == cudaSuccess && task_data != nullptr) {
+    if (task_data_read_status == cudaSuccess && task_data != nullptr) {
         keep_first_error(cudaFree(task_data), &result);
     }
-    if (id_storage_status == cudaSuccess && id_storage != nullptr) {
+    if (id_storage_read_status == cudaSuccess && id_storage != nullptr) {
         keep_first_error(cudaFree(id_storage), &result);
     }
     return result;

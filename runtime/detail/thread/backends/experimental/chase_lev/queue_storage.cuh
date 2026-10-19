@@ -201,18 +201,18 @@ inline cudaError_t free_queue_storage() {
     cudaError_t result = cudaSuccess;
 
     WarpTaskQueueMetadata* metadata = nullptr;
-    cudaError_t metadata_status = cudaMemcpyFromSymbol(
+    cudaError_t metadata_read_status = cudaMemcpyFromSymbol(
         &metadata, d_warp_task_queue_metadata, sizeof(WarpTaskQueueMetadata*));
-    keep_first_error(metadata_status, &result);
+    keep_first_error(metadata_read_status, &result);
     int* slots = nullptr;
-    cudaError_t slots_status = cudaMemcpyFromSymbol(
+    cudaError_t slots_read_status = cudaMemcpyFromSymbol(
         &slots, d_warp_task_queue_storage, sizeof(int*));
-    keep_first_error(slots_status, &result);
+    keep_first_error(slots_read_status, &result);
 
-    if (metadata_status == cudaSuccess && metadata != nullptr) {
+    if (metadata_read_status == cudaSuccess && metadata != nullptr) {
         keep_first_error(cudaFree(metadata), &result);
     }
-    if (slots_status == cudaSuccess && slots != nullptr) {
+    if (slots_read_status == cudaSuccess && slots != nullptr) {
         keep_first_error(cudaFree(slots), &result);
     }
     return result;

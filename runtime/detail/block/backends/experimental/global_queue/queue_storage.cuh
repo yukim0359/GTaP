@@ -150,18 +150,18 @@ inline cudaError_t free_queue_storage() {
     cudaError_t result = cudaSuccess;
 
     int* slots = nullptr;
-    cudaError_t slots_status = cudaMemcpyFromSymbol(
+    cudaError_t slots_read_status = cudaMemcpyFromSymbol(
         &slots, d_global_task_queue, sizeof(int*));
-    keep_first_error(slots_status, &result);
+    keep_first_error(slots_read_status, &result);
     int* generated = nullptr;
-    cudaError_t generated_status = cudaMemcpyFromSymbol(
+    cudaError_t generated_read_status = cudaMemcpyFromSymbol(
         &generated, d_task_id_generated, sizeof(int*));
-    keep_first_error(generated_status, &result);
+    keep_first_error(generated_read_status, &result);
 
-    if (slots_status == cudaSuccess && slots != nullptr) {
+    if (slots_read_status == cudaSuccess && slots != nullptr) {
         keep_first_error(cudaFree(slots), &result);
     }
-    if (generated_status == cudaSuccess && generated != nullptr) {
+    if (generated_read_status == cudaSuccess && generated != nullptr) {
         keep_first_error(cudaFree(generated), &result);
     }
     return result;

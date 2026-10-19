@@ -112,12 +112,12 @@ inline size_t minimum_required_bytes(
 ) {
     const size_t min_queue_slots =
         static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN) + 1;
-    size_t min_tasks = 0;
-    if (!checked_mul(queues, min_queue_slots, &min_tasks)) return SIZE_MAX;
-    if (min_tasks < static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
-        min_tasks = static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
+    size_t min_tasks_per_unit = 0;
+    if (!checked_mul(queues, min_queue_slots, &min_tasks_per_unit)) return SIZE_MAX;
+    if (min_tasks_per_unit < static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
+        min_tasks_per_unit = static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
     }
-    size_t bytes = mul_memory_bytes(bytes_per_task, min_tasks);
+    size_t bytes = mul_memory_bytes(bytes_per_task, min_tasks_per_unit);
     bytes = mul_memory_bytes(bytes, units);
     return add_memory_bytes(fixed_bytes, bytes);
 }

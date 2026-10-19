@@ -289,39 +289,39 @@ inline cudaError_t free_queue_storage() {
     cudaError_t result = cudaSuccess;
 
     int* slots = nullptr;
-    cudaError_t slots_status = cudaMemcpyFromSymbol(
+    cudaError_t slots_read_status = cudaMemcpyFromSymbol(
         &slots, d_global_task_queue, sizeof(int*));
-    keep_first_error(slots_status, &result);
+    keep_first_error(slots_read_status, &result);
     int* head = nullptr;
-    cudaError_t head_status = cudaMemcpyFromSymbol(
+    cudaError_t head_read_status = cudaMemcpyFromSymbol(
         &head, d_queue_head, sizeof(int*));
-    keep_first_error(head_status, &result);
+    keep_first_error(head_read_status, &result);
     int* tail = nullptr;
-    cudaError_t tail_status = cudaMemcpyFromSymbol(
+    cudaError_t tail_read_status = cudaMemcpyFromSymbol(
         &tail, d_queue_tail, sizeof(int*));
-    keep_first_error(tail_status, &result);
+    keep_first_error(tail_read_status, &result);
     int* alloc = nullptr;
-    cudaError_t alloc_status = cudaMemcpyFromSymbol(
+    cudaError_t alloc_read_status = cudaMemcpyFromSymbol(
         &alloc, d_queue_alloc, sizeof(int*));
-    keep_first_error(alloc_status, &result);
+    keep_first_error(alloc_read_status, &result);
     int* generated = nullptr;
-    cudaError_t generated_status = cudaMemcpyFromSymbol(
+    cudaError_t generated_read_status = cudaMemcpyFromSymbol(
         &generated, d_task_id_generated_by_queue_idx, sizeof(int*));
-    keep_first_error(generated_status, &result);
+    keep_first_error(generated_read_status, &result);
 
-    if (slots_status == cudaSuccess && slots != nullptr) {
+    if (slots_read_status == cudaSuccess && slots != nullptr) {
         keep_first_error(cudaFree(slots), &result);
     }
-    if (generated_status == cudaSuccess && generated != nullptr) {
+    if (generated_read_status == cudaSuccess && generated != nullptr) {
         keep_first_error(cudaFree(generated), &result);
     }
-    if (head_status == cudaSuccess && head != nullptr) {
+    if (head_read_status == cudaSuccess && head != nullptr) {
         keep_first_error(cudaFree(head), &result);
     }
-    if (tail_status == cudaSuccess && tail != nullptr) {
+    if (tail_read_status == cudaSuccess && tail != nullptr) {
         keep_first_error(cudaFree(tail), &result);
     }
-    if (alloc_status == cudaSuccess && alloc != nullptr) {
+    if (alloc_read_status == cudaSuccess && alloc != nullptr) {
         keep_first_error(cudaFree(alloc), &result);
     }
     return result;
