@@ -1,7 +1,7 @@
 # GTaP example: N-Queens
 GTAP_ROOT  ?= ../..
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-CLANG_BIN  ?= $(GTAP_ROOT)/clang-gtap/build/bin/clang
+CLANG_BIN  ?= $(GTAP_ROOT)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(GTAP_ROOT)/runtime
 CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90

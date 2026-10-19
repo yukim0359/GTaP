@@ -6,7 +6,7 @@ PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
 CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
-CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang
+CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(PROJ_DIR)/runtime
 
 # ---- Inputs / Outputs ----

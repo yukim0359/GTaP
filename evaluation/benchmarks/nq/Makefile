@@ -7,6 +7,7 @@ CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
 CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang
+CXX_BIN    ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(PROJ_DIR)/runtime
 
 # ---- Inputs / Outputs ----
@@ -64,7 +65,7 @@ $(OUT_DIR):
 gtap: $(OUT_GTAP)
 
 $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
-	"$(CLANG_BIN)" -O3 -x cuda \
+	"$(CXX_BIN)" -O3 -x cuda \
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \

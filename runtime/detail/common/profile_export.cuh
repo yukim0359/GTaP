@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -14,16 +15,6 @@ struct gtap_profile_export_options {
     const char* output_directory = "./profile";
     const char* label = nullptr;
     bool overwrite = false;
-};
-
-struct gtap_profile_export_result {
-    bool success = false;
-    size_t recorded_intervals = 0;
-    size_t dropped_intervals = 0;
-    char result_directory[512] = {};
-    char profile_path[512] = {};
-    char intervals_path[512] = {};
-    char aggregates_path[512] = {};
 };
 
 namespace gtap::detail {
@@ -125,53 +116,47 @@ static inline bool path_exists(const char* path) {
 }
 
 static inline bool create_parents(const char* path) {
-    if (!path || !path[0] || strlen(path) >= 512) return false;
-    char copy[512] = {};
-    memcpy(copy, path, strlen(path) + 1);
-    for (char* p = copy + 1; *p; ++p) {
-        if (*p != '/') continue;
-        *p = '\0';
-        if (copy[0] && mkdir(copy, 0755) != 0 &&
-            !(errno == EEXIST && is_directory(copy))) {
+    if (!path || !path[0]) return false;
+    std::string copy(path);
+    for (size_t i = 1; i < copy.size(); ++i) {
+        if (copy[i] != '/') continue;
+        copy[i] = '\0';
+        if (copy[0] != '\0' && mkdir(copy.c_str(), 0755) != 0 &&
+            !(errno == EEXIST && is_directory(copy.c_str()))) {
             return false;
         }
-        *p = '/';
+        copy[i] = '/';
     }
     return true;
 }
 
-static inline bool resolve_output(
-    const char* pattern, char* output, size_t output_size
-) {
-    if (!pattern || !pattern[0] || strlen(pattern) >= output_size) return false;
+static inline bool resolve_output(const char* pattern, std::string& output) {
+    if (!pattern || !pattern[0]) return false;
     const char* marker = strstr(pattern, "%i");
     if (marker && strstr(marker + 2, "%i")) return false;
     if (marker) {
         const size_t prefix = static_cast<size_t>(marker - pattern);
         for (int index = 1; index < INT_MAX; ++index) {
-            const int written = snprintf(
-                output, output_size, "%.*s%d%s", static_cast<int>(prefix),
-                pattern, index, marker + 2);
-            if (written < 0 || static_cast<size_t>(written) >= output_size) {
-                return false;
-            }
+            output = std::string(pattern, prefix) + std::to_string(index) + (marker + 2);
             struct stat st = {};
-            if (stat(output, &st) != 0 && errno == ENOENT) break;
+            if (stat(output.c_str(), &st) == 0) continue;
+            if (errno == ENOENT) break;
+            return false;
         }
     } else {
-        memcpy(output, pattern, strlen(pattern) + 1);
+        output = pattern;
         struct stat st = {};
-        if (stat(output, &st) == 0) {
+        if (stat(output.c_str(), &st) == 0) {
             return S_ISDIR(st.st_mode);
         }
         if (errno != ENOENT) return false;
     }
-    if (!create_parents(output)) return false;
-    return mkdir(output, 0755) == 0;
+    if (!create_parents(output.c_str())) return false;
+    return mkdir(output.c_str(), 0755) == 0;
 }
 
 // Host-side reason for one profile export failure. The first recorded message
-// is kept. Callers still return gtap_profile_export_result.
+// is kept. Callers still return bool.
 struct profile_export_error {
     char message[512] = {};
 
@@ -185,11 +170,12 @@ struct profile_export_error {
 };
 
 static inline void print_profile_export_result(
-    const gtap_profile_export_result& result,
+    bool success,
+    const char* result_directory,
     const profile_export_error& error
 ) {
-    if (result.success) {
-        printf("GTaP profile written to %s\n", result.result_directory);
+    if (success) {
+        printf("GTaP profile written to %s\n", result_directory);
         return;
     }
     if (error.message[0] != '\0') {
@@ -199,41 +185,28 @@ static inline void print_profile_export_result(
 
 static inline bool prepare_profile_output(
     const gtap_profile_export_options& options,
-    gtap_profile_export_result& result,
+    std::string& result_directory,
+    std::string& profile_path,
+    std::string& intervals_path,
+    std::string& aggregates_path,
     profile_export_error& error
 ) {
     if (!valid_label(options.label)) {
         error.fail("invalid label");
         return false;
     }
-    if (!resolve_output(
-            options.output_directory, result.result_directory,
-            sizeof(result.result_directory))) {
+    if (!resolve_output(options.output_directory, result_directory)) {
         error.fail("invalid output directory");
         return false;
     }
-    const int metadata_len = snprintf(
-        result.profile_path, sizeof(result.profile_path), "%s/profile.json",
-        result.result_directory);
-    const int timeline_len = snprintf(
-        result.intervals_path, sizeof(result.intervals_path),
-        "%s/task_execution_intervals.csv", result.result_directory);
-    const int statistics_len = snprintf(
-        result.aggregates_path, sizeof(result.aggregates_path),
-        "%s/task_execution_aggregates.csv", result.result_directory);
-    if (metadata_len < 0 || timeline_len < 0 || statistics_len < 0 ||
-        static_cast<size_t>(metadata_len) >= sizeof(result.profile_path) ||
-        static_cast<size_t>(timeline_len) >= sizeof(result.intervals_path) ||
-        static_cast<size_t>(statistics_len) >= sizeof(result.aggregates_path)) {
-        error.fail("output path is too long");
-        return false;
-    }
+    profile_path = result_directory + "/profile.json";
+    intervals_path = result_directory + "/task_execution_intervals.csv";
+    aggregates_path = result_directory + "/task_execution_aggregates.csv";
     if (!options.overwrite &&
-        (path_exists(result.profile_path) ||
-         path_exists(result.intervals_path) ||
-         path_exists(result.aggregates_path))) {
-        error.fail(
-            "files already exist in %s", result.result_directory);
+        (path_exists(profile_path.c_str()) ||
+         path_exists(intervals_path.c_str()) ||
+         path_exists(aggregates_path.c_str()))) {
+        error.fail("files already exist in %s", result_directory.c_str());
         return false;
     }
     return true;

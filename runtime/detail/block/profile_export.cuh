@@ -3,6 +3,8 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <utility>
 
 #include "../common/profile_export.cuh"
 #include "../common/runtime_config.cuh"
@@ -13,11 +15,18 @@
 
 namespace gtap::detail::block {
 
-static inline gtap_profile_export_result export_profile_impl(
+static inline bool export_profile_impl(
     const gtap_profile_export_options& options,
-    profile_export_error& error
+    profile_export_error& error,
+    std::string& resolved_directory
 ) {
-    gtap_profile_export_result result;
+    std::string result_directory;
+    std::string profile_path;
+    std::string intervals_path;
+    std::string aggregates_path;
+    size_t recorded_intervals = 0;
+    size_t dropped_intervals = 0;
+
     const char* rejection = nullptr;
     switch (h_runtime_state) {
         case runtime_state::launched:
@@ -37,10 +46,12 @@ static inline gtap_profile_export_result export_profile_impl(
     }
     if (rejection != nullptr) {
         error.fail("%s", rejection);
-        return result;
+        return false;
     }
-    if (!prepare_profile_output(options, result, error)) {
-        return result;
+    if (!prepare_profile_output(
+            options, result_directory, profile_path, intervals_path,
+            aggregates_path, error)) {
+        return false;
     }
 
     const int blocks = h_launch_config.grid_size;
@@ -56,7 +67,7 @@ static inline gtap_profile_export_result export_profile_impl(
         !task_id_allocation_count) {
         free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         error.fail("host memory allocation failed");
-        return result;
+        return false;
     }
     cudaError_t status = cudaMalloc(&device_indices, sizeof(int) * blocks);
     const char* cuda_failure = nullptr;
@@ -95,7 +106,7 @@ static inline gtap_profile_export_result export_profile_impl(
     if (status != cudaSuccess) {
         free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         error.fail(cuda_failure, cudaGetErrorString(status));
-        return result;
+        return false;
     }
 
     long long origin = 0;
@@ -103,22 +114,22 @@ static inline gtap_profile_export_result export_profile_impl(
     int blocks_with_executed_tasks = 0;
     for (int block = 0; block < blocks; ++block) {
         if (indices[block] > 0) blocks_with_executed_tasks++;
-        result.recorded_intervals += static_cast<size_t>(indices[block] / 2);
-        result.dropped_intervals += static_cast<size_t>(dropped[block]);
+        recorded_intervals += static_cast<size_t>(indices[block] / 2);
+        dropped_intervals += static_cast<size_t>(dropped[block]);
         for (int i = 0; i < indices[block]; ++i) {
             const long long value = times[static_cast<size_t>(block) * profile_timestamp_capacity() + i];
             if (value > 0 && (!origin || value < origin)) origin = value;
             if (value > profile_end) profile_end = value;
         }
     }
-    if (!result.recorded_intervals) {
+    if (!recorded_intervals) {
         free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
         error.fail("no profile intervals were recorded");
-        return result;
+        return false;
     }
 
     double* durations = static_cast<double*>(malloc(
-        sizeof(double) * result.recorded_intervals));
+        sizeof(double) * recorded_intervals));
     double* all_block_ratios = static_cast<double*>(malloc(
         sizeof(double) * blocks));
     double* active_block_ratios = static_cast<double*>(malloc(
@@ -133,7 +144,7 @@ static inline gtap_profile_export_result export_profile_impl(
         free(durations); free(all_block_ratios); free(active_block_ratios);
         free(peak_usages); free(task_id_allocation_counts);
         error.fail("host memory allocation failed");
-        return result;
+        return false;
     }
     const double profile_span = profile_end > origin
         ? static_cast<double>(profile_end - origin) : 0.0;
@@ -172,10 +183,10 @@ static inline gtap_profile_export_result export_profile_impl(
     const profile_distribution task_id_allocation_count_stats =
         compute_distribution(task_id_allocation_counts, blocks);
 
-    FILE* timeline = fopen(result.intervals_path, "w");
+    FILE* timeline = fopen(intervals_path.c_str(), "w");
     bool io_ok = timeline != nullptr;
     if (!io_ok) {
-        record_profile_open_failure(error, result.intervals_path);
+        record_profile_open_failure(error, intervals_path.c_str());
     }
     if (io_ok) {
         bool wrote = fprintf(timeline,
@@ -189,19 +200,19 @@ static inline gtap_profile_export_result export_profile_impl(
             }
         }
         if (!wrote) {
-            record_profile_write_failure(error, result.intervals_path);
+            record_profile_write_failure(error, intervals_path.c_str());
             io_ok = false;
         }
         if (fclose(timeline) != 0 && io_ok) {
-            record_profile_write_failure(error, result.intervals_path);
+            record_profile_write_failure(error, intervals_path.c_str());
             io_ok = false;
         }
     }
     FILE* stats = nullptr;
     if (io_ok) {
-        stats = fopen(result.aggregates_path, "w");
+        stats = fopen(aggregates_path.c_str(), "w");
         if (!stats) {
-            record_profile_open_failure(error, result.aggregates_path);
+            record_profile_open_failure(error, aggregates_path.c_str());
             io_ok = false;
         }
     }
@@ -233,20 +244,20 @@ static inline gtap_profile_export_result export_profile_impl(
             }
         }
         if (!wrote) {
-            record_profile_write_failure(error, result.aggregates_path);
+            record_profile_write_failure(error, aggregates_path.c_str());
             io_ok = false;
         }
         if (fclose(stats) != 0 && io_ok) {
-            record_profile_write_failure(error, result.aggregates_path);
+            record_profile_write_failure(error, aggregates_path.c_str());
             io_ok = false;
         }
     }
 
     FILE* metadata = nullptr;
     if (io_ok) {
-        metadata = fopen(result.profile_path, "w");
+        metadata = fopen(profile_path.c_str(), "w");
         if (!metadata) {
-            record_profile_open_failure(error, result.profile_path);
+            record_profile_open_failure(error, profile_path.c_str());
             io_ok = false;
         }
     }
@@ -309,7 +320,7 @@ static inline gtap_profile_export_result export_profile_impl(
             h_launch_config.block_size,
             blocks, blocks_with_executed_tasks,
             h_launch_config.profile_interval_capacity,
-            result.recorded_intervals, result.dropped_intervals,
+            recorded_intervals, dropped_intervals,
             duration_stats.mean, duration_stats.stddev,
             duration_stats.min, duration_stats.p50, duration_stats.p95,
             duration_stats.p99, duration_stats.max,
@@ -332,11 +343,11 @@ static inline gtap_profile_export_result export_profile_impl(
             task_id_allocation_count_stats.p99, task_id_allocation_count_stats.max) >= 0;
         }
         if (!wrote) {
-            record_profile_write_failure(error, result.profile_path);
+            record_profile_write_failure(error, profile_path.c_str());
             io_ok = false;
         }
         if (fclose(metadata) != 0 && io_ok) {
-            record_profile_write_failure(error, result.profile_path);
+            record_profile_write_failure(error, profile_path.c_str());
             io_ok = false;
         }
     }
@@ -344,32 +355,40 @@ static inline gtap_profile_export_result export_profile_impl(
     free(indices); free(dropped); free(times); free(task_pool_peak_usage); free(task_id_allocation_count);
     free(durations); free(all_block_ratios); free(active_block_ratios);
     free(peak_usages); free(task_id_allocation_counts);
-    result.success = io_ok;
-    return result;
+    if (io_ok) {
+        resolved_directory = std::move(result_directory);
+    }
+    return io_ok;
 }
 
 }  // namespace gtap::detail::block
 
-static inline gtap_profile_export_result gtap_export_profile(
-    const gtap_profile_export_options& options = {}
+static inline bool gtap_export_profile(
+    const gtap_profile_export_options& options = {},
+    std::string* result_directory = nullptr
 ) {
     gtap::detail::profile_export_error error{};
-    gtap_profile_export_result result =
-        gtap::detail::block::export_profile_impl(options, error);
-    gtap::detail::print_profile_export_result(result, error);
-    return result;
+    std::string resolved_directory;
+    const bool success = gtap::detail::block::export_profile_impl(
+        options, error, resolved_directory);
+    gtap::detail::print_profile_export_result(
+        success, resolved_directory.c_str(), error);
+    if (success && result_directory != nullptr) {
+        *result_directory = std::move(resolved_directory);
+    }
+    return success;
 }
 
 #else
 
-static inline gtap_profile_export_result gtap_export_profile(
-    const gtap_profile_export_options& = {}
+static inline bool gtap_export_profile(
+    const gtap_profile_export_options& = {},
+    std::string* = nullptr
 ) {
     gtap::detail::profile_export_error error{};
     error.fail("profiling is disabled; rebuild with GTAP_ENABLE_PROFILING");
-    gtap_profile_export_result result;
-    gtap::detail::print_profile_export_result(result, error);
-    return result;
+    gtap::detail::print_profile_export_result(false, nullptr, error);
+    return false;
 }
 
 #endif
