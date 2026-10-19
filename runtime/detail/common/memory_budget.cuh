@@ -79,14 +79,28 @@ inline bool parse_memory_budget(const char* text, size_t* bytes) {
     return true;
 }
 
-inline bool read_memory_budget_env(size_t* bytes, bool* is_set) {
+// config_budget_bytes, then GTAP_MEMORY_BUDGET, then the 5 GiB default.
+inline cudaError_t resolve_memory_budget(
+    size_t config_budget_bytes,
+    size_t* budget_bytes,
+    init_error& error
+) {
+    if (config_budget_bytes != 0) {
+        *budget_bytes = config_budget_bytes;
+        return cudaSuccess;
+    }
     const char* text = std::getenv("GTAP_MEMORY_BUDGET");
     if (text == nullptr) {
-        *is_set = false;
-        return true;
+        *budget_bytes = default_memory_budget_bytes;
+        return cudaSuccess;
     }
-    *is_set = true;
-    return parse_memory_budget(text, bytes);
+    if (!parse_memory_budget(text, budget_bytes)) {
+        return error.fail(
+            cudaErrorInvalidValue,
+            "invalid or out-of-range GTAP_MEMORY_BUDGET=\"%s\"; example: 5GiB",
+            text);
+    }
+    return cudaSuccess;
 }
 
 // Bytes required for the minimum task capacity. Overflow returns SIZE_MAX.
@@ -197,19 +211,10 @@ inline cudaError_t resolve_tasks_per_unit(
                 GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
         }
     } else {
-        size_t budget_bytes = config_budget_bytes;
-        if (budget_bytes == 0) {
-            bool env_is_set = false;
-            size_t env_budget_bytes = 0;
-            if (!read_memory_budget_env(&env_budget_bytes, &env_is_set)) {
-                const char* text = std::getenv("GTAP_MEMORY_BUDGET");
-                return error.fail(
-                    cudaErrorInvalidValue,
-                    "invalid or out-of-range GTAP_MEMORY_BUDGET=\"%s\"; example: 5GiB",
-                    text == nullptr ? "" : text);
-            }
-            budget_bytes = env_is_set ? env_budget_bytes : default_memory_budget_bytes;
-        }
+        size_t budget_bytes = 0;
+        cudaError_t status = resolve_memory_budget(
+            config_budget_bytes, &budget_bytes, error);
+        if (status != cudaSuccess) return status;
         if (budget_bytes < fixed_bytes) {
             return fail_insufficient_budget(
                 error,
