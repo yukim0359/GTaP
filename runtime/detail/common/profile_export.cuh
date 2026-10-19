@@ -2,7 +2,6 @@
 
 #include <errno.h>
 #include <limits.h>
-#include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,6 +9,8 @@
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#include "profile_export_error.cuh"
 
 struct gtap_profile_export_options {
     const char* output_directory = "./profile";
@@ -155,20 +156,6 @@ static inline bool resolve_output(const char* pattern, std::string& output) {
     return mkdir(output.c_str(), 0755) == 0;
 }
 
-// Host-side reason for one profile export failure. The first recorded message
-// is kept. Callers still return bool.
-struct profile_export_error {
-    char message[512] = {};
-
-    void fail(const char* format, ...) {
-        if (message[0] != '\0') return;
-        va_list args;
-        va_start(args, format);
-        vsnprintf(message, sizeof(message), format, args);
-        va_end(args);
-    }
-};
-
 static inline void print_profile_export_result(
     bool success,
     const char* result_directory,
@@ -210,29 +197,6 @@ static inline bool prepare_profile_output(
         return false;
     }
     return true;
-}
-
-// Reads errno immediately. Call before any later libc call can replace it.
-static inline void record_profile_open_failure(
-    profile_export_error& error,
-    const char* path
-) {
-    const int open_errno = errno;
-    error.fail(
-        "failed to open '%s' for writing: %s",
-        path,
-        strerror(open_errno));
-}
-
-static inline void record_profile_write_failure(
-    profile_export_error& error,
-    const char* path
-) {
-    const int write_errno = errno;
-    error.fail(
-        "failed to write '%s': %s",
-        path,
-        strerror(write_errno));
 }
 
 }  // namespace gtap::detail
