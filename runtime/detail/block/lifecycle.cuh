@@ -67,10 +67,12 @@ cudaError_t initialize_runtime(init_error& error) {
     queue_storage_buffers queues{};
     task_pool_buffers task_pool{};
     profile_buffers profile{};
+
     auto fail = [&](cudaError_t status) {
         abandon_initialize(&queues, &task_pool, &profile);
         return status;
     };
+
     cudaError_t status = initialize_runtime_error_record();
     if (status != cudaSuccess) {
         return fail(error.fail(status, "failed to initialize runtime error reporting"));
