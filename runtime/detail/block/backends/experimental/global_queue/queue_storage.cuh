@@ -147,15 +147,24 @@ inline cudaError_t clear_queue_storage(
 }
 
 inline cudaError_t free_queue_storage() {
+    cudaError_t result = cudaSuccess;
+
     int* slots = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &slots, d_global_task_queue, sizeof(int*)));
+    cudaError_t slots_status = cudaMemcpyFromSymbol(
+        &slots, d_global_task_queue, sizeof(int*));
+    keep_first_error(slots_status, &result);
     int* generated = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &generated, d_task_id_generated, sizeof(int*)));
-    if (slots != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(slots));
-    if (generated != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(generated));
-    return cudaSuccess;
+    cudaError_t generated_status = cudaMemcpyFromSymbol(
+        &generated, d_task_id_generated, sizeof(int*));
+    keep_first_error(generated_status, &result);
+
+    if (slots_status == cudaSuccess && slots != nullptr) {
+        keep_first_error(cudaFree(slots), &result);
+    }
+    if (generated_status == cudaSuccess && generated != nullptr) {
+        keep_first_error(cudaFree(generated), &result);
+    }
+    return result;
 }
 
 inline void release_staged_queue_storage(queue_storage_buffers* buffers) {

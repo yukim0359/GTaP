@@ -325,30 +325,45 @@ inline cudaError_t clear_task_pool(
 }
 
 inline cudaError_t free_task_pool() {
-    int* id_list_free_positions = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_list_free_positions, d_task_id_list_free_positions, sizeof(int*)));
-    int* id_storage = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_storage, d_task_id_storage, sizeof(int*)));
-    TaskHeader* headers = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &headers, d_task_headers, sizeof(TaskHeader*)));
-    char* task_data = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &task_data, d_task_data_bytes, sizeof(char*)));
-    char* entry_result = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &entry_result, d_entry_result_bytes, sizeof(char*)));
+    cudaError_t result = cudaSuccess;
 
-    if (id_list_free_positions != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(id_list_free_positions));
+    int* id_list_free_positions = nullptr;
+    cudaError_t free_positions_status = cudaMemcpyFromSymbol(
+        &id_list_free_positions, d_task_id_list_free_positions, sizeof(int*));
+    keep_first_error(free_positions_status, &result);
+    int* id_storage = nullptr;
+    cudaError_t id_storage_status = cudaMemcpyFromSymbol(
+        &id_storage, d_task_id_storage, sizeof(int*));
+    keep_first_error(id_storage_status, &result);
+    TaskHeader* headers = nullptr;
+    cudaError_t headers_status = cudaMemcpyFromSymbol(
+        &headers, d_task_headers, sizeof(TaskHeader*));
+    keep_first_error(headers_status, &result);
+    char* task_data = nullptr;
+    cudaError_t task_data_status = cudaMemcpyFromSymbol(
+        &task_data, d_task_data_bytes, sizeof(char*));
+    keep_first_error(task_data_status, &result);
+    char* entry_result = nullptr;
+    cudaError_t entry_result_status = cudaMemcpyFromSymbol(
+        &entry_result, d_entry_result_bytes, sizeof(char*));
+    keep_first_error(entry_result_status, &result);
+
+    if (free_positions_status == cudaSuccess && id_list_free_positions != nullptr) {
+        keep_first_error(cudaFree(id_list_free_positions), &result);
     }
-    if (id_storage != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(id_storage));
-    if (headers != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(headers));
-    if (task_data != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(task_data));
-    if (entry_result != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(entry_result));
-    return cudaSuccess;
+    if (id_storage_status == cudaSuccess && id_storage != nullptr) {
+        keep_first_error(cudaFree(id_storage), &result);
+    }
+    if (headers_status == cudaSuccess && headers != nullptr) {
+        keep_first_error(cudaFree(headers), &result);
+    }
+    if (task_data_status == cudaSuccess && task_data != nullptr) {
+        keep_first_error(cudaFree(task_data), &result);
+    }
+    if (entry_result_status == cudaSuccess && entry_result != nullptr) {
+        keep_first_error(cudaFree(entry_result), &result);
+    }
+    return result;
 }
 
 inline void release_staged_task_pool(task_pool_buffers* buffers) {

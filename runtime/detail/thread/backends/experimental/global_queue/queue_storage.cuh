@@ -286,25 +286,45 @@ inline cudaError_t clear_queue_storage(
 }
 
 inline cudaError_t free_queue_storage() {
-    int* slots = nullptr;
-    int* head = nullptr;
-    int* tail = nullptr;
-    int* alloc = nullptr;
-    int* generated = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &slots, d_global_task_queue, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&head, d_queue_head, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&tail, d_queue_tail, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(&alloc, d_queue_alloc, sizeof(int*)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &generated, d_task_id_generated_by_queue_idx, sizeof(int*)));
+    cudaError_t result = cudaSuccess;
 
-    if (slots != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(slots));
-    if (generated != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(generated));
-    if (head != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(head));
-    if (tail != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(tail));
-    if (alloc != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(alloc));
-    return cudaSuccess;
+    int* slots = nullptr;
+    cudaError_t slots_status = cudaMemcpyFromSymbol(
+        &slots, d_global_task_queue, sizeof(int*));
+    keep_first_error(slots_status, &result);
+    int* head = nullptr;
+    cudaError_t head_status = cudaMemcpyFromSymbol(
+        &head, d_queue_head, sizeof(int*));
+    keep_first_error(head_status, &result);
+    int* tail = nullptr;
+    cudaError_t tail_status = cudaMemcpyFromSymbol(
+        &tail, d_queue_tail, sizeof(int*));
+    keep_first_error(tail_status, &result);
+    int* alloc = nullptr;
+    cudaError_t alloc_status = cudaMemcpyFromSymbol(
+        &alloc, d_queue_alloc, sizeof(int*));
+    keep_first_error(alloc_status, &result);
+    int* generated = nullptr;
+    cudaError_t generated_status = cudaMemcpyFromSymbol(
+        &generated, d_task_id_generated_by_queue_idx, sizeof(int*));
+    keep_first_error(generated_status, &result);
+
+    if (slots_status == cudaSuccess && slots != nullptr) {
+        keep_first_error(cudaFree(slots), &result);
+    }
+    if (generated_status == cudaSuccess && generated != nullptr) {
+        keep_first_error(cudaFree(generated), &result);
+    }
+    if (head_status == cudaSuccess && head != nullptr) {
+        keep_first_error(cudaFree(head), &result);
+    }
+    if (tail_status == cudaSuccess && tail != nullptr) {
+        keep_first_error(cudaFree(tail), &result);
+    }
+    if (alloc_status == cudaSuccess && alloc != nullptr) {
+        keep_first_error(cudaFree(alloc), &result);
+    }
+    return result;
 }
 
 inline void release_staged_queue_storage(queue_storage_buffers* buffers) {

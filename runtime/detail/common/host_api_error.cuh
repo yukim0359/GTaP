@@ -44,6 +44,12 @@ inline void print_host_api_error(
     }
 }
 
+inline void keep_first_error(cudaError_t status, cudaError_t* result) {
+    if (*result == cudaSuccess) {
+        *result = status;
+    }
+}
+
 template <typename... Args>
 inline cudaError_t record_error_if_failed(
     host_api_error& error,

@@ -227,20 +227,31 @@ inline cudaError_t clear_task_pool(
 }
 
 inline cudaError_t free_task_pool() {
-    TaskHeader* headers = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &headers, d_task_headers, sizeof(TaskHeader*)));
-    char* task_data = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &task_data, d_task_data_bytes, sizeof(char*)));
-    int* id_storage = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &id_storage, d_task_id_storage, sizeof(int*)));
+    cudaError_t result = cudaSuccess;
 
-    if (headers != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(headers));
-    if (task_data != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(task_data));
-    if (id_storage != nullptr) GTAP_DETAIL_CUDA_TRY(cudaFree(id_storage));
-    return cudaSuccess;
+    TaskHeader* headers = nullptr;
+    cudaError_t headers_status = cudaMemcpyFromSymbol(
+        &headers, d_task_headers, sizeof(TaskHeader*));
+    keep_first_error(headers_status, &result);
+    char* task_data = nullptr;
+    cudaError_t task_data_status = cudaMemcpyFromSymbol(
+        &task_data, d_task_data_bytes, sizeof(char*));
+    keep_first_error(task_data_status, &result);
+    int* id_storage = nullptr;
+    cudaError_t id_storage_status = cudaMemcpyFromSymbol(
+        &id_storage, d_task_id_storage, sizeof(int*));
+    keep_first_error(id_storage_status, &result);
+
+    if (headers_status == cudaSuccess && headers != nullptr) {
+        keep_first_error(cudaFree(headers), &result);
+    }
+    if (task_data_status == cudaSuccess && task_data != nullptr) {
+        keep_first_error(cudaFree(task_data), &result);
+    }
+    if (id_storage_status == cudaSuccess && id_storage != nullptr) {
+        keep_first_error(cudaFree(id_storage), &result);
+    }
+    return result;
 }
 
 inline void release_staged_task_pool(task_pool_buffers* buffers) {

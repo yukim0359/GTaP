@@ -151,19 +151,19 @@ cudaError_t initialize_runtime(host_api_error& error) {
 cudaError_t finalize_runtime(host_api_error& error) {
     cudaError_t result = cudaSuccess;
 
-    auto collect = [&](cudaError_t status, const char* message) {
+    auto record_first_error = [&](cudaError_t status, const char* message) {
         if (status != cudaSuccess && result == cudaSuccess) {
             result = error.fail(status, "%s", message);
         }
     };
 
-    collect(free_queue_storage(),
+    record_first_error(free_queue_storage(),
             "failed to release task queues");
-    collect(free_task_pool(),
+    record_first_error(free_task_pool(),
             "failed to release task storage");
-    collect(free_profile_buffers(),
+    record_first_error(free_profile_buffers(),
             "failed to release profile buffers");
-    collect(finalize_runtime_error_record(),
+    record_first_error(finalize_runtime_error_record(),
             "failed to release runtime error reporting resources");
 
     return result;

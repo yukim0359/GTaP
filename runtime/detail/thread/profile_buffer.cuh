@@ -268,43 +268,50 @@ inline cudaError_t clear_profile_buffers(
 }
 
 inline cudaError_t free_profile_buffers() {
+    cudaError_t result = cudaSuccess;
+
 #ifdef GTAP_ENABLE_PROFILING
     long long* working_time_ptr = nullptr;
+    cudaError_t working_time_status = cudaMemcpyFromSymbol(
+        &working_time_ptr, working_time, sizeof(working_time_ptr));
+    keep_first_error(working_time_status, &result);
     int* tasks_processed_count_ptr = nullptr;
-    unsigned long long* profile_dropped_events_ptr = nullptr;
-    int* task_pool_peak_usage_ptr = nullptr;
-    int* task_id_allocation_count_ptr = nullptr;
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
-        &working_time_ptr, working_time, sizeof(working_time_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+    cudaError_t tasks_processed_status = cudaMemcpyFromSymbol(
         &tasks_processed_count_ptr, tasks_processed_count,
-        sizeof(tasks_processed_count_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(tasks_processed_count_ptr));
+    keep_first_error(tasks_processed_status, &result);
+    unsigned long long* profile_dropped_events_ptr = nullptr;
+    cudaError_t dropped_events_status = cudaMemcpyFromSymbol(
         &profile_dropped_events_ptr, profile_dropped_events,
-        sizeof(profile_dropped_events_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(profile_dropped_events_ptr));
+    keep_first_error(dropped_events_status, &result);
+    int* task_pool_peak_usage_ptr = nullptr;
+    cudaError_t peak_usage_status = cudaMemcpyFromSymbol(
         &task_pool_peak_usage_ptr, task_pool_peak_usage,
-        sizeof(task_pool_peak_usage_ptr)));
-    GTAP_DETAIL_CUDA_TRY(cudaMemcpyFromSymbol(
+        sizeof(task_pool_peak_usage_ptr));
+    keep_first_error(peak_usage_status, &result);
+    int* task_id_allocation_count_ptr = nullptr;
+    cudaError_t allocation_count_status = cudaMemcpyFromSymbol(
         &task_id_allocation_count_ptr, task_id_allocation_count,
-        sizeof(task_id_allocation_count_ptr)));
-    if (working_time_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(working_time_ptr));
+        sizeof(task_id_allocation_count_ptr));
+    keep_first_error(allocation_count_status, &result);
+    if (working_time_status == cudaSuccess && working_time_ptr != nullptr) {
+        keep_first_error(cudaFree(working_time_ptr), &result);
     }
-    if (tasks_processed_count_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(tasks_processed_count_ptr));
+    if (tasks_processed_status == cudaSuccess && tasks_processed_count_ptr != nullptr) {
+        keep_first_error(cudaFree(tasks_processed_count_ptr), &result);
     }
-    if (profile_dropped_events_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(profile_dropped_events_ptr));
+    if (dropped_events_status == cudaSuccess && profile_dropped_events_ptr != nullptr) {
+        keep_first_error(cudaFree(profile_dropped_events_ptr), &result);
     }
-    if (task_pool_peak_usage_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(task_pool_peak_usage_ptr));
+    if (peak_usage_status == cudaSuccess && task_pool_peak_usage_ptr != nullptr) {
+        keep_first_error(cudaFree(task_pool_peak_usage_ptr), &result);
     }
-    if (task_id_allocation_count_ptr != nullptr) {
-        GTAP_DETAIL_CUDA_TRY(cudaFree(task_id_allocation_count_ptr));
+    if (allocation_count_status == cudaSuccess && task_id_allocation_count_ptr != nullptr) {
+        keep_first_error(cudaFree(task_id_allocation_count_ptr), &result);
     }
 #endif
-    return cudaSuccess;
+    return result;
 }
 
 inline void release_staged_profile_buffers(profile_buffers* buffers) {
