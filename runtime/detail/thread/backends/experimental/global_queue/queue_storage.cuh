@@ -51,7 +51,7 @@ __device__ __forceinline__ void set_task_id_generated(
 ) {
     if (idx >= GTAP_TASK_ID_GEN_QUEUE_STRIDE) {
         GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
-            task_id, queue_idx, idx, GTAP_TASK_ID_GEN_QUEUE_STRIDE);
+            task_id, queue_idx, GTAP_TASK_ID_GEN_QUEUE_STRIDE);
     }
     int offset =
         (warp_id_global * d_launch_config.num_queues + queue_idx) *

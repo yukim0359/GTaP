@@ -32,7 +32,7 @@ __device__ __forceinline__ void set_task_id_generated(
 ) {
     if (idx >= GTAP_MAX_CHILD_TASKS) {
         GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(
-            task_id, -1, idx, GTAP_MAX_CHILD_TASKS);
+            task_id, -1, GTAP_MAX_CHILD_TASKS);
     }
     int offset = block_id * GTAP_MAX_CHILD_TASKS + idx;
     d_task_id_generated[offset] = task_id;

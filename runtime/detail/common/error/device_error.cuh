@@ -29,7 +29,6 @@ struct device_error_record {
     int thread_idx;
     int tid;
     int queue_idx;
-    int value;
     int limit;
 };
 
@@ -174,7 +173,6 @@ __device__ __forceinline__ void record_device_error_and_trap(
     device_error_code code,
     int tid,
     int queue_idx,
-    int value,
     int limit
 ) {
     const int code_int = static_cast<int>(code);
@@ -187,7 +185,6 @@ __device__ __forceinline__ void record_device_error_and_trap(
             record->thread_idx = threadIdx.x;
             record->tid = tid;
             record->queue_idx = queue_idx;
-            record->value = value;
             record->limit = limit;
             __threadfence_system();
             record->valid = 1;
@@ -239,29 +236,29 @@ inline void print_device_error_fields(const device_error_record& record) {
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_TASK(tid, queue_idx, num_queues) \
     gtap::detail::record_device_error_and_trap( \
         gtap::detail::device_error_code::invalid_queue_idx_task, \
-        (tid), (queue_idx), (queue_idx), (num_queues))
+        (tid), (queue_idx), (num_queues))
 
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_TASKWAIT(tid, queue_idx, num_queues) \
     gtap::detail::record_device_error_and_trap( \
         gtap::detail::device_error_code::invalid_queue_idx_taskwait, \
-        (tid), (queue_idx), (queue_idx), (num_queues))
+        (tid), (queue_idx), (num_queues))
 
-#define GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(tid, queue_idx, usage, capacity) \
+#define GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(tid, queue_idx, capacity) \
     gtap::detail::record_device_error_and_trap( \
         gtap::detail::device_error_code::task_queue_overflow, \
-        (tid), (queue_idx), (usage), (capacity))
+        (tid), (queue_idx), (capacity))
 
 #define GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_NOT_READY(tid, pool_capacity) \
     gtap::detail::record_device_error_and_trap( \
         gtap::detail::device_error_code::task_id_pool_slot_not_ready, \
-        (tid), -1, -1, (pool_capacity))
+        (tid), -1, (pool_capacity))
 
 #define GTAP_DETAIL_RECORD_TASK_ID_POOL_EXHAUSTED(tid, pool_capacity) \
     gtap::detail::record_device_error_and_trap( \
         gtap::detail::device_error_code::task_id_pool_exhausted, \
-        (tid), -1, -1, (pool_capacity))
+        (tid), -1, (pool_capacity))
 
-#define GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(tid, queue_idx, index, capacity) \
+#define GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(tid, queue_idx, capacity) \
     gtap::detail::record_device_error_and_trap( \
         gtap::detail::device_error_code::generated_task_id_buffer_overflow, \
-        (tid), (queue_idx), (index), (capacity))
+        (tid), (queue_idx), (capacity))

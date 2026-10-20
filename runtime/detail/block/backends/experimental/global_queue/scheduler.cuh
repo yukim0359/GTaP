@@ -142,7 +142,6 @@ __device__ __forceinline__ void push_global_queue(
         if (base_pos + (unsigned int)push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit) - GTAP_DETAIL_QUEUE_MARGIN) {
             GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
                 -1, 0,
-                static_cast<int>(base_pos + (unsigned int)push_cnt - head_val),
                 d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit);
         }
     }
