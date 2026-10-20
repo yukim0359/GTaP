@@ -66,11 +66,13 @@ __device__ __forceinline__ void release_task_ids(
     , const TaskContext* task_context
 #endif
 ) {
+    // NOTE: tid 0 is reserved for the root and is never returned to the pool.
 #ifdef GTAP_ASSUME_NO_TASKWAIT
-    const bool returns_id = lane < execute_task_count;
+    const bool returns_id = lane < execute_task_count && executed_tid != 0;
 #else
     const bool returns_id =
         lane < execute_task_count &&
+        executed_tid != 0 &&
         static_cast<uint16_t>(task_context->generations[lane]) != generation_before;
 #endif
     const unsigned mask = __ballot_sync(0xffffffffu, returns_id);

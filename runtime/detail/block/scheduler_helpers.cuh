@@ -48,6 +48,8 @@ __device__ __forceinline__ void release_task_id(
 #endif
 ) {
     if (threadIdx.x != 0) return;
+    // NOTE: tid 0 is reserved for the root and is never returned to the pool.
+    if (executed_tid == 0) return;
 #ifdef GTAP_ASSUME_NO_TASKWAIT
     release_task_id_to_block_pool(executed_tid);
 #else
