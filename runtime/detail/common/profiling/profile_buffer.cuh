@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime_config.cuh"
+#include "../runtime_config.cuh"
 
 namespace gtap::detail {
 

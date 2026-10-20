@@ -15,4 +15,4 @@
 #include "detail/thread/lifecycle.cuh"
 #include "detail/thread/host_api.cuh"
 #include "detail/thread/compiler_api.cuh"
-#include "detail/thread/profile_export.cuh"
+#include "detail/thread/profiling/profile_export.cuh"

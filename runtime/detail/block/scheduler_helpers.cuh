@@ -2,7 +2,7 @@
 
 #include "../common/cuda_primitives.cuh"
 
-#include "profile_buffer.cuh"
+#include "profiling/profile_buffer.cuh"
 #include "task_pool.cuh"
 
 namespace gtap::detail::block {

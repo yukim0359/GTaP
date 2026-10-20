@@ -5,8 +5,8 @@
 #include <type_traits>
 #include <utility>
 
-#include "device_error.cuh"
-#include "host_api_error.cuh"
+#include "error/device_error.cuh"
+#include "error/host_api_error.cuh"
 #include "runtime_config.cuh"
 
 namespace gtap::detail {

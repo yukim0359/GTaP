@@ -3,10 +3,10 @@
 #include <cuda_runtime.h>
 
 #include "../../../../common/cuda_primitives.cuh"
-#include "../../../../common/device_error.cuh"
+#include "../../../../common/error/device_error.cuh"
 #include "../../../../common/termination.cuh"
 
-#include "../../../profile_buffer.cuh"
+#include "../../../profiling/profile_buffer.cuh"
 #include "../../../scheduler_helpers.cuh"
 #include "../../../task_pool.cuh"
 #include "../../../task_types.cuh"

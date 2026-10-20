@@ -14,4 +14,4 @@
 #include "../detail/block/lifecycle.cuh"
 #include "../detail/block/host_api.cuh"
 #include "../detail/block/compiler_api.cuh"
-#include "../detail/block/profile_export.cuh"
+#include "../detail/block/profiling/profile_export.cuh"

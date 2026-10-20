@@ -2,16 +2,16 @@
 
 #include "../common/checked_size.cuh"
 #include "../common/cuda_primitives.cuh"
-#include "../common/device_error.cuh"
 #include "../common/device_memory.cuh"
-#include "../common/host_api_error.cuh"
+#include "../common/error/device_error.cuh"
+#include "../common/error/host_api_error.cuh"
 #include "../common/runtime_config.cuh"
 #include "../common/task_pool.cuh"
 #include "../common/warp_index.cuh"
 
 #include "task_types.cuh"
 #ifdef GTAP_ENABLE_PROFILING
-#include "profile_buffer.cuh"
+#include "profiling/profile_buffer.cuh"
 #endif
 
 // The compiler sets this stride after rounding the task records up to their alignment.

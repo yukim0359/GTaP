@@ -6,7 +6,7 @@
 #include <cstdlib>
 
 #include "checked_size.cuh"
-#include "host_api_error.cuh"
+#include "error/host_api_error.cuh"
 #include "runtime_config.cuh"
 
 namespace gtap::detail {
