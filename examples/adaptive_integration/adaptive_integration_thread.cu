@@ -74,13 +74,10 @@ int main(int argc, char** argv) {
         .grid_size = 2000,
         .block_size = 32,
         .max_tasks_per_warp = 100000,
-        .num_queues = 1,
     };
 
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
-        std::fprintf(stderr, "gtap_initialize failed: %s\n",
-                     cudaGetErrorString(err));
         return 1;
     }
 
@@ -95,8 +92,6 @@ int main(int argc, char** argv) {
         err = gtap_synchronize();
     }
     if (err != cudaSuccess) {
-        std::fprintf(stderr, "adaptive integration failed: %s\n",
-                     cudaGetErrorString(err));
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
         gtap_finalize();

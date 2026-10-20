@@ -163,17 +163,16 @@ int main(int argc, char** argv) {
     gtap_block_config config{
         .grid_size = 4000,
         .block_size = 128,
-        .max_tasks_per_block = 20000,
     };
     cudaError_t st = gtap_initialize(config);
     if (st != cudaSuccess) {
-        fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));
         return 1;
     }
 
     st = bind_device_arrays(d_row_ptr, d_col_idx, d_val, d_x, d_y);
     if (st != cudaSuccess) {
         fprintf(stderr, "bind_device_arrays failed: %s\n", cudaGetErrorString(st));
+        gtap_finalize();
         return 1;
     }
 
@@ -182,8 +181,21 @@ int main(int argc, char** argv) {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     st = gtap_launch(exec_kernel, rows);
-    cudaEventRecord(stop);
-    gtap_synchronize();
+    if (st == cudaSuccess) {
+        cudaEventRecord(stop);
+        st = gtap_synchronize();
+    }
+    if (st != cudaSuccess) {
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        cudaFree(d_row_ptr);
+        cudaFree(d_col_idx);
+        cudaFree(d_val);
+        cudaFree(d_x);
+        cudaFree(d_y);
+        gtap_finalize();
+        return 1;
+    }
     cudaEventSynchronize(stop);
     float ms = 0.f;
     cudaEventElapsedTime(&ms, start, stop);
@@ -224,5 +236,6 @@ int main(int argc, char** argv) {
     cudaFree(d_val);
     cudaFree(d_x);
     cudaFree(d_y);
-    return 0;
+    st = gtap_finalize();
+    return st == cudaSuccess ? 0 : 1;
 }

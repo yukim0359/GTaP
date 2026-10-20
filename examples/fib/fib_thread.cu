@@ -31,11 +31,9 @@ int main(int argc, char** argv) {
     config.grid_size = 4000;
     config.block_size = 32;
     config.max_tasks_per_warp = 150000;
-    config.num_queues = 1;
 
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
-        printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
     }
 
@@ -43,16 +41,16 @@ int main(int argc, char** argv) {
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     cudaEventRecord(start);
+
     err = gtap_launch(exec_kernel, n);
-    if (err != cudaSuccess) {
-        printf("gtap_launch failed: %s\n", cudaGetErrorString(err));
-        gtap_finalize();
-        return 1;
+
+    if (err == cudaSuccess) {
+        cudaEventRecord(stop);
+        err = gtap_synchronize();
     }
-    cudaEventRecord(stop);
-    err = gtap_synchronize();
     if (err != cudaSuccess) {
-        printf("gtap_synchronize failed: %s\n", cudaGetErrorString(err));
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
         gtap_finalize();
         return 1;
     }

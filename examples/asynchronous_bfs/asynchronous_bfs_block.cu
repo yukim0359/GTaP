@@ -80,7 +80,6 @@ int main(int argc, char** argv) {
     };
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
-        printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
     }
 
@@ -88,6 +87,7 @@ int main(int argc, char** argv) {
     if (!csr_path.empty()) {
         if (!read_csr_binary(csr_path.c_str(), &h_row, &h_col, &N, &M)) {
             fprintf(stderr, "Failed to read CSR file: %s\n", csr_path.c_str());
+            gtap_finalize();
             return 1;
         }
         fprintf(stdout, "Loaded CSR: N=%d, M=%d from %s\n", N, M, csr_path.c_str());
@@ -115,8 +115,21 @@ int main(int argc, char** argv) {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     err = gtap_launch(exec_kernel, source);
-    cudaEventRecord(stop);
-    gtap_synchronize();
+    if (err == cudaSuccess) {
+        cudaEventRecord(stop);
+        err = gtap_synchronize();
+    }
+    if (err != cudaSuccess) {
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        cudaFree(d_row);
+        cudaFree(d_col);
+        cudaFree(d_depth);
+        free(h_row);
+        free(h_col);
+        gtap_finalize();
+        return 1;
+    }
     cudaEventSynchronize(stop);
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);

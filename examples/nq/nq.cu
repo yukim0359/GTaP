@@ -65,11 +65,9 @@ int main(int argc, char **argv) {
         .grid_size = 2000,
         .block_size = 32,
         .max_tasks_per_warp = 100000,
-        .num_queues = 1,
     };
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
-        printf("Error: %s\n", cudaGetErrorString(err));
         return 1;
     }
 
@@ -78,8 +76,16 @@ int main(int argc, char **argv) {
     cudaEventCreate(&stop);
     cudaEventRecord(start);
     err = gtap_launch(my_kernel);
-    cudaEventRecord(stop);
-    gtap_synchronize();
+    if (err == cudaSuccess) {
+        cudaEventRecord(stop);
+        err = gtap_synchronize();
+    }
+    if (err != cudaSuccess) {
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        gtap_finalize();
+        return 1;
+    }
     cudaEventSynchronize(stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
@@ -89,6 +95,6 @@ int main(int argc, char **argv) {
 
     printf("N-Queens(%d) = %d\n", GRID_SIZE, result);
     printf("Execution time: %.3f ms\n", milliseconds);
-    gtap_finalize();
-    return 0;
+    err = gtap_finalize();
+    return err == cudaSuccess ? 0 : 1;
 }

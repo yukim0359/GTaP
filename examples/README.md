@@ -32,8 +32,9 @@ make GTAP_ROOT=/path/to/gtap CUDA_PATH=/path/to/cuda
 
 ## Examples
 
-| Example | Description | Worker |
-|---------|-------------|--------|
+
+| Example | Description | Mode |
+|---------|-------------|------|
 | [adaptive_integration](adaptive_integration/) | Adaptive numerical integration from the paper | thread / block |
 | [fib](fib/) | Fibonacci with thread/block modes and optional profiling visualization | thread / block |
 | [nq](nq/) | N-Queens solver with task spawning and cutoff | thread |
@@ -43,7 +44,7 @@ make GTAP_ROOT=/path/to/gtap CUDA_PATH=/path/to/cuda
 | [spmv](spmv/) | Sparse matrix–vector multiplication (divide-and-conquer) | thread / block |
 | [asynchronous_bfs](asynchronous_bfs/) | Asynchronous breadth-first search on real-world graphs | thread / block |
 
-Examples with both thread and block variants (e.g. `binary_tree`, `spmv`, `asynchronous_bfs`) provide two source files and two build targets (`make thread` / `make block`).
+Examples with both thread and block variants provide two source files and two build targets (`make thread` / `make block`).
 
 
 ## API Reference
@@ -51,34 +52,37 @@ Examples with both thread and block variants (e.g. `binary_tree`, `spmv`, `async
 ### Example program: Fibonacci
 
 ```c
+#include "gtap_thread.cuh"
+
+__device__ int d_result;
+
 #pragma gtap function
 __device__ int fib(int n) {
-  if (n < 2) return n;
-  int a, b;
-  #pragma gtap task
-  a = fib(n - 1);
-  #pragma gtap task
-  b = fib(n - 2);
-  #pragma gtap taskwait
-  return a + b;
+    if (n < 2) return n;
+    int a, b;
+    #pragma gtap task
+    a = fib(n - 1);
+    #pragma gtap task
+    b = fib(n - 2);
+    #pragma gtap taskwait
+    return a + b;
 }
 
 __global__ void exec_kernel(int n) {
-  #pragma gtap entry
-  d_result = fib(n);
+    #pragma gtap entry
+    d_result = fib(n);
 }
 
 int main() {
-  gtap_thread_config config{
-    .grid_size = 4000,
-    .block_size = 32,
-    .max_tasks_per_warp = 150000,
-    .num_queues = 1,
-  };
-  gtap_initialize(config);
-  gtap_launch(exec_kernel, 40);
-  gtap_synchronize();
-  gtap_finalize();
+    gtap_thread_config config{
+        .grid_size = 4000,
+        .block_size = 32,
+        .max_tasks_per_warp = 150000,
+    };
+    gtap_initialize(config);
+    gtap_launch(exec_kernel, 40);
+    gtap_synchronize();
+    gtap_finalize();
 }
 ```
 
@@ -101,7 +105,7 @@ int main() {
 | `gtap_synchronize()` | Waits for device execution and reports runtime errors. |
 | `gtap_finalize()` | Releases memory allocated by `gtap_initialize()`. |
 | `gtap_reset()` | Resets runtime state without re-allocating memory (useful for multiple runs). |
-| `gtap_export_profile([options])` | Exports profiling results with `-DGTAP_ENABLE_PROFILING`; otherwise returns `profiling_disabled`. |
+| `gtap_export_profile([options])` | Exports profiling results with `-DGTAP_ENABLE_PROFILING` and returns whether the profile was written. Without that macro, returns false and standard error reports that profiling is disabled. |
 
 
 ## Runtime Configuration
@@ -111,14 +115,24 @@ Thread mode uses `gtap_thread_config`:
 | Field | Description |
 |-------|-------------|
 | `grid_size` | Number of thread blocks. |
-| `block_size` | Number of threads per block. |
+| `block_size` | Number of threads per block. Must be a multiple of the warp size. |
 | `memory_budget_bytes` | Device-memory budget for automatic task capacity. `0` reads `GTAP_MEMORY_BUDGET`, then the 5 GiB default. |
 | `max_tasks_per_warp` | Task slots per warp. `0` derives this from the memory budget. |
-| `num_queues` | Number of DAQ queues. |
+| `num_queues` | Number of DAQ queues. Default `1`. Set this only with `#pragma gtap task queue(expr)`. |
+| `profile_capacity_per_warp` | Profiling slots per warp when built with `-DGTAP_ENABLE_PROFILING`. |
+| `stream` | CUDA stream for launch and synchronization. `nullptr` uses the default stream. |
 
-Block mode uses `gtap_block_config`, with `grid_size`, `block_size`,
-`memory_budget_bytes`, and `max_tasks_per_block`. `0` for the task capacity
-has the same meaning as in thread mode.
+Block mode uses `gtap_block_config`:
+
+| Field | Description |
+|-------|-------------|
+| `grid_size` | Number of thread blocks. |
+| `block_size` | Number of threads per block. Must be a multiple of the warp size. |
+| `memory_budget_bytes` | Same meaning as in thread mode. |
+| `max_tasks_per_block` | Task slots per block. `0` derives this from the memory budget. |
+| `profile_capacity_per_block` | Profiling slots per block when built with `-DGTAP_ENABLE_PROFILING`. |
+| `dynamic_shared_bytes` | Extra dynamic shared memory reserved for the application. |
+| `stream` | CUDA stream for launch and synchronization. `nullptr` uses the default stream. |
 
 The compiler option `-fgtap-no-taskwait` enables the compact runtime mode
 for programs that never execute `taskwait`.

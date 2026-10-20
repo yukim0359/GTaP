@@ -100,8 +100,6 @@ int main(int argc, char** argv) {
 
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
-        std::fprintf(stderr, "gtap_initialize failed: %s\n",
-                     cudaGetErrorString(err));
         return 1;
     }
 
@@ -116,8 +114,6 @@ int main(int argc, char** argv) {
         err = gtap_synchronize();
     }
     if (err != cudaSuccess) {
-        std::fprintf(stderr, "adaptive integration failed: %s\n",
-                     cudaGetErrorString(err));
         cudaEventDestroy(start);
         cudaEventDestroy(stop);
         gtap_finalize();

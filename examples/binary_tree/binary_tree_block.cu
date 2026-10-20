@@ -167,7 +167,6 @@ int main(int argc, char** argv) {
     config.max_tasks_per_block = 100000;
     st = gtap_initialize(config);
     if (st != cudaSuccess) {
-        fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));
         return 1;
     }
 
@@ -177,20 +176,23 @@ int main(int argc, char** argv) {
 
     cudaEventRecord(start);
     st = gtap_launch(exec_kernel, height, mem_ops, compute_iters);
+    if (st == cudaSuccess) {
+        cudaEventRecord(stop);
+        st = gtap_synchronize();
+    }
     if (st != cudaSuccess) {
-        fprintf(stderr, "gtap_launch failed: %s\n", cudaGetErrorString(st));
+        cudaEventDestroy(start);
+        cudaEventDestroy(stop);
+        cudaFree(d_input);
+        cudaFree(d_indices);
+        cudaFree(d_out);
+        gtap_finalize();
         return 1;
     }
-    cudaEventRecord(stop);
     cudaEventSynchronize(stop);
 
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
-    st = gtap_synchronize();
-    if (st != cudaSuccess) {
-        fprintf(stderr, "gtap_synchronize failed: %s\n", cudaGetErrorString(st));
-        return 1;
-    }
 
     double root = 0.0;
     cudaMemcpy(&root, d_out, sizeof(double), cudaMemcpyDeviceToHost);
