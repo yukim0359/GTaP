@@ -222,9 +222,9 @@ __device__ __forceinline__ void push_global_queue(
             // Overflow check
             int head_val = load_L2(&d_queue_head[kind]);
             if (base_pos + push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN) {
-            GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
+            GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
                 -1, kind, base_pos + push_cnt - head_val,
-                (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN);
+                d_launch_config.total_scheduling_units * d_launch_config.queue_capacity);
             }
         }
         base_pos = __shfl_sync(0xFFFFFFFFu, base_pos, 0);

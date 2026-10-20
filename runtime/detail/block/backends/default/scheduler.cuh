@@ -23,8 +23,8 @@ __device__ __forceinline__ void stage_task_id(TaskContext* ctx, int task_id) {
     int top = load_L2(&q->top);
     const int queue_capacity = d_launch_config.queue_capacity;
     if (old_bottom + 1 - top > queue_capacity - GTAP_DETAIL_QUEUE_MARGIN) {
-        GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
-            task_id, -1, old_bottom + 1 - top, queue_capacity - GTAP_DETAIL_QUEUE_MARGIN);
+        GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
+            task_id, -1, old_bottom + 1 - top, queue_capacity);
     }
     store_L2(
         block_queue_slot(blockIdx.x, old_bottom % queue_capacity), task_id);

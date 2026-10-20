@@ -21,7 +21,7 @@ __device__ __forceinline__ int get_task_state(int tid) {
 __device__ __forceinline__ bool prepare_for_join(int tid, int child_count, int next_state, int queue_idx_after_join) {
     if (queue_idx_after_join < 0 ||
         queue_idx_after_join >= d_launch_config.num_queues) {
-        GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(
+        GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_TASKWAIT(
             tid, queue_idx_after_join, d_launch_config.num_queues);
     }
 #ifndef GTAP_ASSUME_NO_TASKWAIT
@@ -107,7 +107,7 @@ __device__ __forceinline__ void* spawn_task(
 ) {
     if (child_queue_idx < 0 ||
         child_queue_idx >= d_launch_config.num_queues) {
-        GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(
+        GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_TASK(
             self_tid, child_queue_idx, d_launch_config.num_queues);
     }
     const int new_tid = get_task_id_from_warp_pool(

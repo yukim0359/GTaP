@@ -10,11 +10,11 @@ namespace gtap::detail {
 // and error_detail_formatter.
 enum class device_error_code {
     none = 0,
-    invalid_queue_idx,
-    invalid_queue_idx_after_join,
-    queue_overflow,
-    task_id_pool_slot_busy,
-    task_id_pool_low_headroom,
+    invalid_queue_idx_task,
+    invalid_queue_idx_taskwait,
+    task_queue_overflow,
+    task_id_pool_slot_not_ready,
+    task_id_pool_exhausted,
     // Experimental global_queue only: child task-ID spill buffer overflow.
     generated_task_id_buffer_overflow,
 };
@@ -33,24 +33,24 @@ struct device_error_record {
     int limit;
 };
 
-static void format_detail_invalid_queue_idx(
+static void format_detail_invalid_queue_idx_task(
     char*, size_t, const device_error_record*);
-static void format_detail_invalid_queue_idx_after_join(
+static void format_detail_invalid_queue_idx_taskwait(
     char*, size_t, const device_error_record*);
-static void format_detail_queue_overflow(
+static void format_detail_task_queue_overflow(
     char*, size_t, const device_error_record*);
-static void format_detail_task_id_pool_slot_busy(
+static void format_detail_task_id_pool_slot_not_ready(
     char*, size_t, const device_error_record*);
-static void format_detail_task_id_pool_low_headroom(
+static void format_detail_task_id_pool_exhausted(
     char*, size_t, const device_error_record*);
 static void format_detail_generated_task_id_buffer_overflow(
     char*, size_t, const device_error_record*);
 
 static const char* const error_short_message[device_error_count] = {
     "no error",
-    "invalid queue index",
-    "invalid queue index after join",
-    "task queue limit exceeded",
+    "invalid queue index specified by task",
+    "invalid queue index specified by taskwait",
+    "task queue capacity exceeded",
     "task ID pool exhausted",
     "task ID pool exhausted",
     "generated task-ID buffer overflow",
@@ -60,11 +60,11 @@ static void (*const error_detail_formatter[device_error_count])(
     char*, size_t, const device_error_record*
 ) = {
     nullptr,
-    format_detail_invalid_queue_idx,
-    format_detail_invalid_queue_idx_after_join,
-    format_detail_queue_overflow,
-    format_detail_task_id_pool_slot_busy,
-    format_detail_task_id_pool_low_headroom,
+    format_detail_invalid_queue_idx_task,
+    format_detail_invalid_queue_idx_taskwait,
+    format_detail_task_queue_overflow,
+    format_detail_task_id_pool_slot_not_ready,
+    format_detail_task_id_pool_exhausted,
     format_detail_generated_task_id_buffer_overflow,
 };
 
@@ -114,50 +114,46 @@ inline bool device_error_code_is_valid(int error_code) {
            error_code < device_error_count;
 }
 
-static void format_detail_invalid_queue_idx(
+static void format_detail_invalid_queue_idx_task(
     char* out, size_t n, const device_error_record* r
 ) {
     snprintf(out, n, "  block=%d, thread=%d, task_id=%d, queue=%d, num_queues=%d",
         r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->limit);
 }
 
-static void format_detail_invalid_queue_idx_after_join(
+static void format_detail_invalid_queue_idx_taskwait(
     char* out, size_t n, const device_error_record* r
 ) {
     snprintf(out, n, "  block=%d, thread=%d, task_id=%d, queue=%d, num_queues=%d",
         r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->limit);
 }
 
-static void format_detail_queue_overflow(
+static void format_detail_task_queue_overflow(
     char* out, size_t n, const device_error_record* r
 ) {
     if (r->queue_idx >= 0) {
         snprintf(out, n,
-            "  block=%d, thread=%d, task_id=%d, queue=%d, usage=%d, limit=%d",
-            r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->value, r->limit);
-    } else if (r->tid >= 0) {
-        snprintf(out, n, "  block=%d, thread=%d, task_id=%d, usage=%d, limit=%d",
-            r->block_idx, r->thread_idx, r->tid, r->value, r->limit);
+            "  block=%d, thread=%d, queue=%d, queue_capacity=%d",
+            r->block_idx, r->thread_idx, r->queue_idx, r->limit);
     } else {
-        snprintf(out, n, "  block=%d, thread=%d, kind=%d, usage=%d, limit=%d",
-            r->block_idx, r->thread_idx, r->queue_idx, r->value, r->limit);
+        snprintf(out, n,
+            "  block=%d, thread=%d, queue_capacity=%d",
+            r->block_idx, r->thread_idx, r->limit);
     }
 }
 
-static void format_detail_task_id_pool_slot_busy(
+static void format_detail_task_id_pool_slot_not_ready(
     char* out, size_t n, const device_error_record* r
 ) {
-    const int unreleased_slot =
-        (r->limit > 0) ? (r->value % r->limit) : r->value;
-    snprintf(out, n, "  block=%d, thread=%d, slot=%d, pool_size=%d",
-        r->block_idx, r->thread_idx, unreleased_slot, r->limit);
+    snprintf(out, n, "  block=%d, thread=%d, pool_capacity=%d",
+        r->block_idx, r->thread_idx, r->limit);
 }
 
-static void format_detail_task_id_pool_low_headroom(
+static void format_detail_task_id_pool_exhausted(
     char* out, size_t n, const device_error_record* r
 ) {
-    snprintf(out, n, "  block=%d, thread=%d, task_id=%d, headroom=%d, limit=%d",
-        r->block_idx, r->thread_idx, r->tid, r->value, r->limit);
+    snprintf(out, n, "  block=%d, thread=%d, task_id=%d, pool_capacity=%d",
+        r->block_idx, r->thread_idx, r->tid, r->limit);
 }
 
 static void format_detail_generated_task_id_buffer_overflow(
@@ -165,11 +161,12 @@ static void format_detail_generated_task_id_buffer_overflow(
 ) {
     if (r->queue_idx >= 0) {
         snprintf(out, n,
-            "  block=%d, thread=%d, task_id=%d, queue=%d, index=%d, limit=%d",
-            r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->value, r->limit);
+            "  block=%d, thread=%d, task_id=%d, queue=%d, buffer_capacity=%d",
+            r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->limit);
     } else {
-        snprintf(out, n, "  block=%d, thread=%d, task_id=%d, index=%d, limit=%d",
-            r->block_idx, r->thread_idx, r->tid, r->value, r->limit);
+        snprintf(out, n,
+            "  block=%d, thread=%d, task_id=%d, buffer_capacity=%d",
+            r->block_idx, r->thread_idx, r->tid, r->limit);
     }
 }
 
@@ -227,10 +224,8 @@ static void format_device_error_fields(
         error_detail_formatter[record.code](out, n, &record);
         return;
     }
-    snprintf(out, n,
-        "  block=%d, thread=%d, task_id=%d, queue=%d, value=%d, limit=%d",
-        record.block_idx, record.thread_idx, record.tid,
-        record.queue_idx, record.value, record.limit);
+    snprintf(out, n, "  block=%d, thread=%d, error_code=%d",
+        record.block_idx, record.thread_idx, record.code);
 }
 
 inline void print_device_error_fields(const device_error_record& record) {
@@ -241,30 +236,30 @@ inline void print_device_error_fields(const device_error_record& record) {
 
 }  // namespace gtap::detail
 
-#define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(tid, queue_idx, num_queues) \
+#define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_TASK(tid, queue_idx, num_queues) \
     gtap::detail::record_device_error_and_trap( \
-        gtap::detail::device_error_code::invalid_queue_idx, \
+        gtap::detail::device_error_code::invalid_queue_idx_task, \
         (tid), (queue_idx), (queue_idx), (num_queues))
 
-#define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(tid, queue_idx, num_queues) \
+#define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_TASKWAIT(tid, queue_idx, num_queues) \
     gtap::detail::record_device_error_and_trap( \
-        gtap::detail::device_error_code::invalid_queue_idx_after_join, \
+        gtap::detail::device_error_code::invalid_queue_idx_taskwait, \
         (tid), (queue_idx), (queue_idx), (num_queues))
 
-#define GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(tid, queue_idx, usage, capacity) \
+#define GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(tid, queue_idx, usage, capacity) \
     gtap::detail::record_device_error_and_trap( \
-        gtap::detail::device_error_code::queue_overflow, \
+        gtap::detail::device_error_code::task_queue_overflow, \
         (tid), (queue_idx), (usage), (capacity))
 
-#define GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(tid, alloc_count, pool_size) \
+#define GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_NOT_READY(tid, pool_capacity) \
     gtap::detail::record_device_error_and_trap( \
-        gtap::detail::device_error_code::task_id_pool_slot_busy, \
-        (tid), -1, (alloc_count), (pool_size))
+        gtap::detail::device_error_code::task_id_pool_slot_not_ready, \
+        (tid), -1, -1, (pool_capacity))
 
-#define GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(tid, headroom, min_headroom) \
+#define GTAP_DETAIL_RECORD_TASK_ID_POOL_EXHAUSTED(tid, pool_capacity) \
     gtap::detail::record_device_error_and_trap( \
-        gtap::detail::device_error_code::task_id_pool_low_headroom, \
-        (tid), -1, (headroom), (min_headroom))
+        gtap::detail::device_error_code::task_id_pool_exhausted, \
+        (tid), -1, -1, (pool_capacity))
 
 #define GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(tid, queue_idx, index, capacity) \
     gtap::detail::record_device_error_and_trap( \

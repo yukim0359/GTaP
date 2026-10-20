@@ -258,9 +258,8 @@ __device__ __forceinline__ void stage_task_id(
     int top = load_L2(&q->top);
     const int capacity = d_launch_config.queue_capacity;
     if (old_tail + 1 - top > capacity - GTAP_DETAIL_QUEUE_MARGIN) {
-        GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(
-            task_id, queue_idx, old_tail + 1 - top,
-            capacity - GTAP_DETAIL_QUEUE_MARGIN);
+        GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
+            task_id, queue_idx, old_tail + 1 - top, capacity);
     }
     *chaselev_queue_slot(
         queue_idx, get_warp_id_global(), old_tail % capacity) = task_id;

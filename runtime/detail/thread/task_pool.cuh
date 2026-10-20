@@ -55,13 +55,12 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
         if (ring_lap_matches(packed, old_alloc, tasks_per_warp)) {
             task_id = unpack_task_id_slot(packed);
         } else {
-            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(task_id, old_alloc, tasks_per_warp);
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_NOT_READY(task_id, tasks_per_warp);
         }
     }
     const int free_count = *id_list_free_pos - old_alloc;
     if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
-        GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(
-            task_id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
+        GTAP_DETAIL_RECORD_TASK_ID_POOL_EXHAUSTED(task_id, tasks_per_warp);
     }
     return task_id;
 }

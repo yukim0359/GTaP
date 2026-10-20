@@ -76,7 +76,7 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
         if (ring_lap_matches(packed, old_alloc, tasks_per_block)) {
             task_id = unpack_task_id_slot(packed);
         } else {
-            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(task_id, old_alloc, tasks_per_block);
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_NOT_READY(task_id, tasks_per_block);
         }
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
@@ -85,8 +85,7 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
         if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
-            GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(
-                task_id, free_count, GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
+            GTAP_DETAIL_RECORD_TASK_ID_POOL_EXHAUSTED(task_id, tasks_per_block);
         }
     }
     return task_id;
