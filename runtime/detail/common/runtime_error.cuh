@@ -14,6 +14,7 @@ enum class runtime_error_code {
     queue_overflow,
     task_id_pool_slot_busy,
     task_id_pool_low_headroom,
+    // Experimental global_queue only: child task-ID spill buffer overflow.
     generated_task_id_buffer_overflow,
 };
 
@@ -23,7 +24,6 @@ constexpr int runtime_error_count =
 struct runtime_error_record {
     int valid;
     int code;
-    int src_line;
     int block_idx;
     int thread_idx;
     int tid;
@@ -80,22 +80,22 @@ inline bool runtime_error_code_is_valid(int error_code) {
 }
 
 static void print_detail_invalid_queue_idx(const runtime_error_record* r) {
-    fprintf(stderr, "Invalid queue index %d for task tid=%d (num_queues=%d)",
+    fprintf(stderr, "Invalid queue index %d for task_id=%d (num_queues=%d)",
         r->queue_idx, r->tid, r->limit);
 }
 
 static void print_detail_invalid_queue_idx_after_join(const runtime_error_record* r) {
-    fprintf(stderr, "Invalid queue index %d after join for task tid=%d (num_queues=%d)",
+    fprintf(stderr, "Invalid queue index %d after join for task_id=%d (num_queues=%d)",
         r->queue_idx, r->tid, r->limit);
 }
 
 static void print_detail_queue_overflow(const runtime_error_record* r) {
     if (r->queue_idx >= 0) {
-        fprintf(stderr, "Task queue %d overflow for task tid=%d "
+        fprintf(stderr, "Task queue %d overflow for task_id=%d "
             "(usage=%d, capacity=%d)",
             r->queue_idx, r->tid, r->value, r->limit);
     } else if (r->tid >= 0) {
-        fprintf(stderr, "Task queue overflow for task tid=%d "
+        fprintf(stderr, "Task queue overflow for task_id=%d "
             "(usage=%d, capacity=%d)",
             r->tid, r->value, r->limit);
     } else {
@@ -108,13 +108,13 @@ static void print_detail_task_id_pool_slot_busy(const runtime_error_record* r) {
     const int unreleased_slot =
         (r->limit > 0) ? (r->value % r->limit) : r->value;
     fprintf(stderr, "Task ID pool exhausted: reuse slot %d still in use "
-        "(alloc_count=%d, pool_size=%d, task_tid=%d)",
-        unreleased_slot, r->value, r->limit, r->tid);
+        "(pool_size=%d)",
+        unreleased_slot, r->limit);
 }
 
 static void print_detail_task_id_pool_low_headroom(const runtime_error_record* r) {
     fprintf(stderr, "Task ID pool exhausted: headroom=%d below minimum %d "
-        "(task_tid=%d)",
+        "(task_id=%d)",
         r->value, r->limit, r->tid);
 }
 
@@ -122,11 +122,11 @@ static void print_detail_generated_task_id_buffer_overflow(
     const runtime_error_record* r
 ) {
     if (r->queue_idx >= 0) {
-        fprintf(stderr, "Generated task-ID buffer overflow for task tid=%d "
+        fprintf(stderr, "Generated task-ID buffer overflow for task_id=%d "
             "(queue=%d, index=%d, capacity=%d)",
             r->tid, r->queue_idx, r->value, r->limit);
     } else {
-        fprintf(stderr, "Generated task-ID buffer overflow for task tid=%d "
+        fprintf(stderr, "Generated task-ID buffer overflow for task_id=%d "
             "(index=%d, capacity=%d)",
             r->tid, r->value, r->limit);
     }
@@ -157,8 +157,7 @@ __device__ __forceinline__ void record_runtime_error_and_trap(
     int tid,
     int queue_idx,
     int value,
-    int limit,
-    int src_line
+    int limit
 ) {
     const int code_int = static_cast<int>(code);
     const int none = static_cast<int>(runtime_error_code::none);
@@ -166,7 +165,6 @@ __device__ __forceinline__ void record_runtime_error_and_trap(
         runtime_error_record* record = d_runtime_error_record;
         if (record != nullptr) {
             record->code = code_int;
-            record->src_line = src_line;
             record->block_idx = blockIdx.x;
             record->thread_idx = threadIdx.x;
             record->tid = tid;
@@ -195,7 +193,7 @@ static void print_runtime_error_detail(const runtime_error_record* r) {
         return;
     }
     fprintf(stderr,
-        "%s (code=%d, tid=%d, queue=%d, value=%d, limit=%d)",
+        "%s (code=%d, task_id=%d, queue=%d, value=%d, limit=%d)",
         get_runtime_error_string(r->code), r->code,
         r->tid, r->queue_idx, r->value, r->limit);
 }
@@ -215,7 +213,7 @@ inline void print_runtime_error_record(const runtime_error_record* r) {
         "GTaP Runtime Error at block %d, thread %d: ",
         r->block_idx, r->thread_idx);
     print_runtime_error_detail(r);
-    fprintf(stderr, " (source_line: %d)\n", r->src_line);
+    fprintf(stderr, "\n");
 }
 
 inline void print_failed_cuda_call(cudaError_t st) {
@@ -234,28 +232,29 @@ inline void print_failed_cuda_call(cudaError_t st) {
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX(tid, queue_idx, num_queues) \
     gtap::detail::record_runtime_error_and_trap( \
         gtap::detail::runtime_error_code::invalid_queue_idx, \
-        (tid), (queue_idx), (queue_idx), (num_queues), __LINE__)
+        (tid), (queue_idx), (queue_idx), (num_queues))
 
 #define GTAP_DETAIL_RECORD_INVALID_QUEUE_IDX_AFTER_JOIN(tid, queue_idx, num_queues) \
     gtap::detail::record_runtime_error_and_trap( \
         gtap::detail::runtime_error_code::invalid_queue_idx_after_join, \
-        (tid), (queue_idx), (queue_idx), (num_queues), __LINE__)
+        (tid), (queue_idx), (queue_idx), (num_queues))
 
 #define GTAP_DETAIL_RECORD_QUEUE_OVERFLOW(tid, queue_idx, usage, capacity) \
     gtap::detail::record_runtime_error_and_trap( \
-        gtap::detail::runtime_error_code::queue_overflow, (tid), (queue_idx), (usage), (capacity), __LINE__)
+        gtap::detail::runtime_error_code::queue_overflow, \
+        (tid), (queue_idx), (usage), (capacity))
 
 #define GTAP_DETAIL_RECORD_TASK_ID_POOL_SLOT_BUSY(tid, alloc_count, pool_size) \
     gtap::detail::record_runtime_error_and_trap( \
         gtap::detail::runtime_error_code::task_id_pool_slot_busy, \
-        (tid), -1, (alloc_count), (pool_size), __LINE__)
+        (tid), -1, (alloc_count), (pool_size))
 
 #define GTAP_DETAIL_RECORD_TASK_ID_POOL_LOW_HEADROOM(tid, headroom, min_headroom) \
     gtap::detail::record_runtime_error_and_trap( \
         gtap::detail::runtime_error_code::task_id_pool_low_headroom, \
-        (tid), -1, (headroom), (min_headroom), __LINE__)
+        (tid), -1, (headroom), (min_headroom))
 
 #define GTAP_DETAIL_RECORD_GENERATED_TASK_ID_BUFFER_OVERFLOW(tid, queue_idx, index, capacity) \
     gtap::detail::record_runtime_error_and_trap( \
         gtap::detail::runtime_error_code::generated_task_id_buffer_overflow, \
-        (tid), (queue_idx), (index), (capacity), __LINE__)
+        (tid), (queue_idx), (index), (capacity))
