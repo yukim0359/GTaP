@@ -177,19 +177,23 @@ __device__ __forceinline__ void record_device_error_and_trap(
 ) {
     const int code_int = static_cast<int>(code);
     const int none = static_cast<int>(device_error_code::none);
-    if (atomicCAS(&d_device_error_code, none, code_int) == none) {
-        device_error_record* record = d_device_error_record;
-        if (record != nullptr) {
-            record->code = code_int;
-            record->block_idx = blockIdx.x;
-            record->thread_idx = threadIdx.x;
-            record->tid = tid;
-            record->queue_idx = queue_idx;
-            record->limit = limit;
-            __threadfence_system();
-            record->valid = 1;
-            __threadfence_system();
-        }
+    if (atomicCAS(&d_device_error_code, none, code_int) != none) {
+        // Let the winning thread publish the error before trapping.
+        asm volatile("exit;");
+        return;
+    }
+
+    device_error_record* const record = d_device_error_record;
+    if (record != nullptr) {
+        record->code = code_int;
+        record->block_idx = blockIdx.x;
+        record->thread_idx = threadIdx.x;
+        record->tid = tid;
+        record->queue_idx = queue_idx;
+        record->limit = limit;
+        __threadfence_system();
+        record->valid = 1;
+        __threadfence_system();
     }
     __trap();
 }
