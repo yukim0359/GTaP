@@ -6,7 +6,8 @@
 
 namespace gtap::detail {
 
-// Runtime error codes (keep declaration order aligned with tables below).
+// Runtime error codes. Keep this order aligned with error_short_message
+// and error_detail_formatter.
 enum class runtime_error_code {
     none = 0,
     invalid_queue_idx,
@@ -30,6 +31,41 @@ struct runtime_error_record {
     int queue_idx;
     int value;
     int limit;
+};
+
+static void format_detail_invalid_queue_idx(
+    char*, size_t, const runtime_error_record*);
+static void format_detail_invalid_queue_idx_after_join(
+    char*, size_t, const runtime_error_record*);
+static void format_detail_queue_overflow(
+    char*, size_t, const runtime_error_record*);
+static void format_detail_task_id_pool_slot_busy(
+    char*, size_t, const runtime_error_record*);
+static void format_detail_task_id_pool_low_headroom(
+    char*, size_t, const runtime_error_record*);
+static void format_detail_generated_task_id_buffer_overflow(
+    char*, size_t, const runtime_error_record*);
+
+static const char* const error_short_message[runtime_error_count] = {
+    "no error",
+    "invalid queue index",
+    "invalid queue index after join",
+    "task queue limit exceeded",
+    "task ID pool exhausted",
+    "task ID pool exhausted",
+    "generated task-ID buffer overflow",
+};
+
+static void (*const error_detail_formatter[runtime_error_count])(
+    char*, size_t, const runtime_error_record*
+) = {
+    nullptr,
+    format_detail_invalid_queue_idx,
+    format_detail_invalid_queue_idx_after_join,
+    format_detail_queue_overflow,
+    format_detail_task_id_pool_slot_busy,
+    format_detail_task_id_pool_low_headroom,
+    format_detail_generated_task_id_buffer_overflow,
 };
 
 // 0: no error, >0: error code
@@ -79,78 +115,64 @@ inline bool runtime_error_code_is_valid(int error_code) {
            error_code < runtime_error_count;
 }
 
-static void print_detail_invalid_queue_idx(const runtime_error_record* r) {
-    fprintf(stderr, "Invalid queue index %d for task_id=%d (num_queues=%d)",
-        r->queue_idx, r->tid, r->limit);
+static void format_detail_invalid_queue_idx(
+    char* out, size_t n, const runtime_error_record* r
+) {
+    snprintf(out, n, "  block=%d, thread=%d, task_id=%d, queue=%d, num_queues=%d",
+        r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->limit);
 }
 
-static void print_detail_invalid_queue_idx_after_join(const runtime_error_record* r) {
-    fprintf(stderr, "Invalid queue index %d after join for task_id=%d (num_queues=%d)",
-        r->queue_idx, r->tid, r->limit);
+static void format_detail_invalid_queue_idx_after_join(
+    char* out, size_t n, const runtime_error_record* r
+) {
+    snprintf(out, n, "  block=%d, thread=%d, task_id=%d, queue=%d, num_queues=%d",
+        r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->limit);
 }
 
-static void print_detail_queue_overflow(const runtime_error_record* r) {
-    if (r->queue_idx >= 0) {
-        fprintf(stderr, "Task queue %d overflow for task_id=%d "
-            "(usage=%d, capacity=%d)",
-            r->queue_idx, r->tid, r->value, r->limit);
-    } else if (r->tid >= 0) {
-        fprintf(stderr, "Task queue overflow for task_id=%d "
-            "(usage=%d, capacity=%d)",
-            r->tid, r->value, r->limit);
-    } else {
-        fprintf(stderr, "Task queue overflow (kind=%d, usage=%d, capacity=%d)",
-            r->queue_idx, r->value, r->limit);
-    }
-}
-
-static void print_detail_task_id_pool_slot_busy(const runtime_error_record* r) {
-    const int unreleased_slot =
-        (r->limit > 0) ? (r->value % r->limit) : r->value;
-    fprintf(stderr, "Task ID pool exhausted: reuse slot %d still in use "
-        "(pool_size=%d)",
-        unreleased_slot, r->limit);
-}
-
-static void print_detail_task_id_pool_low_headroom(const runtime_error_record* r) {
-    fprintf(stderr, "Task ID pool exhausted: headroom=%d below minimum %d "
-        "(task_id=%d)",
-        r->value, r->limit, r->tid);
-}
-
-static void print_detail_generated_task_id_buffer_overflow(
-    const runtime_error_record* r
+static void format_detail_queue_overflow(
+    char* out, size_t n, const runtime_error_record* r
 ) {
     if (r->queue_idx >= 0) {
-        fprintf(stderr, "Generated task-ID buffer overflow for task_id=%d "
-            "(queue=%d, index=%d, capacity=%d)",
-            r->tid, r->queue_idx, r->value, r->limit);
+        snprintf(out, n,
+            "  block=%d, thread=%d, task_id=%d, queue=%d, usage=%d, limit=%d",
+            r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->value, r->limit);
+    } else if (r->tid >= 0) {
+        snprintf(out, n, "  block=%d, thread=%d, task_id=%d, usage=%d, limit=%d",
+            r->block_idx, r->thread_idx, r->tid, r->value, r->limit);
     } else {
-        fprintf(stderr, "Generated task-ID buffer overflow for task_id=%d "
-            "(index=%d, capacity=%d)",
-            r->tid, r->value, r->limit);
+        snprintf(out, n, "  block=%d, thread=%d, kind=%d, usage=%d, limit=%d",
+            r->block_idx, r->thread_idx, r->queue_idx, r->value, r->limit);
     }
 }
 
-static const char* const error_short_message[runtime_error_count] = {
-    "No error",
-    "Invalid queue index",
-    "Invalid queue index after join",
-    "Queue overflow",
-    "Task ID pool exhausted",
-    "Task ID pool exhausted",
-    "Generated task ID buffer overflow",
-};
+static void format_detail_task_id_pool_slot_busy(
+    char* out, size_t n, const runtime_error_record* r
+) {
+    const int unreleased_slot =
+        (r->limit > 0) ? (r->value % r->limit) : r->value;
+    snprintf(out, n, "  block=%d, thread=%d, slot=%d, pool_size=%d",
+        r->block_idx, r->thread_idx, unreleased_slot, r->limit);
+}
 
-static void (*const error_detail_printer[runtime_error_count])(const runtime_error_record*) = {
-    nullptr,
-    print_detail_invalid_queue_idx,
-    print_detail_invalid_queue_idx_after_join,
-    print_detail_queue_overflow,
-    print_detail_task_id_pool_slot_busy,
-    print_detail_task_id_pool_low_headroom,
-    print_detail_generated_task_id_buffer_overflow,
-};
+static void format_detail_task_id_pool_low_headroom(
+    char* out, size_t n, const runtime_error_record* r
+) {
+    snprintf(out, n, "  block=%d, thread=%d, task_id=%d, headroom=%d, limit=%d",
+        r->block_idx, r->thread_idx, r->tid, r->value, r->limit);
+}
+
+static void format_detail_generated_task_id_buffer_overflow(
+    char* out, size_t n, const runtime_error_record* r
+) {
+    if (r->queue_idx >= 0) {
+        snprintf(out, n,
+            "  block=%d, thread=%d, task_id=%d, queue=%d, index=%d, limit=%d",
+            r->block_idx, r->thread_idx, r->tid, r->queue_idx, r->value, r->limit);
+    } else {
+        snprintf(out, n, "  block=%d, thread=%d, task_id=%d, index=%d, limit=%d",
+            r->block_idx, r->thread_idx, r->tid, r->value, r->limit);
+    }
+}
 
 __device__ __forceinline__ void record_runtime_error_and_trap(
     runtime_error_code code,
@@ -183,19 +205,7 @@ inline const char* get_runtime_error_string(int error_code) {
     if (runtime_error_code_is_valid(error_code)) {
         return error_short_message[error_code];
     }
-    return "Unknown error";
-}
-
-static void print_runtime_error_detail(const runtime_error_record* r) {
-    if (runtime_error_code_is_valid(r->code) &&
-        error_detail_printer[r->code] != nullptr) {
-        error_detail_printer[r->code](r);
-        return;
-    }
-    fprintf(stderr,
-        "%s (code=%d, task_id=%d, queue=%d, value=%d, limit=%d)",
-        get_runtime_error_string(r->code), r->code,
-        r->tid, r->queue_idx, r->value, r->limit);
+    return "unknown error";
 }
 
 inline bool read_runtime_error_record(runtime_error_record* record) {
@@ -208,23 +218,26 @@ inline bool read_runtime_error_record(runtime_error_record* record) {
     return false;
 }
 
-inline void print_runtime_error_record(const runtime_error_record* r) {
-    fprintf(stderr,
-        "GTaP Runtime Error at block %d, thread %d: ",
-        r->block_idx, r->thread_idx);
-    print_runtime_error_detail(r);
-    fprintf(stderr, "\n");
-}
-
-inline void print_failed_cuda_call(cudaError_t st) {
-    runtime_error_record record{};
-    if (read_runtime_error_record(&record)) {
-        print_runtime_error_record(&record);
-        reset_runtime_error_record();
+static void format_runtime_error_fields(
+    char* out,
+    size_t n,
+    const runtime_error_record& record
+) {
+    if (runtime_error_code_is_valid(record.code) &&
+        error_detail_formatter[record.code] != nullptr) {
+        error_detail_formatter[record.code](out, n, &record);
         return;
     }
-    if (st == cudaSuccess) return;
-    fprintf(stderr, "CUDA ERROR: %s\n", cudaGetErrorString(st));
+    snprintf(out, n,
+        "  block=%d, thread=%d, task_id=%d, queue=%d, value=%d, limit=%d",
+        record.block_idx, record.thread_idx, record.tid,
+        record.queue_idx, record.value, record.limit);
+}
+
+inline void print_runtime_error_fields(const runtime_error_record& record) {
+    char fields[256];
+    format_runtime_error_fields(fields, sizeof(fields), record);
+    fprintf(stderr, "%s\n", fields);
 }
 
 }  // namespace gtap::detail

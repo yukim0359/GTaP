@@ -135,11 +135,25 @@ inline cudaError_t gtap_synchronize() {
         return status;
     }
 
-    cudaError_t status = cudaDeviceSynchronize();
-    if (status != cudaSuccess) {
-        gtap::detail::h_runtime_state =
-            gtap::detail::runtime_state::synchronize_failed;
+    const cudaError_t status = cudaDeviceSynchronize();
+    if (status == cudaSuccess) return cudaSuccess;
+
+    gtap::detail::h_runtime_state =
+        gtap::detail::runtime_state::synchronize_failed;
+
+    gtap::detail::runtime_error_record record{};
+    const bool has_runtime_error_record =
+        gtap::detail::read_runtime_error_record(&record);
+    if (has_runtime_error_record) {
+        error.fail(
+            status, "%s",
+            gtap::detail::get_runtime_error_string(record.code));
+        gtap::detail::reset_runtime_error_record();
     }
-    gtap::detail::print_failed_cuda_call(status);
+
+    gtap::detail::print_host_api_error("synchronize", status, error);
+    if (has_runtime_error_record) {
+        gtap::detail::print_runtime_error_fields(record);
+    }
     return status;
 }
