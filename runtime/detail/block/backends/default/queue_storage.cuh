@@ -1,10 +1,10 @@
 #pragma once
 
 #include "../../../common/checked_size.cuh"
+#include "../../../common/device_error.cuh"
 #include "../../../common/device_memory.cuh"
 #include "../../../common/host_api_error.cuh"
 #include "../../../common/runtime_config.cuh"
-#include "../../../common/runtime_error.cuh"
 
 namespace gtap::detail::block {
 

@@ -5,9 +5,9 @@
 #include <type_traits>
 #include <utility>
 
+#include "device_error.cuh"
 #include "host_api_error.cuh"
 #include "runtime_config.cuh"
-#include "runtime_error.cuh"
 
 namespace gtap::detail {
 
@@ -141,19 +141,19 @@ inline cudaError_t gtap_synchronize() {
     gtap::detail::h_runtime_state =
         gtap::detail::runtime_state::synchronize_failed;
 
-    gtap::detail::runtime_error_record record{};
-    const bool has_runtime_error_record =
-        gtap::detail::read_runtime_error_record(&record);
-    if (has_runtime_error_record) {
+    gtap::detail::device_error_record record{};
+    const bool has_device_error_record =
+        gtap::detail::read_device_error_record(&record);
+    if (has_device_error_record) {
         error.fail(
             status, "%s",
-            gtap::detail::get_runtime_error_string(record.code));
-        gtap::detail::reset_runtime_error_record();
+            gtap::detail::get_device_error_string(record.code));
+        gtap::detail::reset_device_error_record();
     }
 
     gtap::detail::print_host_api_error("synchronize", status, error);
-    if (has_runtime_error_record) {
-        gtap::detail::print_runtime_error_fields(record);
+    if (has_device_error_record) {
+        gtap::detail::print_device_error_fields(record);
     }
     return status;
 }

@@ -6,9 +6,9 @@
 // A failed initialize releases staged buffers. The caller owns h_stream.
 
 #include "../common/checked_size.cuh"
+#include "../common/device_error.cuh"
 #include "../common/host_api_error.cuh"
 #include "../common/runtime_config.cuh"
-#include "../common/runtime_error.cuh"
 
 #include "profile_buffer.cuh"
 #include "scheduler.cuh"
@@ -59,7 +59,7 @@ inline void abandon_initialize(
     release_staged_queue_storage(queues);
     release_staged_task_pool(task_pool);
     release_staged_profile_buffers(profile);
-    finalize_runtime_error_record();
+    finalize_device_error_record();
     cudaGetLastError();
 }
 
@@ -75,8 +75,8 @@ cudaError_t initialize_runtime(host_api_error& error) {
 
     cudaError_t status = record_error_if_failed(
         error,
-        initialize_runtime_error_record(),
-        "failed to initialize runtime error reporting");
+        initialize_device_error_record(),
+        "failed to initialize device error reporting");
     if (status != cudaSuccess) return fail(status);
     const launch_config& runtime_config = h_launch_config;
 
@@ -123,7 +123,7 @@ cudaError_t initialize_runtime(host_api_error& error) {
     if (status != cudaSuccess) return fail(status);
     status = record_error_if_failed(
         error,
-        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
+        cudaMemcpyToSymbol(d_device_error_code, &zero, sizeof(int)),
         "failed to configure the runtime");
     if (status != cudaSuccess) return fail(status);
     status = record_error_if_failed(
@@ -173,14 +173,14 @@ cudaError_t finalize_runtime(host_api_error& error) {
             "failed to release task storage");
     record_first_error(free_profile_buffers(),
             "failed to release profile buffers");
-    record_first_error(finalize_runtime_error_record(),
-            "failed to release runtime error reporting resources");
+    record_first_error(finalize_device_error_record(),
+            "failed to release device error reporting resources");
 
     return result;
 }
 
 cudaError_t reset_runtime(host_api_error& error) {
-    reset_runtime_error_record();
+    reset_device_error_record();
     const launch_config& runtime_config = h_launch_config;
     cudaStream_t stream = h_stream;
 
@@ -218,7 +218,7 @@ cudaError_t reset_runtime(host_api_error& error) {
     if (status != cudaSuccess) return status;
     status = record_error_if_failed(
         error,
-        cudaMemcpyToSymbol(d_runtime_error_code, &zero, sizeof(int)),
+        cudaMemcpyToSymbol(d_device_error_code, &zero, sizeof(int)),
         "failed to reset the runtime");
     if (status != cudaSuccess) return status;
     status = record_error_if_failed(
