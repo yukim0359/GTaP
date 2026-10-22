@@ -4,6 +4,12 @@
 #include "../device_state.cuh"
 #include "../../common/prefix_fixed.cuh"
 
+__device__ __constant__ const unsigned long long* g_nCr;
+
+static inline cudaError_t bind_nCr(const unsigned long long* d_nCr) {
+    return cudaMemcpyToSymbol(g_nCr, &d_nCr, sizeof(d_nCr));
+}
+
 __device__ __forceinline__ bool is_bit_set(const unsigned long long* bits, int idx) {
     return (bits[idx >> 6] >> (idx & 63)) & 1ULL;
 }

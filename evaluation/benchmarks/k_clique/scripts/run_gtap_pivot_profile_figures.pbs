@@ -14,6 +14,7 @@
 cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 python3 ../../scripts/plot_k_clique_pivot_timeline_paper.py \
-  --profile-dir ./profile \
+  --profile-dir ./profile/pivot \
+  --app-name "${PROFILE_APP:-as-Skitter-9}" \
   --profile-tag "${PROFILE_TAG:-}" \
   --max-warps "${MAX_WARPS:-0}"

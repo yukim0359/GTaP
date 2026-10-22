@@ -14,6 +14,23 @@ struct HostOptions {
     int k = 7;
 };
 
+static void graph_file_stem(const char* path, char* out, size_t out_size) {
+    if (out == nullptr || out_size == 0) return;
+    const char* base = path == nullptr ? "" : path;
+    for (const char* p = base; *p != '\0'; ++p) {
+        if (*p == '/' || *p == '\\') base = p + 1;
+    }
+    size_t len = std::strlen(base);
+    const char* dot = std::strrchr(base, '.');
+    if (dot != nullptr && dot != base) len = (size_t)(dot - base);
+    if (len >= out_size) len = out_size - 1;
+    std::memcpy(out, base, len);
+    out[len] = '\0';
+    if (out[0] == '\0') {
+        std::snprintf(out, out_size, "graph");
+    }
+}
+
 static bool is_integer_string(const char* s) {
     if (s == nullptr || *s == '\0') return false;
     int i = (s[0] == '-' || s[0] == '+') ? 1 : 0;

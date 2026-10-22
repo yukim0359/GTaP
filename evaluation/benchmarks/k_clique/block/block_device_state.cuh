@@ -3,13 +3,13 @@
 #include "config_defaults.cuh"
 
 // Per-CUDA-block scratch (blockIdx.x). All threads in a block cooperate on one task.
-__device__ const int* g_row_ptr;
-__device__ const int* g_col_idx;
-__device__ const int* g_edge_src;
-__device__ int* g_cand_scratch;
-__device__ unsigned long long* g_bit_scratch;
-__device__ unsigned long long* g_encode_scratch;
-__device__ int* g_encode_slot_stack;
+__device__ __constant__ const int* g_row_ptr;
+__device__ __constant__ const int* g_col_idx;
+__device__ __constant__ const int* g_edge_src;
+__device__ __constant__ int* g_cand_scratch;
+__device__ __constant__ unsigned long long* g_bit_scratch;
+__device__ __constant__ unsigned long long* g_encode_scratch;
+__device__ __constant__ int* g_encode_slot_stack;
 __device__ int g_encode_slot_top;
 __device__ int g_encode_slot_lock;
 __device__ unsigned long long g_answer;
@@ -18,16 +18,9 @@ __device__ int g_scratch_overflow;
 __device__ int g_candidate_highwater;
 __device__ unsigned long long g_task_max_cycles[K_PROFILE_KINDS];
 __device__ int g_task_max_info[K_PROFILE_KINDS * K_PROFILE_FIELDS];
-__device__ unsigned long long g_recurse_encoded_calls;
-__device__ unsigned long long g_recurse_encoded_roots;
-__device__ unsigned long long* g_recurse_tree_encoded;
-__device__ unsigned long long g_recurse_max_encoded_tree_calls;
 #endif
-__device__ __constant__ int g_num_vertices;
 __device__ __constant__ int g_num_edges;
 __device__ __constant__ int g_clique_k;
-
-__device__ const unsigned long long* g_nCr;
 
 static inline cudaError_t bind_graph(
     const int* d_row_ptr,
@@ -51,16 +44,6 @@ static inline cudaError_t bind_graph(
     if (st != cudaSuccess) return st;
     return cudaMemcpyToSymbol(g_encode_slot_stack, &d_encode_slot_stack, sizeof(d_encode_slot_stack));
 }
-
-static inline cudaError_t bind_nCr(const unsigned long long* d_nCr) {
-    return cudaMemcpyToSymbol(g_nCr, &d_nCr, sizeof(d_nCr));
-}
-
-#ifdef GTAP_STATS
-static inline cudaError_t bind_recurse_stats(unsigned long long* d_tree_encoded) {
-    return cudaMemcpyToSymbol(g_recurse_tree_encoded, &d_tree_encoded, sizeof(d_tree_encoded));
-}
-#endif
 
 __device__ __forceinline__ int block_worker_id() {
     return blockIdx.x;
@@ -103,24 +86,6 @@ __device__ __forceinline__ void mark_overflow() {
 }
 
 #ifdef GTAP_STATS
-__device__ __forceinline__ void stats_flush_encoded_tree(int worker) {
-    unsigned long long prev = g_recurse_tree_encoded[worker];
-    if (prev > 0ULL) atomicMax(&g_recurse_max_encoded_tree_calls, prev);
-    g_recurse_tree_encoded[worker] = 0ULL;
-}
-
-__device__ __forceinline__ void stats_on_encoded_recurse(int buf_level) {
-    int worker = block_worker_id();
-    atomicAdd(&g_recurse_encoded_calls, 1ULL);
-    if (buf_level == 0) {
-        stats_flush_encoded_tree(worker);
-        g_recurse_tree_encoded[worker] = 1ULL;
-        atomicAdd(&g_recurse_encoded_roots, 1ULL);
-    } else {
-        ++g_recurse_tree_encoded[worker];
-    }
-}
-
 __device__ __forceinline__ unsigned long long global_time() {
     unsigned long long t;
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(t));

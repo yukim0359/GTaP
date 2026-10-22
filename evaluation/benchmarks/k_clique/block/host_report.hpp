@@ -2,32 +2,34 @@
 
 #include <cstdio>
 
+#include "gtap_block.cuh"
 #include "config_defaults.cuh"
 #include "../common/gpu_orient.cuh"
 #include "../common/host_graph.hpp"
 #include "../common/host_options.hpp"
 #include "host_run.cuh"
 
-static void gtap_k_clique_report(
+static void print_run_settings(
     const HostOptions& options,
     const HostGraph& graph,
-    const GtapKCliqueHostHooks& hooks,
     GtapOrientMode orient_mode,
-    const GtapKCliqueDeviceBuffers& buffers,
-    const GtapKCliqueRunResult& result) {
+    const gtap_block_config& config,
+    const GtapKCliqueDeviceBuffers& buffers) {
     printf("k-clique graph file: %s n=%d k=%d edges=%zu mode=%s-oriented (GTAP block)\n",
            options.graph_path, graph.n, options.k, graph.undirected_edges,
            gtap_orient_mode_name(orient_mode));
     printf("oriented_edges: %zu\n", buffers.num_oriented_edges);
-    printf("GTAP_PIVOT_BLOCK_BLOCK_SIZE: %d\n", GTAP_PIVOT_BLOCK_BLOCK_SIZE);
-    printf("GTAP_PIVOT_BLOCK_GRID_SIZE: %d\n", GTAP_PIVOT_BLOCK_GRID_SIZE);
+    printf("GTAP_PIVOT_BLOCK_BLOCK_SIZE: %d\n", config.block_size);
+    printf("GTAP_PIVOT_BLOCK_GRID_SIZE: %d\n", config.grid_size);
     printf("GTAP_RANGE_CUTOFF: %d\n", GTAP_RANGE_CUTOFF);
     printf("GTAP_MAX_CANDIDATES: %d\n", GTAP_MAX_CANDIDATES);
     printf("GTAP_BIT_BUFFER_COUNT: %d\n", GTAP_BIT_BUFFER_COUNT);
     printf("GTAP_CUDA_STACK_SIZE: %d\n", GTAP_CUDA_STACK_SIZE);
-    if (hooks.print_variant_tuning != nullptr) {
-        hooks.print_variant_tuning();
-    }
+}
+
+static void print_run_result(
+    const GtapKCliqueDeviceBuffers& buffers,
+    const GtapKCliqueRunResult& result) {
     printf("scratch blocks: %d\n", buffers.num_workers);
     printf("candidate scratch: %zu ints\n", buffers.cand_scratch_ints);
     printf("bit scratch: %zu uint64 words\n", buffers.bit_scratch_words);

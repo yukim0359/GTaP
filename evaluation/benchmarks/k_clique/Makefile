@@ -91,7 +91,7 @@ GTAP_ORIENTATION_CUDA_STACK_SIZE ?= 4096
 GTAP_PIVOT_CUDA_STACK_SIZE       ?= 1024
 GTAP_CFLAGS                      ?=
 GTAP_EXTRA_CFLAGS                ?=
-# Set to 1 to enable recurse/candidate/task stats in both GTaP variants.
+# Set to 1 to enable candidate/task stats in both GTaP variants.
 GTAP_STATS            ?= 0
 ifeq ($(GTAP_STATS),1)
 GTAP_EXTRA_CFLAGS += -DGTAP_STATS

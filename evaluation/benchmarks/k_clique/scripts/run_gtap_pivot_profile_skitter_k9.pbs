@@ -22,16 +22,18 @@ make -B gtap_pivot GTAP_ENABLE_PROFILING=1 \
   GTAP_THIRD_HEAVY_CANDIDATES="$THIRD"
 
 mkdir -p "$PROF"
-# The binary writes a current-format profile under ./profile/k_clique_pivot.
+# The binary writes ./profile/pivot/<graph>-<k>.
 GTAP_MAX_TASKS_PER_WARP="$PIVOT_MTP" ./bin/gtap_pivot "$GRAPH" 9
 
 # Regenerate paper figure
-python3 "$GTAP_ROOT/evaluation/scripts/plot_k_clique_pivot_timeline_paper.py"
+python3 "$GTAP_ROOT/evaluation/scripts/plot_k_clique_pivot_timeline_paper.py" \
+  --profile-dir "$PROF/pivot" \
+  --app-name as-Skitter-9
 
 python3 - <<'PY'
 import json
 from pathlib import Path
-p = Path("profile/k_clique_pivot/profile.json")
+p = Path("profile/pivot/as-Skitter-9/profile.json")
 with p.open(encoding="utf-8") as stream:
     profile = json.load(stream)
 summary = profile["task_execution"]

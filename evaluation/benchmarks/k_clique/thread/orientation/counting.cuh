@@ -180,9 +180,6 @@ __device__ unsigned long long count_encoded_recursive(
     const unsigned long long* P,
     int need,
     int buf_level) {
-#ifdef GTAP_STATS
-    stats_on_encoded_recurse(buf_level);
-#endif
     if (need == 0) return 1ULL;
 
     int words = words_for_len(m);
