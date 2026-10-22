@@ -29,7 +29,6 @@ cudaError_t gtap_gpu_orient_csr(
     const int* h_undirected_row_ptr,
     const int* h_undirected_col_idx,
     int n,
-    size_t undirected_edges,
     GtapOrientMode mode,
     int** d_out_row_ptr,
     int** d_out_col_idx,
@@ -42,7 +41,6 @@ cudaError_t gtap_gpu_orient_csr(
         n <= 0) {
         return cudaErrorInvalidValue;
     }
-    (void)undirected_edges;
 
     *d_out_row_ptr = nullptr;
     *d_out_col_idx = nullptr;

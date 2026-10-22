@@ -5,8 +5,8 @@
 # Columns:
 #   heavy, second_heavy, third_heavy
 #     -> GTAP_HEAVY_CANDIDATES / SECOND / THIRD (orientation only)
-#   orientation_max_tasks_per_warp -> GTAP_ORIENTATION_MAX_TASKS_PER_WARP
-#   pivot_max_tasks_per_warp       -> GTAP_PIVOT_MAX_TASKS_PER_WARP
+#   orientation_max_tasks_per_warp / pivot_max_tasks_per_warp
+#     -> runtime GTAP_MAX_TASKS_PER_WARP
 #
 graph,k,heavy,second_heavy,third_heavy,orientation_max_tasks_per_warp,pivot_max_tasks_per_warp
 DBLP,5,100000000,16,32,8192,10000

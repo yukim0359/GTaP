@@ -12,8 +12,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 K_CLIQUE_DIR = SCRIPT_DIR.parent
 DEFAULT_CONFIG = K_CLIQUE_DIR / "data" / "gtap_graph_k_config.csv"
 
-# Fallback when a CSV cell is empty. Keep in sync with the *build defaults*
-# in ../Makefile (local smoke), not with paper rows in gtap_graph_k_config.csv.
+# Fallback when a CSV cell is empty. heavy/second/third match Makefile
+# smoke defaults. max_tasks_per_warp matches the binary runtime defaults.
 BUILD_DEFAULTS = {
     "heavy": 32,
     "second_heavy": 32,
@@ -109,14 +109,23 @@ def print_make_args(env: dict[str, str], variant: str) -> None:
             "GTAP_HEAVY_CANDIDATES",
             "GTAP_SECOND_HEAVY_CANDIDATES",
             "GTAP_THIRD_HEAVY_CANDIDATES",
-            "GTAP_ORIENTATION_MAX_TASKS_PER_WARP",
         ]
     elif variant == "pivot":
-        keys = ["GTAP_PIVOT_MAX_TASKS_PER_WARP"]
+        keys = []
     else:
         raise ValueError(f"unknown variant: {variant}")
     for key in keys:
         print(f"{key}={env[key]}")
+
+
+def print_run_env(env: dict[str, str], variant: str) -> None:
+    if variant == "orientation":
+        value = env["GTAP_ORIENTATION_MAX_TASKS_PER_WARP"]
+    elif variant == "pivot":
+        value = env["GTAP_PIVOT_MAX_TASKS_PER_WARP"]
+    else:
+        raise ValueError(f"unknown variant: {variant}")
+    print(f'export GTAP_MAX_TASKS_PER_WARP="{value}"')
 
 
 def main() -> int:
@@ -138,7 +147,12 @@ def main() -> int:
     parser.add_argument(
         "--make-args",
         choices=["orientation", "pivot"],
-        help="Print make VAR=value lines for the given GTAP variant",
+        help="Print compile-time make VAR=value lines for the given GTAP variant",
+    )
+    parser.add_argument(
+        "--run-env",
+        choices=["orientation", "pivot"],
+        help="Print export GTAP_MAX_TASKS_PER_WARP=... for the given variant",
     )
     parser.add_argument(
         "--field",
@@ -172,6 +186,8 @@ def main() -> int:
         )
     elif args.make_args:
         print_make_args(env, args.make_args)
+    elif args.run_env:
+        print_run_env(env, args.run_env)
     elif args.shell_export:
         print_shell_export(env)
     else:

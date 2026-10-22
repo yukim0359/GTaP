@@ -2,22 +2,6 @@
 
 #include "../common/config_defaults.cuh"
 
-#ifndef GTAP_RUNTIME_GRID_SIZE
-#define GTAP_RUNTIME_GRID_SIZE 2640
-#endif
-
-#ifndef GTAP_RUNTIME_BLOCK_SIZE
-#define GTAP_RUNTIME_BLOCK_SIZE 32
-#endif
-
-#ifndef GTAP_RUNTIME_MAX_TASKS_PER_WARP
-#define GTAP_RUNTIME_MAX_TASKS_PER_WARP 150000
-#endif
-
-#ifndef GTAP_RUNTIME_NUM_QUEUES
-#define GTAP_RUNTIME_NUM_QUEUES 1
-#endif
-
 #ifndef GTAP_WAIT_FANOUT
 #define GTAP_WAIT_FANOUT 32
 #endif

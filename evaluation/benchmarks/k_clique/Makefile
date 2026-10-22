@@ -6,8 +6,9 @@
 #   2. Paper graph×k overrides in data/gtap_graph_k_config.csv
 #      (applied by scripts/run_benchmark.sh via load_gtap_graph_k_config.py).
 #
-# GTAP_ORIENT=degree|degen is graph preprocessing, not the counting
-# algorithm. The binaries are orientation vs pivot (see README.md).
+# Runtime (no rebuild): GTAP_ORIENT, GTAP_GRID_SIZE, GTAP_BLOCK_SIZE,
+# GTAP_MAX_TASKS_PER_WARP. Each binary has its own launch default.
+# The binaries are orientation vs pivot (see README.md).
 
 BENCHMARK_NAME := k_clique
 
@@ -33,24 +34,11 @@ SRC_GPU_ORIENT := $(COMMON_DIR)/gpu_orient.cu
 SRC_KCGPU_ORIENT := $(COMMON_DIR)/kcgpu_orient/kcgpu_orient.cu
 OBJ_KCGPU_ORIENT := $(OUT_DIR)/kcgpu_orient.o
 LIB_KCGPU_ORIENT := $(OUT_DIR)/libkcgpu_orient.a
-SRC_GTAP_ORIENTATION := $(THREAD_DIR)/gtap_orientation.cu
-SRC_GTAP_PIVOT := $(THREAD_DIR)/gtap_pivot.cu
+SRC_GTAP_ORIENTATION := $(THREAD_DIR)/orientation/main.cu
+SRC_GTAP_PIVOT := $(THREAD_DIR)/pivot/main.cu
 
 OUT_GTAP_ORIENTATION := $(OUT_DIR)/gtap_orientation
 OUT_GTAP_PIVOT := $(OUT_DIR)/gtap_pivot
-
-# --- GTaP runtime launch / queue sizing (per binary) ---
-# Passed to gtap_thread_config through benchmark-local compile-time defaults.
-# blocks for gtap_orientation
-GTAP_ORIENTATION_GRID_SIZE          ?= 2640
-GTAP_ORIENTATION_BLOCK_SIZE         ?= 32
-GTAP_ORIENTATION_MAX_TASKS_PER_WARP ?= 150000
-# blocks for gtap_pivot
-GTAP_PIVOT_GRID_SIZE                ?= 1600
-GTAP_PIVOT_BLOCK_SIZE               ?= 32
-GTAP_PIVOT_MAX_TASKS_PER_WARP       ?= 200000
-# worker queues (shared by both binaries)
-GTAP_NUM_QUEUES                     ?= 1
 
 # --- common GTaP k-clique tuning ---
 #
@@ -103,14 +91,6 @@ GTAP_ORIENTATION_CUDA_STACK_SIZE ?= 4096
 GTAP_PIVOT_CUDA_STACK_SIZE       ?= 1024
 GTAP_CFLAGS                      ?=
 GTAP_EXTRA_CFLAGS                ?=
-GTAP_ORIENT                      ?= degen
-ifeq ($(GTAP_ORIENT),degree)
-GTAP_DEFAULT_ORIENT := GTAP_ORIENT_DEGREE
-else ifeq ($(GTAP_ORIENT),degen)
-GTAP_DEFAULT_ORIENT := GTAP_ORIENT_DEGEN
-else
-$(error GTAP_ORIENT must be degree or degen, got "$(GTAP_ORIENT)")
-endif
 # Set to 1 to enable recurse/candidate/task stats in both GTaP variants.
 GTAP_STATS            ?= 0
 ifeq ($(GTAP_STATS),1)
@@ -141,14 +121,7 @@ print-vars:
 	@echo "CUDA_ARCH=$(CUDA_ARCH)"
 	@echo "GT_INC=$(GT_INC)"
 	@echo "OUT_DIR=$(OUT_DIR)"
-	@echo "GTAP_ORIENT=$(GTAP_ORIENT)"
 	@echo "GTAP_ENABLE_PROFILING=$(GTAP_ENABLE_PROFILING)"
-	@echo "GTAP_ORIENTATION_GRID_SIZE=$(GTAP_ORIENTATION_GRID_SIZE)"
-	@echo "GTAP_ORIENTATION_BLOCK_SIZE=$(GTAP_ORIENTATION_BLOCK_SIZE)"
-	@echo "GTAP_ORIENTATION_MAX_TASKS_PER_WARP=$(GTAP_ORIENTATION_MAX_TASKS_PER_WARP)"
-	@echo "GTAP_PIVOT_GRID_SIZE=$(GTAP_PIVOT_GRID_SIZE)"
-	@echo "GTAP_PIVOT_BLOCK_SIZE=$(GTAP_PIVOT_BLOCK_SIZE)"
-	@echo "GTAP_PIVOT_MAX_TASKS_PER_WARP=$(GTAP_PIVOT_MAX_TASKS_PER_WARP)"
 	@echo "GTAP_MAX_CANDIDATES=$(GTAP_MAX_CANDIDATES)"
 
 $(OUT_DIR):
@@ -174,10 +147,6 @@ $(OUT_GTAP_ORIENTATION): $(SRC_GTAP_ORIENTATION) $(SRC_GPU_ORIENT) $(LIB_KCGPU_O
 	  -I"$(GT_INC)" \
 	  -I"$(COMMON_DIR)" \
 	  -I"$(THREAD_DIR)" \
-	  -DGTAP_RUNTIME_GRID_SIZE="$(GTAP_ORIENTATION_GRID_SIZE)" \
-	  -DGTAP_RUNTIME_BLOCK_SIZE="$(GTAP_ORIENTATION_BLOCK_SIZE)" \
-	  -DGTAP_RUNTIME_MAX_TASKS_PER_WARP="$(GTAP_ORIENTATION_MAX_TASKS_PER_WARP)" \
-	  -DGTAP_RUNTIME_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
 	  -DGTAP_RANGE_CUTOFF="$(GTAP_RANGE_CUTOFF)" \
 	  -DGTAP_TASK_FANOUT="$(GTAP_TASK_FANOUT)" \
 	  -DGTAP_WAIT_FANOUT="$(GTAP_WAIT_FANOUT)" \
@@ -189,7 +158,6 @@ $(OUT_GTAP_ORIENTATION): $(SRC_GTAP_ORIENTATION) $(SRC_GPU_ORIENT) $(LIB_KCGPU_O
 	  -DGTAP_ENCODE_SLOTS="$(GTAP_ENCODE_SLOTS)" \
 	  -DGTAP_RANGE_MAX_FIXED="$(GTAP_RANGE_MAX_FIXED)" \
 	  -DGTAP_CUDA_STACK_SIZE="$(GTAP_ORIENTATION_CUDA_STACK_SIZE)" \
-	  -DGTAP_DEFAULT_ORIENT="$(GTAP_DEFAULT_ORIENT)" \
 	  $(GTAP_CFLAGS) $(GTAP_EXTRA_CFLAGS) \
 	  "$(SRC_GTAP_ORIENTATION)" "$(SRC_GPU_ORIENT)" -o "$(OUT_GTAP_ORIENTATION)" \
 	  -L"$(CUDA_PATH)/lib64" -L"$(OUT_DIR)" -lcudart -lkcgpu_orient
@@ -204,10 +172,6 @@ $(OUT_GTAP_PIVOT): $(SRC_GTAP_PIVOT) $(SRC_GPU_ORIENT) $(LIB_KCGPU_ORIENT) | $(O
 	  -I"$(GT_INC)" \
 	  -I"$(COMMON_DIR)" \
 	  -I"$(THREAD_DIR)" \
-	  -DGTAP_RUNTIME_GRID_SIZE="$(GTAP_PIVOT_GRID_SIZE)" \
-	  -DGTAP_RUNTIME_BLOCK_SIZE="$(GTAP_PIVOT_BLOCK_SIZE)" \
-	  -DGTAP_RUNTIME_MAX_TASKS_PER_WARP="$(GTAP_PIVOT_MAX_TASKS_PER_WARP)" \
-	  -DGTAP_RUNTIME_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
 	  -DGTAP_RANGE_CUTOFF="$(GTAP_RANGE_CUTOFF)" \
 	  -DGTAP_TASK_FANOUT="$(GTAP_TASK_FANOUT)" \
 	  -DGTAP_MAX_CANDIDATES="$(GTAP_MAX_CANDIDATES)" \
@@ -221,7 +185,6 @@ $(OUT_GTAP_PIVOT): $(SRC_GTAP_PIVOT) $(SRC_GPU_ORIENT) $(LIB_KCGPU_ORIENT) | $(O
 	  -DGTAP_RANGE_MAX_FIXED="$(GTAP_RANGE_MAX_FIXED)" \
 	  -DGTAP_PIVOT_STATE_LEVELS="$(GTAP_PIVOT_STATE_LEVELS)" \
 	  -DGTAP_CUDA_STACK_SIZE="$(GTAP_PIVOT_CUDA_STACK_SIZE)" \
-	  -DGTAP_DEFAULT_ORIENT="$(GTAP_DEFAULT_ORIENT)" \
 	  $(GTAP_CFLAGS) $(GTAP_EXTRA_CFLAGS) \
 	  "$(SRC_GTAP_PIVOT)" "$(SRC_GPU_ORIENT)" -o "$(OUT_GTAP_PIVOT)" \
 	  -L"$(CUDA_PATH)/lib64" -L"$(OUT_DIR)" -lcudart -lkcgpu_orient

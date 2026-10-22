@@ -16,8 +16,8 @@
 #pragma once
 
 #include "gtap_thread.cuh"
-#include "pivot_counting.cuh"
-#include "../common/prefix_fixed.cuh"
+#include "counting.cuh"
+#include "../../common/prefix_fixed.cuh"
 
 // Rebuild prefix from `fixed`, then scan PL ordinals [range_begin, range_end).
 #pragma gtap function

@@ -6,7 +6,7 @@
 // #define GTAP_ENABLE_PROFILING
 // #define GTAP_STATS
 #include "gtap_thread.cuh"
-#include "config_defaults.cuh"
+#include "../config_defaults.cuh"
 
 #define K_PROFILE_FIELDS 8
 enum KProfileKind {
@@ -35,15 +35,11 @@ static const char* task_kind_name(int kind) {
 }
 #endif
 
-#include "device_state.cuh"
-#include "orientation_counting.cuh"
-#include "orientation_gtap_tasks.cuh"
-#include "../common/host_graph.hpp"
-
-#ifndef GTAP_DEFAULT_ORIENT
-#define GTAP_DEFAULT_ORIENT GTAP_ORIENT_DEGREE
-#endif
-#include "gtap_host_main.hpp"
+#include "../device_state.cuh"
+#include "counting.cuh"
+#include "tasks.cuh"
+#include "../../common/host_graph.hpp"
+#include "../host_main.hpp"
 
 static void orientation_print_tuning() {
     printf("GTAP_HEAVY_CANDIDATES: %d\n", GTAP_HEAVY_CANDIDATES);
@@ -54,6 +50,10 @@ static void orientation_print_tuning() {
 
 int main(int argc, char** argv) {
     GtapKCliqueHostHooks hooks = {};
+    hooks.default_orient = GTAP_ORIENT_DEGREE;
+    hooks.grid_size = 2640;
+    hooks.block_size = 32;
+    hooks.max_tasks_per_warp = 150000;
     hooks.set_cuda_stack_limit = true;
     hooks.profile_name = "k_clique_orientation";
     hooks.print_variant_tuning = orientation_print_tuning;

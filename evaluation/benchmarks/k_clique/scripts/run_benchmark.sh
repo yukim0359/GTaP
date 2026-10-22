@@ -145,6 +145,12 @@ build_gtap_for_case() {
         make_args+=("$line")
     done < <(python3 "$GTAP_CONFIG_LOADER" -c "$GTAP_CONFIG" --make-args "$GTAP_VARIANT" "$graph_name" "$k")
 
+    if [ ${#make_args[@]} -eq 0 ]; then
+        echo "Building $GTAP_TARGET if needed: GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING"
+        make -C "$K_CLIQUE_DIR" "$GTAP_TARGET" GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" >/dev/null
+        return
+    fi
+
     echo "Rebuilding $GTAP_TARGET for $graph_name k=$k: GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING ${make_args[*]}"
     make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" "${make_args[@]}" >/dev/null
 }
@@ -331,6 +337,11 @@ for graph_name_arg in $GRAPHS; do
             gtap_exit=""
 
             if [ "$RUN_GTAP" = "1" ]; then
+                if [ "$GTAP_VARIANT" = "pivot" ]; then
+                    export GTAP_MAX_TASKS_PER_WARP="$gtap_pivot_max_tasks_per_warp"
+                else
+                    export GTAP_MAX_TASKS_PER_WARP="$gtap_orientation_max_tasks_per_warp"
+                fi
                 gtap_log="$LOG_DIR/${graph_name}_k${k}_r${repeat}_gtap_${GTAP_VARIANT}.log"
                 set +e
                 gtap_out=$("$GTAP_BIN" "$graph_path" "$k" 2>&1)

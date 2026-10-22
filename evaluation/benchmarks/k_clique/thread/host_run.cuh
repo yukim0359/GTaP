@@ -1,22 +1,18 @@
 #pragma once
 
+#include <cstdio>
 #include <cuda_runtime.h>
 #include <time.h>
 #include <vector>
 
 #include "gtap_thread.cuh"
 #include "config_defaults.cuh"
-#include "../common/gpu_orient.cuh"
 #include "../common/host_graph.hpp"
 #include "../common/host_options.hpp"
 #include "../common/timing.hpp"
 #include "device_state.cuh"
 
 __global__ void exec_kernel_k();
-
-#ifndef GTAP_DEFAULT_ORIENT
-#define GTAP_DEFAULT_ORIENT GTAP_ORIENT_DEGEN
-#endif
 
 #define CUDA_CHECK(call)                                                   \
     do {                                                                   \
@@ -27,13 +23,6 @@ __global__ void exec_kernel_k();
             exit(1);                                                       \
         }                                                                  \
     } while (0)
-
-struct GtapKCliqueParsedArgs {
-    int n = 0;
-    int k = 7;
-    HostGraph graph;
-    const char* graph_path = nullptr;
-};
 
 struct GtapKCliqueDeviceBuffers {
     int* d_row_ptr = nullptr;
@@ -48,7 +37,11 @@ struct GtapKCliqueDeviceBuffers {
     size_t cand_scratch_ints = 0;
     size_t bit_scratch_words = 0;
     size_t encode_scratch_words = 0;
+    size_t num_oriented_edges = 0;
     int num_workers = 0;
+    int grid_size = 0;
+    int block_size = 0;
+    int max_tasks_per_warp = 0;
 };
 
 struct GtapKCliqueRunResult {
@@ -75,6 +68,10 @@ struct GtapKCliqueRunResult {
 };
 
 struct GtapKCliqueHostHooks {
+    GtapOrientMode default_orient = GTAP_ORIENT_DEGREE;
+    int grid_size = 2640;
+    int block_size = 32;
+    int max_tasks_per_warp = 150000;
     bool set_cuda_stack_limit = false;
     const char* profile_name = nullptr;
     bool (*on_count_phase_begin)(GtapKCliqueDeviceBuffers& buffers) = nullptr;
@@ -95,130 +92,13 @@ static void gtap_k_clique_free_device_buffers(GtapKCliqueDeviceBuffers& buffers)
     buffers = GtapKCliqueDeviceBuffers{};
 }
 
-static bool gtap_k_clique_parse_args(int argc, char** argv, GtapKCliqueParsedArgs& args) {
-    if (argc < 2) {
-        fprintf(stderr, "usage: %s graph_path [k]\n", argv[0]);
-        return false;
-    }
-    args.graph_path = argv[1];
-    if (!load_graph_file(argv[1], args.graph)) return false;
-    args.n = args.graph.n;
-    if (argc >= 3 && is_integer_string(argv[2])) {
-        args.k = parse_int_arg(argv, argc, 2, 7);
-    }
-
-    if (args.n < 1) {
-        fprintf(stderr, "n must be positive, got %d\n", args.n);
-        return false;
-    }
-    if (args.k < 3 || args.k > args.n) {
-        fprintf(stderr, "k must be in [3, n], got k=%d\n", args.k);
-        return false;
-    }
-    if (args.k - 3 > GTAP_BIT_BUFFER_COUNT) {
-        fprintf(stderr,
-                "GTAP_BIT_BUFFER_COUNT=%d is too small for k=%d; need at least %d\n",
-                GTAP_BIT_BUFFER_COUNT,
-                args.k,
-                args.k - 3);
-        return false;
-    }
-    return true;
-}
-
-static bool gtap_k_clique_preprocess(
-    const GtapKCliqueParsedArgs& args,
-    const GtapKCliqueHostHooks& hooks,
-    HostGraph& exec_graph,
-    GtapOrientMode& orient_mode,
-    GtapKCliqueDeviceBuffers& buffers,
-    GtapKCliqueRunResult& result) {
-    timespec orient_stop, preprocess_stop;
-
-    orient_mode = parse_gtap_orient_from_env(GTAP_DEFAULT_ORIENT);
-
-    size_t num_oriented_edges = 0;
-    CUDA_CHECK(gtap_gpu_orient_csr(
-        args.graph.row_ptr.data(),
-        args.graph.col_idx.data(),
-        args.graph.n,
-        args.graph.undirected_edges,
-        orient_mode,
-        &buffers.d_row_ptr,
-        &buffers.d_col_idx,
-        &buffers.d_edge_src,
-        &num_oriented_edges,
-        &result.transfer_ms,
-        &result.orient_ms));
-    exec_graph.n = args.graph.n;
-    exec_graph.undirected_edges = args.graph.undirected_edges;
-    exec_graph.oriented = true;
-    exec_graph.col_idx.resize(num_oriented_edges);
-
-    clock_gettime(CLOCK_MONOTONIC, &orient_stop);
-
-    buffers.num_workers =
-        GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_BLOCK_SIZE;
-    const int words_per_worker = (GTAP_MAX_CANDIDATES + 63) >> 6;
-    buffers.cand_scratch_ints =
-        (size_t)buffers.num_workers * (size_t)GTAP_MAX_CANDIDATES;
-    buffers.bit_scratch_words =
-        (size_t)buffers.num_workers * (size_t)GTAP_BIT_BUFFER_COUNT * (size_t)words_per_worker;
-    buffers.encode_scratch_words =
-        ((size_t)GTAP_ENCODE_SLOTS + (size_t)buffers.num_workers) *
-        (size_t)GTAP_MAX_CANDIDATES *
-        (size_t)words_per_worker;
-
-    std::vector<int> encode_slot_stack((size_t)GTAP_ENCODE_SLOTS);
-    for (int i = 0; i < GTAP_ENCODE_SLOTS; ++i) {
-        encode_slot_stack[(size_t)i] = i;
-    }
-
-    CUDA_CHECK(cudaMalloc(&buffers.d_cand_scratch, buffers.cand_scratch_ints * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(
-        &buffers.d_bit_scratch, buffers.bit_scratch_words * sizeof(unsigned long long)));
-    CUDA_CHECK(cudaMalloc(
-        &buffers.d_encode_scratch, buffers.encode_scratch_words * sizeof(unsigned long long)));
-    CUDA_CHECK(cudaMalloc(
-        &buffers.d_encode_slot_stack, encode_slot_stack.size() * sizeof(int)));
-    CUDA_CHECK(cudaMemcpy(
-        buffers.d_encode_slot_stack,
-        encode_slot_stack.data(),
-        encode_slot_stack.size() * sizeof(int),
-        cudaMemcpyHostToDevice));
-    if (hooks.set_cuda_stack_limit) {
-        CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, GTAP_CUDA_STACK_SIZE));
-        size_t actual_stack_size = 0;
-        CUDA_CHECK(cudaDeviceGetLimit(
-            &actual_stack_size, cudaLimitStackSize));
-        printf(
-            "CUDA stack limit: requested=%d actual=%zu bytes\n",
-            GTAP_CUDA_STACK_SIZE, actual_stack_size);
-    }
-#ifdef GTAP_STATS
-    CUDA_CHECK(cudaMalloc(
-        &buffers.d_recurse_tree_stats,
-        (size_t)buffers.num_workers * sizeof(unsigned long long)));
-    CUDA_CHECK(cudaMemset(
-        buffers.d_recurse_tree_stats,
-        0,
-        (size_t)buffers.num_workers * sizeof(unsigned long long)));
-#else
-    (void)buffers.d_recurse_tree_stats;
-#endif
-
-    clock_gettime(CLOCK_MONOTONIC, &preprocess_stop);
-    result.workspace_ms = elapsed_ms(orient_stop, preprocess_stop);
-    result.preprocess_ms = result.orient_ms + result.workspace_ms;
-    return true;
-}
-
-static bool gtap_k_clique_run_count_phase(
-    const GtapKCliqueParsedArgs& args,
+static bool gtap_k_clique_run(
+    const HostOptions& options,
+    const HostGraph& graph,
     const GtapKCliqueHostHooks& hooks,
     GtapKCliqueDeviceBuffers& buffers,
-    int num_exec_edges,
     GtapKCliqueRunResult& result) {
+    const int num_exec_edges = (int)buffers.num_oriented_edges;
     timespec count_phase_start, count_phase_stop;
     clock_gettime(CLOCK_MONOTONIC, &count_phase_start);
 
@@ -233,10 +113,10 @@ static bool gtap_k_clique_run_count_phase(
 
     clock_gettime(CLOCK_MONOTONIC, &gtap_init_start);
     gtap_thread_config config{
-        .grid_size = GTAP_RUNTIME_GRID_SIZE,
-        .block_size = GTAP_RUNTIME_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_RUNTIME_MAX_TASKS_PER_WARP,
-        .num_queues = GTAP_RUNTIME_NUM_QUEUES,
+        .grid_size = buffers.grid_size,
+        .block_size = buffers.block_size,
+        .max_tasks_per_warp = buffers.max_tasks_per_warp,
+        .num_queues = 1,
     };
     cudaError_t err = gtap_initialize(config);
     clock_gettime(CLOCK_MONOTONIC, &gtap_init_stop);
@@ -275,9 +155,9 @@ static bool gtap_k_clique_run_count_phase(
         g_recurse_max_encoded_tree_calls, &recurse_zero, sizeof(unsigned long long)));
 #endif
     CUDA_CHECK(cudaMemcpyToSymbol(g_encode_slot_top, &encode_slot_top_init, sizeof(int)));
-    CUDA_CHECK(cudaMemcpyToSymbol(g_num_vertices, &args.n, sizeof(int)));
+    CUDA_CHECK(cudaMemcpyToSymbol(g_num_vertices, &graph.n, sizeof(int)));
     CUDA_CHECK(cudaMemcpyToSymbol(g_num_edges, &num_exec_edges, sizeof(int)));
-    CUDA_CHECK(cudaMemcpyToSymbol(g_clique_k, &args.k, sizeof(int)));
+    CUDA_CHECK(cudaMemcpyToSymbol(g_clique_k, &options.k, sizeof(int)));
     err = bind_graph(
         buffers.d_row_ptr,
         buffers.d_col_idx,
@@ -375,114 +255,4 @@ static bool gtap_k_clique_run_count_phase(
     CUDA_CHECK(cudaEventDestroy(start));
     CUDA_CHECK(cudaEventDestroy(stop));
     return true;
-}
-
-static void gtap_k_clique_print_results(
-    const GtapKCliqueParsedArgs& args,
-    const GtapKCliqueHostHooks& hooks,
-    const HostGraph& exec_graph,
-    GtapOrientMode orient_mode,
-    const GtapKCliqueDeviceBuffers& buffers,
-    const GtapKCliqueRunResult& result) {
-    printf("k-clique graph file: %s n=%d k=%d edges=%zu mode=%s-oriented\n",
-           args.graph_path, args.n, args.k, args.graph.undirected_edges,
-           gtap_orient_mode_name(orient_mode));
-    printf("oriented_edges: %zu\n", exec_graph.col_idx.size());
-    printf("GTAP_RANGE_CUTOFF: %d\n", GTAP_RANGE_CUTOFF);
-    printf("GTAP_MAX_CANDIDATES: %d\n", GTAP_MAX_CANDIDATES);
-    printf("GTAP_BIT_BUFFER_COUNT: %d\n", GTAP_BIT_BUFFER_COUNT);
-    printf("GTAP_CUDA_STACK_SIZE: %d\n", GTAP_CUDA_STACK_SIZE);
-    if (hooks.print_variant_tuning != nullptr) {
-        hooks.print_variant_tuning();
-    }
-    printf("scratch workers: %d\n", buffers.num_workers);
-    printf("candidate scratch: %zu ints\n", buffers.cand_scratch_ints);
-    printf("bit scratch: %zu uint64 words\n", buffers.bit_scratch_words);
-    printf("encode slots: %d\n", GTAP_ENCODE_SLOTS);
-    printf("encode scratch: %zu uint64 words (slots + per-worker)\n", buffers.encode_scratch_words);
-#ifdef GTAP_STATS
-    printf("GTaP max candidate length: %d / %d\n",
-           result.candidate_highwater, GTAP_MAX_CANDIDATES);
-    {
-        printf("GTaP recurse calls (encoded): %llu (roots: %llu",
-               result.recurse_encoded_calls, result.recurse_encoded_roots);
-        if (result.recurse_encoded_roots != 0ULL) {
-            printf(", avg/root: %.2f",
-                   (double)result.recurse_encoded_calls /
-                   (double)result.recurse_encoded_roots);
-        }
-        printf(", max/root: %llu)\n", result.recurse_max_encoded_tree_calls);
-    }
-#endif
-    printf("GTaP count: %llu\n", result.gpu_count);
-    if (result.scratch_overflow) {
-        printf("scratch overflow\n");
-    }
-    printf("GTaP count e2e time: %.3f ms\n", result.count_e2e_ms);
-    printf("GTaP count phase time: %.3f ms\n", result.count_phase_ms);
-    printf("GTaP kernel time: %.3f ms\n", result.kernel_ms);
-    printf("GTaP preprocess time: %.3f ms\n", result.preprocess_ms);
-    printf("GTaP transfer time: %.3f ms\n", result.transfer_ms);
-    printf("GTaP orient time: %.3f ms\n", result.orient_ms);
-    printf("GTaP workspace alloc time: %.3f ms\n", result.workspace_ms);
-    printf("GTaP count setup time: %.3f ms\n", result.count_setup_ms);
-    printf("GTaP gtap_initialize time: %.3f ms\n", result.gtap_initialize_ms);
-
-#ifdef GTAP_STATS
-    printf("Max task profile:\n");
-    for (int kind = 0; kind < K_PROFILE_KINDS; ++kind) {
-        int base = kind * K_PROFILE_FIELDS;
-        printf("  %-22s cycles=%llu u=%d v=%d m=%d a=%d b=%d c=%d d=%d worker=%d\n",
-               task_kind_name(kind),
-               result.task_max_cycles[kind],
-               result.task_max_info[base + 0],
-               result.task_max_info[base + 1],
-               result.task_max_info[base + 2],
-               result.task_max_info[base + 3],
-               result.task_max_info[base + 4],
-               result.task_max_info[base + 5],
-               result.task_max_info[base + 6],
-               result.task_max_info[base + 7]);
-    }
-#endif
-
-#ifdef GTAP_ENABLE_PROFILING
-    if (hooks.profile_name != nullptr) {
-        char profile_directory[512];
-        snprintf(profile_directory, sizeof(profile_directory), "./profile/%s",
-                 hooks.profile_name);
-        gtap_export_profile({
-            .output_directory = profile_directory,
-            .overwrite = true,
-        });
-    }
-#endif
-}
-
-static int gtap_k_clique_host_main(int argc, char** argv, const GtapKCliqueHostHooks& hooks) {
-    GtapKCliqueParsedArgs args;
-    if (!gtap_k_clique_parse_args(argc, argv, args)) {
-        return 1;
-    }
-
-    HostGraph exec_graph;
-    GtapOrientMode orient_mode = GTAP_ORIENT_DEGEN;
-    GtapKCliqueDeviceBuffers buffers;
-    GtapKCliqueRunResult result;
-
-    if (!gtap_k_clique_preprocess(args, hooks, exec_graph, orient_mode, buffers, result)) {
-        return 1;
-    }
-
-    const int num_exec_edges = (int)exec_graph.col_idx.size();
-    if (!gtap_k_clique_run_count_phase(args, hooks, buffers, num_exec_edges, result)) {
-        return 1;
-    }
-
-    gtap_k_clique_print_results(args, hooks, exec_graph, orient_mode, buffers, result);
-
-    if (hooks.free_extras != nullptr) hooks.free_extras();
-    gtap_k_clique_free_device_buffers(buffers);
-    gtap_finalize();
-    return result.scratch_overflow ? 2 : 0;
 }

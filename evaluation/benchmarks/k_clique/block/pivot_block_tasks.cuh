@@ -1,5 +1,5 @@
 // Pivot counting: where work becomes a GTaP task (block mode).
-// Same split as ../thread/pivot_gtap_tasks.cuh; bit ops are block-cooperative.
+// Same split as ../thread/pivot/tasks.cuh; bit ops are block-cooperative.
 // slot / fixed / cl / pl: see that file and README.md "Task split".
 
 #pragma once

@@ -12,7 +12,6 @@
 struct HostGraph {
     int n;
     size_t undirected_edges;
-    bool oriented;
     std::vector<int> row_ptr;
     std::vector<int> col_idx;
 };
@@ -22,7 +21,6 @@ static HostGraph build_csr_from_edges(
     HostGraph graph;
     graph.n = n;
     graph.undirected_edges = 0;
-    graph.oriented = false;
     std::vector<std::vector<int>> adj((size_t)n);
 
     for (auto e : undirected_edges) {

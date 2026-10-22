@@ -15,8 +15,8 @@
 #pragma once
 
 #include "gtap_thread.cuh"
-#include "orientation_counting.cuh"
-#include "../common/prefix_fixed.cuh"
+#include "counting.cuh"
+#include "../../common/prefix_fixed.cuh"
 
 __device__ __forceinline__ int heavy_threshold_for_depth(int depth) {
     if (depth == 0) return GTAP_SECOND_HEAVY_CANDIDATES;

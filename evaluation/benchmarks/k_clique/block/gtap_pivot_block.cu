@@ -25,11 +25,7 @@ enum KProfileKind {
 #include "pivot_block_tasks.cuh"
 #include "../common/ncr_host.hpp"
 
-#ifndef GTAP_DEFAULT_ORIENT
-#define GTAP_DEFAULT_ORIENT GTAP_ORIENT_DEGEN
-#endif
-
-#include "gtap_block_host_main.hpp"
+#include "host_main.hpp"
 
 static unsigned long long* g_d_nCr = nullptr;
 
@@ -74,6 +70,7 @@ static void pivot_print_tuning() {
 
 int main(int argc, char** argv) {
     GtapKCliqueHostHooks hooks = {};
+    hooks.default_orient = GTAP_ORIENT_DEGEN;
     hooks.set_cuda_stack_limit = true;
     hooks.profile_name = "k_clique_pivot_block";
     hooks.on_count_phase_begin = pivot_count_phase_begin;
