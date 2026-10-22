@@ -20,6 +20,7 @@ __constant__ int* d_global_task_queue; // int[num_blocks * tasks_per_block]
 __device__ unsigned int d_queue_head;
 __device__ unsigned int d_queue_tail;
 __device__ unsigned int d_queue_alloc;
+__device__ unsigned int d_queue_consumed;
 __constant__ int* d_task_id_generated; // int[num_blocks * GTAP_MAX_CHILD_TASKS]
 
 __device__ __forceinline__ int get_task_id_generated(int block_id, int idx) {
@@ -185,7 +186,9 @@ inline cudaError_t reset_queue_counters() {
     if (status != cudaSuccess) return status;
     status = cudaMemcpyToSymbol(d_queue_tail, &zero, sizeof(unsigned int));
     if (status != cudaSuccess) return status;
-    return cudaMemcpyToSymbol(d_queue_alloc, &zero, sizeof(unsigned int));
+    status = cudaMemcpyToSymbol(d_queue_alloc, &zero, sizeof(unsigned int));
+    if (status != cudaSuccess) return status;
+    return cudaMemcpyToSymbol(d_queue_consumed, &zero, sizeof(unsigned int));
 }
 
 }  // namespace gtap::detail::block

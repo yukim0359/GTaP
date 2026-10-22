@@ -24,6 +24,7 @@ __constant__ int* d_global_task_queue;              // int[num_queues * num_warp
 __constant__ int* d_queue_head;                     // int[num_queues]
 __constant__ int* d_queue_tail;                     // int[num_queues]
 __constant__ int* d_queue_alloc;                    // int[num_queues]
+__constant__ int* d_queue_consumed;                 // int[num_queues]
 __constant__ int* d_task_id_generated_by_queue_idx; // int[num_warps * num_queues * GTAP_TASK_ID_GEN_QUEUE_STRIDE]
 
 __device__ __forceinline__ int* global_queue_slot(
@@ -65,6 +66,7 @@ struct queue_storage_buffers {
     int* head = nullptr;
     int* tail = nullptr;
     int* alloc = nullptr;
+    int* consumed = nullptr;
     int* generated = nullptr;
 };
 
@@ -75,7 +77,7 @@ inline size_t generated_task_id_bytes(const launch_config& config) {
     return mul_memory_bytes(bytes, static_cast<size_t>(GTAP_TASK_ID_GEN_QUEUE_STRIDE));
 }
 
-// Bytes of one cursor array. Head, tail, and alloc each have this size.
+// Bytes of one cursor array. Head, tail, alloc, and consumed each have this size.
 inline size_t queue_cursor_bytes(const launch_config& config) {
     return mul_memory_bytes(sizeof(int), static_cast<size_t>(config.num_queues));
 }
@@ -98,6 +100,7 @@ inline bool queue_fixed_and_per_task_bytes(
     size_t cursor_bytes = queue_cursor_bytes(config);
     cursor_bytes = add_memory_bytes(cursor_bytes, queue_cursor_bytes(config));
     cursor_bytes = add_memory_bytes(cursor_bytes, queue_cursor_bytes(config));
+    cursor_bytes = add_memory_bytes(cursor_bytes, queue_cursor_bytes(config));
     const size_t generated_bytes = generated_task_id_bytes(config);
     const size_t fixed = add_memory_bytes(cursor_bytes, generated_bytes);
     if (fixed == SIZE_MAX) return false;
@@ -110,6 +113,7 @@ inline size_t queue_storage_allocation_bytes(const launch_config& config) {
     const size_t cursor_bytes = queue_cursor_bytes(config);
     size_t bytes = queue_slot_bytes(config);
     bytes = add_memory_bytes(bytes, generated_task_id_bytes(config));
+    bytes = add_memory_bytes(bytes, cursor_bytes);
     bytes = add_memory_bytes(bytes, cursor_bytes);
     bytes = add_memory_bytes(bytes, cursor_bytes);
     return add_memory_bytes(bytes, cursor_bytes);
@@ -212,6 +216,12 @@ inline cudaError_t stage_queue_storage(
     if (status != cudaSuccess) return status;
     status = record_error_if_failed(
         error,
+        alloc_device(&buffers->consumed, cursor_bytes),
+        "failed to allocate queue storage (allocation size: %zu bytes)",
+        cursor_bytes);
+    if (status != cudaSuccess) return status;
+    status = record_error_if_failed(
+        error,
         cudaMemsetAsync(buffers->head, 0, cursor_bytes, stream),
         "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
@@ -220,9 +230,14 @@ inline cudaError_t stage_queue_storage(
         cudaMemsetAsync(buffers->tail, 0, cursor_bytes, stream),
         "failed to initialize queue storage");
     if (status != cudaSuccess) return status;
-    return record_error_if_failed(
+    status = record_error_if_failed(
         error,
         cudaMemsetAsync(buffers->alloc, 0, cursor_bytes, stream),
+        "failed to initialize queue storage");
+    if (status != cudaSuccess) return status;
+    return record_error_if_failed(
+        error,
+        cudaMemsetAsync(buffers->consumed, 0, cursor_bytes, stream),
         "failed to initialize queue storage");
 }
 
@@ -235,6 +250,8 @@ inline cudaError_t publish_queue_storage(const queue_storage_buffers& buffers) {
     status = cudaMemcpyToSymbol(d_queue_tail, &buffers.tail, sizeof(int*));
     if (status != cudaSuccess) return status;
     status = cudaMemcpyToSymbol(d_queue_alloc, &buffers.alloc, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyToSymbol(d_queue_consumed, &buffers.consumed, sizeof(int*));
     if (status != cudaSuccess) return status;
     return cudaMemcpyToSymbol(
         d_task_id_generated_by_queue_idx, &buffers.generated, sizeof(int*));
@@ -263,11 +280,14 @@ inline cudaError_t clear_queue_storage(
     int* head = nullptr;
     int* tail = nullptr;
     int* alloc = nullptr;
+    int* consumed = nullptr;
     status = cudaMemcpyFromSymbol(&head, d_queue_head, sizeof(int*));
     if (status != cudaSuccess) return status;
     status = cudaMemcpyFromSymbol(&tail, d_queue_tail, sizeof(int*));
     if (status != cudaSuccess) return status;
     status = cudaMemcpyFromSymbol(&alloc, d_queue_alloc, sizeof(int*));
+    if (status != cudaSuccess) return status;
+    status = cudaMemcpyFromSymbol(&consumed, d_queue_consumed, sizeof(int*));
     if (status != cudaSuccess) return status;
 
     if (slots != nullptr) {
@@ -288,6 +308,10 @@ inline cudaError_t clear_queue_storage(
     }
     if (alloc != nullptr) {
         status = cudaMemsetAsync(alloc, 0, cursor_bytes, stream);
+        if (status != cudaSuccess) return status;
+    }
+    if (consumed != nullptr) {
+        status = cudaMemsetAsync(consumed, 0, cursor_bytes, stream);
         if (status != cudaSuccess) return status;
     }
     return cudaSuccess;
@@ -312,6 +336,10 @@ inline cudaError_t free_queue_storage() {
     cudaError_t alloc_read_status = cudaMemcpyFromSymbol(
         &alloc, d_queue_alloc, sizeof(int*));
     keep_first_error(alloc_read_status, &result);
+    int* consumed = nullptr;
+    cudaError_t consumed_read_status = cudaMemcpyFromSymbol(
+        &consumed, d_queue_consumed, sizeof(int*));
+    keep_first_error(consumed_read_status, &result);
     int* generated = nullptr;
     cudaError_t generated_read_status = cudaMemcpyFromSymbol(
         &generated, d_task_id_generated_by_queue_idx, sizeof(int*));
@@ -332,6 +360,9 @@ inline cudaError_t free_queue_storage() {
     if (alloc_read_status == cudaSuccess && alloc != nullptr) {
         keep_first_error(cudaFree(alloc), &result);
     }
+    if (consumed_read_status == cudaSuccess && consumed != nullptr) {
+        keep_first_error(cudaFree(consumed), &result);
+    }
     return result;
 }
 
@@ -340,16 +371,19 @@ inline void release_staged_queue_storage(queue_storage_buffers* buffers) {
     free_device(buffers->head);
     free_device(buffers->tail);
     free_device(buffers->alloc);
+    free_device(buffers->consumed);
     free_device(buffers->generated);
     int* slots = nullptr;
     int* head = nullptr;
     int* tail = nullptr;
     int* alloc = nullptr;
+    int* consumed = nullptr;
     int* generated = nullptr;
     cudaMemcpyToSymbol(d_global_task_queue, &slots, sizeof(slots));
     cudaMemcpyToSymbol(d_queue_head, &head, sizeof(head));
     cudaMemcpyToSymbol(d_queue_tail, &tail, sizeof(tail));
     cudaMemcpyToSymbol(d_queue_alloc, &alloc, sizeof(alloc));
+    cudaMemcpyToSymbol(d_queue_consumed, &consumed, sizeof(consumed));
     cudaMemcpyToSymbol(d_task_id_generated_by_queue_idx, &generated, sizeof(generated));
 }
 
