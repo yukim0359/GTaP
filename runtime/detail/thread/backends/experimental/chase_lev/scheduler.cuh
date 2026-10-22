@@ -315,20 +315,36 @@ __device__ __forceinline__ void push_batch (
         int total = ctx->generated_task_counts[kind];
         int staged_n = min(total, warp_size);
         if (kind != k_max) {
-            int base = ctx->queue_tails[kind];
-            for (int j = lane; j < staged_n; j += warp_size) {
-                int idx_to_push =
-                    (base + j) % d_launch_config.queue_capacity;
-                int val =
-                    ctx->staged_task_ids[kind * warp_size + j];
-                *chaselev_queue_slot(
-                    kind, warp_id_global, idx_to_push) = val;
+            const int capacity = d_launch_config.queue_capacity;
+            int base_tail = 0;
+
+            if (lane == 0) {
+                base_tail = ctx->queue_tails[kind];
+                const int top = load_L2(&q->top);
+                const long long required_slots =
+                    static_cast<long long>(base_tail) - top + staged_n;
+
+                if (required_slots > capacity) {
+                    GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
+                        -1, kind, capacity);
+                }
             }
-            if (lane == 0)
-                ctx->queue_tails[kind] += staged_n;
+            base_tail = __shfl_sync(0xFFFFFFFFu, base_tail, 0);
+
+            if (lane < staged_n) {
+                *chaselev_queue_slot(
+                    kind,
+                    warp_id_global,
+                    (base_tail + lane) % capacity) =
+                    ctx->staged_task_ids[kind * warp_size + lane];
+            }
+
+            if (lane == 0) {
+                ctx->queue_tails[kind] = base_tail + staged_n;
+            }
         }
-        __syncwarp();
         __threadfence();
+        __syncwarp();
         if (lane == 0) {
             store_L2(&q->bottom, ctx->queue_tails[kind]);
         }
