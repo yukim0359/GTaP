@@ -1,6 +1,6 @@
 #pragma once
 
-#include "block_config_defaults.cuh"
+#include "config_defaults.cuh"
 
 // Per-CUDA-block scratch (blockIdx.x). All threads in a block cooperate on one task.
 __device__ const int* g_row_ptr;
@@ -14,7 +14,7 @@ __device__ int g_encode_slot_top;
 __device__ int g_encode_slot_lock;
 __device__ unsigned long long g_answer;
 __device__ int g_scratch_overflow;
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
 __device__ int g_candidate_highwater;
 __device__ unsigned long long g_task_max_cycles[K_PROFILE_KINDS];
 __device__ int g_task_max_info[K_PROFILE_KINDS * K_PROFILE_FIELDS];
@@ -56,7 +56,7 @@ static inline cudaError_t bind_nCr(const unsigned long long* d_nCr) {
     return cudaMemcpyToSymbol(g_nCr, &d_nCr, sizeof(d_nCr));
 }
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
 static inline cudaError_t bind_recurse_stats(unsigned long long* d_tree_encoded) {
     return cudaMemcpyToSymbol(g_recurse_tree_encoded, &d_tree_encoded, sizeof(d_tree_encoded));
 }
@@ -67,7 +67,7 @@ __device__ __forceinline__ int block_worker_id() {
 }
 
 __device__ __forceinline__ int max_words() {
-    return (GTAP_K_MAX_CANDIDATES + 63) >> 6;
+    return (GTAP_MAX_CANDIDATES + 63) >> 6;
 }
 
 __device__ __forceinline__ int words_for_len(int len) {
@@ -75,26 +75,26 @@ __device__ __forceinline__ int words_for_len(int len) {
 }
 
 __device__ __forceinline__ int* cand_buffer() {
-    return g_cand_scratch + (size_t)block_worker_id() * GTAP_K_MAX_CANDIDATES;
+    return g_cand_scratch + (size_t)block_worker_id() * GTAP_MAX_CANDIDATES;
 }
 
 __device__ __forceinline__ unsigned long long* bit_buffer(int level) {
     int words = max_words();
     return g_bit_scratch +
-           ((size_t)block_worker_id() * GTAP_K_BIT_BUFFER_COUNT + level) * (size_t)words;
+           ((size_t)block_worker_id() * GTAP_BIT_BUFFER_COUNT + level) * (size_t)words;
 }
 
 __device__ __forceinline__ unsigned long long* encode_buffer() {
     return g_encode_scratch +
-           ((size_t)GTAP_K_ENCODE_SLOTS + (size_t)block_worker_id()) *
-           (size_t)GTAP_K_MAX_CANDIDATES *
+           ((size_t)GTAP_ENCODE_SLOTS + (size_t)block_worker_id()) *
+           (size_t)GTAP_MAX_CANDIDATES *
            (size_t)max_words();
 }
 
 __device__ __forceinline__ unsigned long long* encode_slot_buffer(int slot) {
     return g_encode_scratch +
            (size_t)slot *
-           (size_t)GTAP_K_MAX_CANDIDATES *
+           (size_t)GTAP_MAX_CANDIDATES *
            (size_t)max_words();
 }
 
@@ -102,7 +102,7 @@ __device__ __forceinline__ void mark_overflow() {
     atomicExch(&g_scratch_overflow, 1);
 }
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
 __device__ __forceinline__ void stats_flush_encoded_tree(int worker) {
     unsigned long long prev = g_recurse_tree_encoded[worker];
     if (prev > 0ULL) atomicMax(&g_recurse_max_encoded_tree_calls, prev);
@@ -152,7 +152,7 @@ __device__ __forceinline__ int acquire_encode_slot() {
 
 __device__ __forceinline__ void release_encode_slot(int slot) {
     encode_slot_lock();
-    if (g_encode_slot_top >= GTAP_K_ENCODE_SLOTS) {
+    if (g_encode_slot_top >= GTAP_ENCODE_SLOTS) {
         encode_slot_unlock();
         mark_overflow();
         return;
@@ -162,7 +162,7 @@ __device__ __forceinline__ void release_encode_slot(int slot) {
     encode_slot_unlock();
 }
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
 __device__ __forceinline__ void record_task_profile(
     int kind,
     unsigned long long cycles,

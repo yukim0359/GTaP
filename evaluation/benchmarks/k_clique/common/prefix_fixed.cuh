@@ -4,7 +4,7 @@
 
 // Prefix path for stateless GTAP tasks: idx[level] is the pl branch taken at each depth.
 struct KRangeFixed {
-    int idx[GTAP_K_RANGE_MAX_FIXED];
+    int idx[GTAP_RANGE_MAX_FIXED];
 };
 
 __device__ __forceinline__ KRangeFixed append_range_fixed(
@@ -12,7 +12,7 @@ __device__ __forceinline__ KRangeFixed append_range_fixed(
     int depth,
     int idx) {
     KRangeFixed next = fixed;
-    if (depth >= 0 && depth < GTAP_K_RANGE_MAX_FIXED) {
+    if (depth >= 0 && depth < GTAP_RANGE_MAX_FIXED) {
         next.idx[depth] = idx;
     }
     return next;

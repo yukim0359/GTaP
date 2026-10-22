@@ -6,9 +6,9 @@
 #include <vector>
 
 // #define GTAP_ENABLE_PROFILING
-// #define GTAP_K_STATS
+// #define GTAP_STATS
 #include "gtap_thread.cuh"
-#include "../common/config_defaults.cuh"
+#include "config_defaults.cuh"
 
 #define K_PROFILE_FIELDS 8
 enum KProfileKind {
@@ -20,7 +20,7 @@ enum KProfileKind {
     K_PROFILE_KINDS
 };
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
 static const char* task_kind_name(int kind) {
     switch (kind) {
         case K_KIND_EDGE_COUNT: return "edge_count";
@@ -50,7 +50,7 @@ static bool pivot_count_phase_begin(GtapKCliqueDeviceBuffers& buffers) {
     (void)buffers;
     std::vector<unsigned long long> ncr_host;
     const std::string default_ncr_path = gtap_k_default_ncr_path();
-    const char* ncr_file = getenv("GTAP_K_NCR_FILE");
+    const char* ncr_file = getenv("GTAP_NCR_FILE");
     if (ncr_file == nullptr) ncr_file = default_ncr_path.c_str();
     if (!gtap_k_load_ncr_table_from_file(ncr_file, ncr_host)) {
         fprintf(stderr, "Failed to load nCr table from %s\n", ncr_file);
@@ -76,13 +76,13 @@ static void pivot_free_extras() {
 }
 
 static void pivot_print_tuning() {
-    printf("GTAP_K_PIVOT_PREFIX_CHUNK: %d\n", GTAP_K_PIVOT_PREFIX_CHUNK);
-    printf("GTAP_K_PIVOT_SHARED_SPLIT_CANDIDATES: %d\n", GTAP_K_PIVOT_SHARED_SPLIT_CANDIDATES);
-    printf("GTAP_K_PIVOT_PREFIX_HEAVY_CANDIDATES: %d\n", GTAP_K_PIVOT_PREFIX_HEAVY_CANDIDATES);
-    printf("GTAP_K_PIVOT_PREFIX_WORK_THRESHOLD: %d\n", GTAP_K_PIVOT_PREFIX_WORK_THRESHOLD);
-    printf("GTAP_K_PIVOT_PREFIX_FANOUT: %d\n", GTAP_K_PIVOT_PREFIX_FANOUT);
-    printf("GTAP_K_RANGE_MAX_FIXED: %d\n", GTAP_K_RANGE_MAX_FIXED);
-    printf("GTAP_K_PIVOT_STATE_LEVELS: %d\n", GTAP_K_PIVOT_STATE_LEVELS);
+    printf("GTAP_PIVOT_PREFIX_CHUNK: %d\n", GTAP_PIVOT_PREFIX_CHUNK);
+    printf("GTAP_PIVOT_SHARED_SPLIT_CANDIDATES: %d\n", GTAP_PIVOT_SHARED_SPLIT_CANDIDATES);
+    printf("GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES: %d\n", GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES);
+    printf("GTAP_PIVOT_PREFIX_WORK_THRESHOLD: %d\n", GTAP_PIVOT_PREFIX_WORK_THRESHOLD);
+    printf("GTAP_PIVOT_PREFIX_FANOUT: %d\n", GTAP_PIVOT_PREFIX_FANOUT);
+    printf("GTAP_RANGE_MAX_FIXED: %d\n", GTAP_RANGE_MAX_FIXED);
+    printf("GTAP_PIVOT_STATE_LEVELS: %d\n", GTAP_PIVOT_STATE_LEVELS);
 }
 
 int main(int argc, char** argv) {

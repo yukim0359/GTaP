@@ -3,8 +3,18 @@
 #include <cstddef>
 #include <cuda_runtime.h>
 
-#include "host_graph.hpp"
-#include "host_orient.hpp"
+enum GtapOrientMode {
+    GTAP_ORIENT_DEGREE = 0,
+    GTAP_ORIENT_DEGEN = 1,
+};
+
+static const char* gtap_orient_mode_name(GtapOrientMode mode) {
+    switch (mode) {
+        case GTAP_ORIENT_DEGEN: return "degen";
+        case GTAP_ORIENT_DEGREE:
+        default: return "degree";
+    }
+}
 
 // Orient an undirected CSR on the GPU using KCGPU orientation kernels (kcgpu_orient/).
 // Timing matches KCGPU: transfer = rowPtr H2D; orient = preprocess kernels (+ edge_src).
@@ -19,6 +29,5 @@ cudaError_t gtap_gpu_orient_csr(
     int** d_out_col_idx,
     int** d_out_edge_src,
     size_t* out_num_edges,
-    HostGraph* h_out_exec_graph = nullptr,
     double* out_transfer_ms = nullptr,
     double* out_orient_ms = nullptr);

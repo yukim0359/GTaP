@@ -14,7 +14,6 @@ LOG_DIR=${LOG_DIR:-"$K_CLIQUE_DIR/legacy/gtap_kcgpu_k4_8_graph_tuned_logs"}
 
 K_VALUES=${K_VALUES:-"4 5 6 7 8"}
 REPEATS=${REPEATS:-1}
-VALIDATE=${VALIDATE:-0}
 DEVICE=${DEVICE:-0}
 
 RUN_GTAP=${RUN_GTAP:-1}
@@ -195,7 +194,11 @@ parse_gtap_orient_ms() {
 }
 
 parse_gtap_status() {
-    sed -n 's/Validation: *\(.*\)/\1/p' | tail -n 1
+    if grep -q 'scratch overflow'; then
+        echo FAILED_SCRATCH_OVERFLOW
+    else
+        echo OK
+    fi
 }
 
 parse_kcgpu_count() {
@@ -330,7 +333,7 @@ for graph_name_arg in $GRAPHS; do
             if [ "$RUN_GTAP" = "1" ]; then
                 gtap_log="$LOG_DIR/${graph_name}_k${k}_r${repeat}_gtap_${GTAP_VARIANT}.log"
                 set +e
-                gtap_out=$("$GTAP_BIN" "$graph_path" "$k" 0 "$VALIDATE" 2>&1)
+                gtap_out=$("$GTAP_BIN" "$graph_path" "$k" 2>&1)
                 gtap_exit=$?
                 set -e
                 printf "%s\n" "$gtap_out" | tee "$gtap_log"

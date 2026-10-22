@@ -5,8 +5,11 @@
 #include <vector>
 
 #include "gtap_thread.cuh"
-#include "../common/config_defaults.cuh"
+#include "config_defaults.cuh"
 #include "../common/gpu_orient.cuh"
+#include "../common/host_graph.hpp"
+#include "../common/host_options.hpp"
+#include "../common/timing.hpp"
 #include "device_state.cuh"
 
 __global__ void exec_kernel_k();
@@ -26,12 +29,8 @@ __global__ void exec_kernel_k();
     } while (0)
 
 struct GtapKCliqueParsedArgs {
-    bool file_mode = false;
-    int n = 128;
+    int n = 0;
     int k = 7;
-    int edge_probability_percent = 20;
-    int validate = 1;
-    unsigned seed = 42;
     HostGraph graph;
     const char* graph_path = nullptr;
 };
@@ -63,11 +62,9 @@ struct GtapKCliqueRunResult {
     double gtap_initialize_ms = 0.0;
     double kernel_ms = 0.0;
     double count_e2e_ms = 0.0;
-    double cpu_ms = 0.0;
     unsigned long long gpu_count = 0ULL;
-    unsigned long long cpu_count = 0ULL;
     int scratch_overflow = 0;
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     int candidate_highwater = 0;
     unsigned long long recurse_encoded_calls = 0ULL;
     unsigned long long recurse_encoded_roots = 0ULL;
@@ -99,30 +96,15 @@ static void gtap_k_clique_free_device_buffers(GtapKCliqueDeviceBuffers& buffers)
 }
 
 static bool gtap_k_clique_parse_args(int argc, char** argv, GtapKCliqueParsedArgs& args) {
-    args.file_mode = (argc >= 2 && !is_integer_string(argv[1]));
-    if (args.file_mode) {
-        args.graph_path = argv[1];
-        if (!load_graph_file(argv[1], args.graph)) return false;
-        args.n = args.graph.n;
-        if (argc >= 3 && is_integer_string(argv[2])) {
-            args.k = parse_int_arg(argv, argc, 2, 7);
-            args.validate = parse_int_arg(argv, argc, argc >= 5 ? 4 : 3, 0);
-        } else {
-            args.k = 7;
-            args.validate = parse_int_arg(argv, argc, 2, 0);
-        }
-    } else {
-        args.n = parse_int_arg(argv, argc, 1, 128);
+    if (argc < 2) {
+        fprintf(stderr, "usage: %s graph_path [k]\n", argv[0]);
+        return false;
+    }
+    args.graph_path = argv[1];
+    if (!load_graph_file(argv[1], args.graph)) return false;
+    args.n = args.graph.n;
+    if (argc >= 3 && is_integer_string(argv[2])) {
         args.k = parse_int_arg(argv, argc, 2, 7);
-        args.edge_probability_percent = parse_int_arg(argv, argc, 3, 20);
-        args.seed = (unsigned)parse_int_arg(argv, argc, 5, 42);
-        args.validate = parse_int_arg(argv, argc, 6, 1);
-        if (args.edge_probability_percent < 0 || args.edge_probability_percent > 100) {
-            fprintf(stderr, "edge_probability_percent must be in [0, 100], got %d\n",
-                    args.edge_probability_percent);
-            return false;
-        }
-        args.graph = generate_random_graph(args.n, args.edge_probability_percent, args.seed);
     }
 
     if (args.n < 1) {
@@ -133,10 +115,10 @@ static bool gtap_k_clique_parse_args(int argc, char** argv, GtapKCliqueParsedArg
         fprintf(stderr, "k must be in [3, n], got k=%d\n", args.k);
         return false;
     }
-    if (args.k - 3 > GTAP_K_BIT_BUFFER_COUNT) {
+    if (args.k - 3 > GTAP_BIT_BUFFER_COUNT) {
         fprintf(stderr,
-                "GTAP_K_BIT_BUFFER_COUNT=%d is too small for k=%d; need at least %d\n",
-                GTAP_K_BIT_BUFFER_COUNT,
+                "GTAP_BIT_BUFFER_COUNT=%d is too small for k=%d; need at least %d\n",
+                GTAP_BIT_BUFFER_COUNT,
                 args.k,
                 args.k - 3);
         return false;
@@ -166,32 +148,29 @@ static bool gtap_k_clique_preprocess(
         &buffers.d_col_idx,
         &buffers.d_edge_src,
         &num_oriented_edges,
-        args.validate ? &exec_graph : nullptr,
         &result.transfer_ms,
         &result.orient_ms));
-    if (!args.validate) {
-        exec_graph.n = args.graph.n;
-        exec_graph.undirected_edges = args.graph.undirected_edges;
-        exec_graph.oriented = true;
-        exec_graph.col_idx.resize(num_oriented_edges);
-    }
+    exec_graph.n = args.graph.n;
+    exec_graph.undirected_edges = args.graph.undirected_edges;
+    exec_graph.oriented = true;
+    exec_graph.col_idx.resize(num_oriented_edges);
 
     clock_gettime(CLOCK_MONOTONIC, &orient_stop);
 
     buffers.num_workers =
-        GTAP_K_RUNTIME_GRID_SIZE * GTAP_K_RUNTIME_BLOCK_SIZE;
-    const int words_per_worker = (GTAP_K_MAX_CANDIDATES + 63) >> 6;
+        GTAP_RUNTIME_GRID_SIZE * GTAP_RUNTIME_BLOCK_SIZE;
+    const int words_per_worker = (GTAP_MAX_CANDIDATES + 63) >> 6;
     buffers.cand_scratch_ints =
-        (size_t)buffers.num_workers * (size_t)GTAP_K_MAX_CANDIDATES;
+        (size_t)buffers.num_workers * (size_t)GTAP_MAX_CANDIDATES;
     buffers.bit_scratch_words =
-        (size_t)buffers.num_workers * (size_t)GTAP_K_BIT_BUFFER_COUNT * (size_t)words_per_worker;
+        (size_t)buffers.num_workers * (size_t)GTAP_BIT_BUFFER_COUNT * (size_t)words_per_worker;
     buffers.encode_scratch_words =
-        ((size_t)GTAP_K_ENCODE_SLOTS + (size_t)buffers.num_workers) *
-        (size_t)GTAP_K_MAX_CANDIDATES *
+        ((size_t)GTAP_ENCODE_SLOTS + (size_t)buffers.num_workers) *
+        (size_t)GTAP_MAX_CANDIDATES *
         (size_t)words_per_worker;
 
-    std::vector<int> encode_slot_stack((size_t)GTAP_K_ENCODE_SLOTS);
-    for (int i = 0; i < GTAP_K_ENCODE_SLOTS; ++i) {
+    std::vector<int> encode_slot_stack((size_t)GTAP_ENCODE_SLOTS);
+    for (int i = 0; i < GTAP_ENCODE_SLOTS; ++i) {
         encode_slot_stack[(size_t)i] = i;
     }
 
@@ -208,15 +187,15 @@ static bool gtap_k_clique_preprocess(
         encode_slot_stack.size() * sizeof(int),
         cudaMemcpyHostToDevice));
     if (hooks.set_cuda_stack_limit) {
-        CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, GTAP_K_CUDA_STACK_SIZE));
+        CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, GTAP_CUDA_STACK_SIZE));
         size_t actual_stack_size = 0;
         CUDA_CHECK(cudaDeviceGetLimit(
             &actual_stack_size, cudaLimitStackSize));
         printf(
             "CUDA stack limit: requested=%d actual=%zu bytes\n",
-            GTAP_K_CUDA_STACK_SIZE, actual_stack_size);
+            GTAP_CUDA_STACK_SIZE, actual_stack_size);
     }
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     CUDA_CHECK(cudaMalloc(
         &buffers.d_recurse_tree_stats,
         (size_t)buffers.num_workers * sizeof(unsigned long long)));
@@ -254,10 +233,10 @@ static bool gtap_k_clique_run_count_phase(
 
     clock_gettime(CLOCK_MONOTONIC, &gtap_init_start);
     gtap_thread_config config{
-        .grid_size = GTAP_K_RUNTIME_GRID_SIZE,
-        .block_size = GTAP_K_RUNTIME_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_K_RUNTIME_MAX_TASKS_PER_WARP,
-        .num_queues = GTAP_K_RUNTIME_NUM_QUEUES,
+        .grid_size = GTAP_RUNTIME_GRID_SIZE,
+        .block_size = GTAP_RUNTIME_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_RUNTIME_MAX_TASKS_PER_WARP,
+        .num_queues = GTAP_RUNTIME_NUM_QUEUES,
     };
     cudaError_t err = gtap_initialize(config);
     clock_gettime(CLOCK_MONOTONIC, &gtap_init_stop);
@@ -269,14 +248,14 @@ static bool gtap_k_clique_run_count_phase(
         return false;
     }
 
-    const int encode_slot_top_init = GTAP_K_ENCODE_SLOTS;
+    const int encode_slot_top_init = GTAP_ENCODE_SLOTS;
     unsigned long long zero = 0ULL;
     int scratch_overflow = 0;
     int encode_slot_lock_init = 0;
     CUDA_CHECK(cudaMemcpyToSymbol(g_answer, &zero, sizeof(unsigned long long)));
     CUDA_CHECK(cudaMemcpyToSymbol(g_scratch_overflow, &scratch_overflow, sizeof(int)));
     CUDA_CHECK(cudaMemcpyToSymbol(g_encode_slot_lock, &encode_slot_lock_init, sizeof(int)));
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     int candidate_highwater = 0;
     unsigned long long profile_cycles_zero[K_PROFILE_KINDS] = {0ULL};
     int profile_info_zero[K_PROFILE_KINDS * K_PROFILE_FIELDS] = {0};
@@ -324,7 +303,7 @@ static bool gtap_k_clique_run_count_phase(
             return false;
         }
     }
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     err = bind_recurse_stats(buffers.d_recurse_tree_stats);
     if (err != cudaSuccess) {
         fprintf(stderr, "bind_recurse_stats failed: %s\n", cudaGetErrorString(err));
@@ -361,7 +340,7 @@ static bool gtap_k_clique_run_count_phase(
     CUDA_CHECK(cudaMemcpyFromSymbol(&result.gpu_count, g_answer, sizeof(unsigned long long)));
     CUDA_CHECK(cudaMemcpyFromSymbol(
         &result.scratch_overflow, g_scratch_overflow, sizeof(int)));
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     CUDA_CHECK(cudaMemcpyFromSymbol(
         &result.candidate_highwater, g_candidate_highwater, sizeof(int)));
     CUDA_CHECK(cudaMemcpyFromSymbol(
@@ -405,31 +384,25 @@ static void gtap_k_clique_print_results(
     GtapOrientMode orient_mode,
     const GtapKCliqueDeviceBuffers& buffers,
     const GtapKCliqueRunResult& result) {
-    if (args.file_mode) {
-        printf("k-clique graph file: %s n=%d k=%d edges=%zu mode=%s-oriented\n",
-               args.graph_path, args.n, args.k, args.graph.undirected_edges,
-               gtap_orient_mode_name(orient_mode));
-    } else {
-        printf("k-clique random graph: n=%d k=%d p=%d%% seed=%u edges=%zu mode=%s-oriented\n",
-               args.n, args.k, args.edge_probability_percent, args.seed,
-               args.graph.undirected_edges, gtap_orient_mode_name(orient_mode));
-    }
+    printf("k-clique graph file: %s n=%d k=%d edges=%zu mode=%s-oriented\n",
+           args.graph_path, args.n, args.k, args.graph.undirected_edges,
+           gtap_orient_mode_name(orient_mode));
     printf("oriented_edges: %zu\n", exec_graph.col_idx.size());
-    printf("GTAP_K_RANGE_CUTOFF: %d\n", GTAP_K_RANGE_CUTOFF);
-    printf("GTAP_K_MAX_CANDIDATES: %d\n", GTAP_K_MAX_CANDIDATES);
-    printf("GTAP_K_BIT_BUFFER_COUNT: %d\n", GTAP_K_BIT_BUFFER_COUNT);
-    printf("GTAP_K_CUDA_STACK_SIZE: %d\n", GTAP_K_CUDA_STACK_SIZE);
+    printf("GTAP_RANGE_CUTOFF: %d\n", GTAP_RANGE_CUTOFF);
+    printf("GTAP_MAX_CANDIDATES: %d\n", GTAP_MAX_CANDIDATES);
+    printf("GTAP_BIT_BUFFER_COUNT: %d\n", GTAP_BIT_BUFFER_COUNT);
+    printf("GTAP_CUDA_STACK_SIZE: %d\n", GTAP_CUDA_STACK_SIZE);
     if (hooks.print_variant_tuning != nullptr) {
         hooks.print_variant_tuning();
     }
     printf("scratch workers: %d\n", buffers.num_workers);
     printf("candidate scratch: %zu ints\n", buffers.cand_scratch_ints);
     printf("bit scratch: %zu uint64 words\n", buffers.bit_scratch_words);
-    printf("encode slots: %d\n", GTAP_K_ENCODE_SLOTS);
+    printf("encode slots: %d\n", GTAP_ENCODE_SLOTS);
     printf("encode scratch: %zu uint64 words (slots + per-worker)\n", buffers.encode_scratch_words);
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     printf("GTaP max candidate length: %d / %d\n",
-           result.candidate_highwater, GTAP_K_MAX_CANDIDATES);
+           result.candidate_highwater, GTAP_MAX_CANDIDATES);
     {
         printf("GTaP recurse calls (encoded): %llu (roots: %llu",
                result.recurse_encoded_calls, result.recurse_encoded_roots);
@@ -442,15 +415,8 @@ static void gtap_k_clique_print_results(
     }
 #endif
     printf("GTaP count: %llu\n", result.gpu_count);
-    if (args.validate) {
-        printf("CPU count:  %llu\n", result.cpu_count);
-        printf("Validation: %s\n",
-               (!result.scratch_overflow && result.gpu_count == result.cpu_count)
-                   ? "PASSED"
-                   : "FAILED");
-    } else {
-        printf("Validation: %s\n",
-               result.scratch_overflow ? "FAILED_SCRATCH_OVERFLOW" : "SKIPPED");
+    if (result.scratch_overflow) {
+        printf("scratch overflow\n");
     }
     printf("GTaP count e2e time: %.3f ms\n", result.count_e2e_ms);
     printf("GTaP count phase time: %.3f ms\n", result.count_phase_ms);
@@ -461,9 +427,8 @@ static void gtap_k_clique_print_results(
     printf("GTaP workspace alloc time: %.3f ms\n", result.workspace_ms);
     printf("GTaP count setup time: %.3f ms\n", result.count_setup_ms);
     printf("GTaP gtap_initialize time: %.3f ms\n", result.gtap_initialize_ms);
-    if (args.validate) printf("CPU execution time:  %.3f ms\n", result.cpu_ms);
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     printf("Max task profile:\n");
     for (int kind = 0; kind < K_PROFILE_KINDS; ++kind) {
         int base = kind * K_PROFILE_FIELDS;
@@ -514,20 +479,10 @@ static int gtap_k_clique_host_main(int argc, char** argv, const GtapKCliqueHostH
         return 1;
     }
 
-    if (args.validate) {
-        timespec cpu_start, cpu_stop;
-        clock_gettime(CLOCK_MONOTONIC, &cpu_start);
-        result.cpu_count = cpu_count_k_oriented(exec_graph, args.k);
-        clock_gettime(CLOCK_MONOTONIC, &cpu_stop);
-        result.cpu_ms = elapsed_ms(cpu_start, cpu_stop);
-    }
-
     gtap_k_clique_print_results(args, hooks, exec_graph, orient_mode, buffers, result);
 
     if (hooks.free_extras != nullptr) hooks.free_extras();
     gtap_k_clique_free_device_buffers(buffers);
     gtap_finalize();
-    return (!result.scratch_overflow && (!args.validate || result.gpu_count == result.cpu_count))
-               ? 0
-               : 2;
+    return result.scratch_overflow ? 2 : 0;
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate data/nCr.txt for the pivot nCr lookup table.
 
-Writes GTAP_K_NCR_ROWS x GTAP_K_NCR_COLS comma-separated doubles (%.18e),
+Writes GTAP_NCR_ROWS x GTAP_NCR_COLS comma-separated doubles (%.18e),
 no trailing comma. Each entry is the correctly rounded float of C(n, r).
 The generated file is gitignored; rebuild with `make ncr`.
 """

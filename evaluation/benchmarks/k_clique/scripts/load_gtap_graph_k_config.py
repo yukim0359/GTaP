@@ -23,9 +23,9 @@ BUILD_DEFAULTS = {
 }
 
 FIELD_TO_ENV = {
-    "heavy": "GTAP_K_HEAVY_CANDIDATES",
-    "second_heavy": "GTAP_K_SECOND_HEAVY_CANDIDATES",
-    "third_heavy": "GTAP_K_THIRD_HEAVY_CANDIDATES",
+    "heavy": "GTAP_HEAVY_CANDIDATES",
+    "second_heavy": "GTAP_SECOND_HEAVY_CANDIDATES",
+    "third_heavy": "GTAP_THIRD_HEAVY_CANDIDATES",
     "orientation_max_tasks_per_warp": "GTAP_ORIENTATION_MAX_TASKS_PER_WARP",
     "pivot_max_tasks_per_warp": "GTAP_PIVOT_MAX_TASKS_PER_WARP",
 }
@@ -106,9 +106,9 @@ def print_shell_export(env: dict[str, str]) -> None:
 def print_make_args(env: dict[str, str], variant: str) -> None:
     if variant == "orientation":
         keys = [
-            "GTAP_K_HEAVY_CANDIDATES",
-            "GTAP_K_SECOND_HEAVY_CANDIDATES",
-            "GTAP_K_THIRD_HEAVY_CANDIDATES",
+            "GTAP_HEAVY_CANDIDATES",
+            "GTAP_SECOND_HEAVY_CANDIDATES",
+            "GTAP_THIRD_HEAVY_CANDIDATES",
             "GTAP_ORIENTATION_MAX_TASKS_PER_WARP",
         ]
     elif variant == "pivot":

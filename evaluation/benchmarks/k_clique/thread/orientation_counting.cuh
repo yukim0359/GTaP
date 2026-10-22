@@ -38,7 +38,7 @@ __device__ __forceinline__ int intersect_rows_to_candidate(int u, int v, int* ca
         int a = g_col_idx[iu];
         int b = g_col_idx[iv];
         if (a == b) {
-            if (len >= GTAP_K_MAX_CANDIDATES) {
+            if (len >= GTAP_MAX_CANDIDATES) {
                 mark_overflow();
                 return -1;
             }
@@ -51,7 +51,7 @@ __device__ __forceinline__ int intersect_rows_to_candidate(int u, int v, int* ca
             ++iv;
         }
     }
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     atomicMax(&g_candidate_highwater, len);
 #endif
     return len;
@@ -180,7 +180,7 @@ __device__ unsigned long long count_encoded_recursive(
     const unsigned long long* P,
     int need,
     int buf_level) {
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     stats_on_encoded_recurse(buf_level);
 #endif
     if (need == 0) return 1ULL;
@@ -194,7 +194,7 @@ __device__ unsigned long long count_encoded_recursive(
         return count_encoded_edges_in_bitset(enc, m, P);
     }
 
-    if (buf_level + 1 >= GTAP_K_BIT_BUFFER_COUNT) {
+    if (buf_level + 1 >= GTAP_BIT_BUFFER_COUNT) {
         mark_overflow();
         return 0ULL;
     }
@@ -229,7 +229,7 @@ __device__ __forceinline__ unsigned long long count_all_from_candidate_encoded(
     int need) {
     if (need == 0) return 1ULL;
     if (m < need) return 0ULL;
-    if (m > GTAP_K_MAX_CANDIDATES) return 0ULL;
+    if (m > GTAP_MAX_CANDIDATES) return 0ULL;
     if (need == 2) return count_full_candidate_edges(cand, m);
 
     unsigned long long* enc = encode_buffer();

@@ -4,7 +4,7 @@
 #
 # Columns:
 #   heavy, second_heavy, third_heavy
-#     -> GTAP_K_HEAVY_CANDIDATES / SECOND / THIRD (orientation only)
+#     -> GTAP_HEAVY_CANDIDATES / SECOND / THIRD (orientation only)
 #   orientation_max_tasks_per_warp -> GTAP_ORIENTATION_MAX_TASKS_PER_WARP
 #   pivot_max_tasks_per_warp       -> GTAP_PIVOT_MAX_TASKS_PER_WARP
 #

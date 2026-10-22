@@ -4,9 +4,9 @@
 #include <cstdlib>
 
 // #define GTAP_ENABLE_PROFILING
-// #define GTAP_K_STATS
+// #define GTAP_STATS
 #include "gtap_thread.cuh"
-#include "../common/config_defaults.cuh"
+#include "config_defaults.cuh"
 
 #define K_PROFILE_FIELDS 8
 enum KProfileKind {
@@ -20,7 +20,7 @@ enum KProfileKind {
     K_PROFILE_KINDS
 };
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
 static const char* task_kind_name(int kind) {
     switch (kind) {
         case K_KIND_EDGE_COUNT: return "edge_count";
@@ -46,10 +46,10 @@ static const char* task_kind_name(int kind) {
 #include "gtap_host_main.hpp"
 
 static void orientation_print_tuning() {
-    printf("GTAP_K_HEAVY_CANDIDATES: %d\n", GTAP_K_HEAVY_CANDIDATES);
-    printf("GTAP_K_SECOND_HEAVY_CANDIDATES: %d\n", GTAP_K_SECOND_HEAVY_CANDIDATES);
-    printf("GTAP_K_THIRD_HEAVY_CANDIDATES: %d\n", GTAP_K_THIRD_HEAVY_CANDIDATES);
-    printf("GTAP_K_WAIT_FANOUT: %d\n", GTAP_K_WAIT_FANOUT);
+    printf("GTAP_HEAVY_CANDIDATES: %d\n", GTAP_HEAVY_CANDIDATES);
+    printf("GTAP_SECOND_HEAVY_CANDIDATES: %d\n", GTAP_SECOND_HEAVY_CANDIDATES);
+    printf("GTAP_THIRD_HEAVY_CANDIDATES: %d\n", GTAP_THIRD_HEAVY_CANDIDATES);
+    printf("GTAP_WAIT_FANOUT: %d\n", GTAP_WAIT_FANOUT);
 }
 
 int main(int argc, char** argv) {

@@ -8,7 +8,7 @@
 #include <vector>
 
 static inline size_t gtap_k_ncr_table_elems() {
-    return (size_t)GTAP_K_NCR_ROWS * (size_t)GTAP_K_NCR_COLS;
+    return (size_t)GTAP_NCR_ROWS * (size_t)GTAP_NCR_COLS;
 }
 
 static inline std::string gtap_k_default_ncr_path() {
@@ -25,14 +25,14 @@ static inline bool gtap_k_load_ncr_table_from_file(
     if (infile == nullptr) return false;
 
     table.assign(gtap_k_ncr_table_elems(), 0ULL);
-    for (int row = 0; row < GTAP_K_NCR_ROWS; ++row) {
-        for (int col = 0; col < GTAP_K_NCR_COLS; ++col) {
+    for (int row = 0; row < GTAP_NCR_ROWS; ++row) {
+        for (int col = 0; col < GTAP_NCR_COLS; ++col) {
             double value = 0.0;
             if (fscanf(infile, "%lf,", &value) != 1) {
                 fclose(infile);
                 return false;
             }
-            table[(size_t)row * (size_t)GTAP_K_NCR_COLS + (size_t)col] =
+            table[(size_t)row * (size_t)GTAP_NCR_COLS + (size_t)col] =
                 (unsigned long long)value;
         }
     }

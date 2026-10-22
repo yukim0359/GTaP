@@ -37,8 +37,8 @@ __device__ __forceinline__ unsigned long long binomial_ull(int n, int k) {
 }
 
 __device__ __forceinline__ unsigned long long lookup_nCr(int drop, int c) {
-    if (drop >= 0 && drop < GTAP_K_NCR_ROWS && c >= 0 && c < GTAP_K_NCR_COLS) {
-        return g_nCr[(size_t)drop * (size_t)GTAP_K_NCR_COLS + (size_t)c];
+    if (drop >= 0 && drop < GTAP_NCR_ROWS && c >= 0 && c < GTAP_NCR_COLS) {
+        return g_nCr[(size_t)drop * (size_t)GTAP_NCR_COLS + (size_t)c];
     }
     return binomial_ull(drop, c);
 }
@@ -57,7 +57,7 @@ __device__ __forceinline__ int intersect_rows_to_candidate(int u, int v, int* ca
         int a = g_col_idx[iu];
         int b = g_col_idx[iv];
         if (a == b) {
-            if (len >= GTAP_K_MAX_CANDIDATES) {
+            if (len >= GTAP_MAX_CANDIDATES) {
                 mark_overflow();
                 return -1;
             }
@@ -70,7 +70,7 @@ __device__ __forceinline__ int intersect_rows_to_candidate(int u, int v, int* ca
             ++iv;
         }
     }
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     atomicMax(&g_candidate_highwater, len);
 #endif
     return len;
@@ -113,9 +113,9 @@ __device__ __forceinline__ unsigned long long* pivot_cl_buffer(int level) {
 }
 
 #define K_PIVOT_STATE_LEVELS \
-    ((GTAP_K_PIVOT_STATE_LEVELS < (GTAP_K_BIT_BUFFER_COUNT >> 1)) \
-         ? GTAP_K_PIVOT_STATE_LEVELS \
-         : (GTAP_K_BIT_BUFFER_COUNT >> 1))
+    ((GTAP_PIVOT_STATE_LEVELS < (GTAP_BIT_BUFFER_COUNT >> 1)) \
+         ? GTAP_PIVOT_STATE_LEVELS \
+         : (GTAP_BIT_BUFFER_COUNT >> 1))
 
 #if K_PIVOT_STATE_LEVELS <= 1
 #error "K_PIVOT_STATE_LEVELS must be at least 2"
@@ -238,7 +238,7 @@ __device__ __forceinline__ void build_encoded_candidate_graph_symmetric_block(
     int words = words_for_len(m);
     int stride = max_words();
 
-#if GTAP_K_BLOCK_ENCODE_KCGPU_STYLE
+#if GTAP_BLOCK_ENCODE_KCGPU_STYLE
     int total_words = m * words;
     for (int offset = threadIdx.x; offset < total_words; offset += blockDim.x) {
         int row = offset / words;
@@ -400,7 +400,7 @@ __device__ unsigned long long count_pivot_encoded_loop_block(
     int start_pivot) {
     int words = words_for_len(m);
     constexpr int max_state_levels = K_PIVOT_STATE_LEVELS;
-    int max_buffer_levels = GTAP_K_BIT_BUFFER_COUNT >> 1;
+    int max_buffer_levels = GTAP_BIT_BUFFER_COUNT >> 1;
     if (start_level < 0 || start_level >= max_state_levels) {
         if (threadIdx.x == 0) g_scratch_overflow = 1;
         return 0ULL;
@@ -572,7 +572,7 @@ __device__ int rebuild_pivot_prefix_block(
     unsigned long long* terminal_count) {
     *terminal_count = 0ULL;
     constexpr int max_state_levels = K_PIVOT_STATE_LEVELS;
-    if (depth < 0 || depth >= max_state_levels || depth > GTAP_K_RANGE_MAX_FIXED) {
+    if (depth < 0 || depth >= max_state_levels || depth > GTAP_RANGE_MAX_FIXED) {
         return K_PREFIX_REBUILD_INVALID;
     }
     int words = words_for_len(m);
@@ -621,7 +621,7 @@ __device__ int rebuild_pivot_prefix_block(
         if (!is_bit_set(parent_pl, new_idx)) return K_PREFIX_REBUILD_INVALID;
 
         int child_level = level + 1;
-        if (child_level >= max_state_levels || child_level >= (GTAP_K_BIT_BUFFER_COUNT >> 1)) {
+        if (child_level >= max_state_levels || child_level >= (GTAP_BIT_BUFFER_COUNT >> 1)) {
             if (threadIdx.x == 0) g_scratch_overflow = 1;
             return K_PREFIX_REBUILD_INVALID;
         }
@@ -667,7 +667,7 @@ __device__ __forceinline__ unsigned long long pivot_prefix_work_estimate(
     int child_cl_count,
     int child_max_intersection,
     int remaining) {
-    const unsigned long long cap = (unsigned long long)GTAP_K_PIVOT_PREFIX_WORK_THRESHOLD * 1024ULL;
+    const unsigned long long cap = (unsigned long long)GTAP_PIVOT_PREFIX_WORK_THRESHOLD * 1024ULL;
     unsigned long long width = (unsigned long long)(child_pl_count > 0 ? child_pl_count : 1);
     if (remaining <= 0) {
         int tail_n = child_max_intersection;

@@ -19,18 +19,18 @@
 #include "../common/prefix_fixed.cuh"
 
 __device__ __forceinline__ int heavy_threshold_for_depth(int depth) {
-    if (depth == 0) return GTAP_K_SECOND_HEAVY_CANDIDATES;
-    if (depth == 1) return GTAP_K_THIRD_HEAVY_CANDIDATES;
+    if (depth == 0) return GTAP_SECOND_HEAVY_CANDIDATES;
+    if (depth == 1) return GTAP_THIRD_HEAVY_CANDIDATES;
     return 1000000000;
 }
 
 __device__ __forceinline__ int range_fanout_for_depth(int m, int depth, bool shared_slot_path) {
-    int fanout = shared_slot_path ? GTAP_K_WAIT_FANOUT : GTAP_K_TASK_FANOUT;
+    int fanout = shared_slot_path ? GTAP_WAIT_FANOUT : GTAP_TASK_FANOUT;
     (void)depth;
     return (m + fanout - 1) / fanout;
 }
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
 __device__ __forceinline__ int shared_range_profile_kind(int depth) {
     if (depth <= 0) return K_KIND_SHARED_FIRST;
     if (depth == 1) return K_KIND_SHARED_SECOND;
@@ -49,8 +49,8 @@ __device__ bool rebuild_encoded_prefix(
     int depth,
     const KRangeFixed& fixed) {
     if (depth <= 0) return true;
-    if (depth + 1 >= GTAP_K_BIT_BUFFER_COUNT) return false;
-    if (depth > GTAP_K_RANGE_MAX_FIXED) return false;
+    if (depth + 1 >= GTAP_BIT_BUFFER_COUNT) return false;
+    if (depth > GTAP_RANGE_MAX_FIXED) return false;
 
     init_full_bits(bit_buffer(0), m);
     for (int i = 0; i < depth; ++i) {
@@ -74,12 +74,12 @@ __device__ void edgek_shared_encoded_range_task(
     KRangeFixed fixed,
     int range_begin,
     int range_end) {
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     unsigned long long t0 = global_time();
 #endif
     int need = clique_tail_need();
-    if (m < need || m > GTAP_K_MAX_CANDIDATES) return;
-    if (depth < 0 || depth + 1 >= GTAP_K_BIT_BUFFER_COUNT) return;
+    if (m < need || m > GTAP_MAX_CANDIDATES) return;
+    if (depth < 0 || depth + 1 >= GTAP_BIT_BUFFER_COUNT) return;
 
     if (range_begin < 0) range_begin = 0;
     if (range_end > m) range_end = m;
@@ -133,11 +133,11 @@ __device__ void edgek_shared_encoded_range_task(
 
     if (local != 0ULL) atomicAdd(&g_answer, local);
     if (spawned) {
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
         unsigned long long wait_start = global_time();
 #endif
         #pragma gtap taskwait
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
         record_task_profile(
             shared_range_wait_profile_kind(depth),
             global_time() - wait_start,
@@ -150,7 +150,7 @@ __device__ void edgek_shared_encoded_range_task(
             (int)local);
 #endif
     }
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
     record_task_profile(
         shared_range_profile_kind(depth),
         global_time() - t0,
@@ -177,8 +177,8 @@ __device__ void edgek_encoded_range_task(
     int* cand = cand_buffer();
     int m = intersect_rows_to_candidate(u, v, cand);
     int need = clique_tail_need();
-    if (m < need || m > GTAP_K_MAX_CANDIDATES) return;
-    if (depth < 0 || depth + 1 >= GTAP_K_BIT_BUFFER_COUNT) return;
+    if (m < need || m > GTAP_MAX_CANDIDATES) return;
+    if (depth < 0 || depth + 1 >= GTAP_BIT_BUFFER_COUNT) return;
 
     if (range_begin < 0) range_begin = 0;
     if (range_end > m) range_end = m;
@@ -238,7 +238,7 @@ __device__ void edgek_edge(int ei) {
     {
         int u = g_edge_src[ei];
         int v = g_col_idx[ei];
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
         unsigned long long t0 = global_time();
 #endif
         int need = clique_tail_need();
@@ -254,7 +254,7 @@ __device__ void edgek_edge(int ei) {
         if (need == 2) {
             unsigned long long local = count_full_candidate_edges(cand, m);
             if (local != 0ULL) atomicAdd(&g_answer, local);
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
             record_task_profile(
                 K_KIND_EDGE_COUNT,
                 global_time() - t0,
@@ -269,14 +269,14 @@ __device__ void edgek_edge(int ei) {
             return;
         }
 
-        if (m >= GTAP_K_HEAVY_CANDIDATES) {
+        if (m >= GTAP_HEAVY_CANDIDATES) {
             int slot = acquire_encode_slot();
             if (slot >= 0) {
                 unsigned long long* enc = encode_slot_buffer(slot);
                 build_encoded_candidate_graph(cand, m, enc);
 
                 KRangeFixed fixed;
-                int chunk = (m + GTAP_K_WAIT_FANOUT - 1) / GTAP_K_WAIT_FANOUT;
+                int chunk = (m + GTAP_WAIT_FANOUT - 1) / GTAP_WAIT_FANOUT;
                 for (int s = 0; s < m; s += chunk) {
                     int e = s + chunk;
                     if (e > m) e = m;
@@ -287,11 +287,11 @@ __device__ void edgek_edge(int ei) {
                         s, e);
                 }
 
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
                 unsigned long long wait_start = global_time();
 #endif
                 #pragma gtap taskwait
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
                 record_task_profile(
                     K_KIND_EDGE_WAIT,
                     global_time() - wait_start,
@@ -305,7 +305,7 @@ __device__ void edgek_edge(int ei) {
 #endif
 
                 release_encode_slot(slot);
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
                 record_task_profile(
                     K_KIND_EDGE_COUNT,
                     global_time() - t0,
@@ -321,7 +321,7 @@ __device__ void edgek_edge(int ei) {
             }
 
             KRangeFixed fixed;
-            int chunk = (m + GTAP_K_TASK_FANOUT - 1) / GTAP_K_TASK_FANOUT;
+            int chunk = (m + GTAP_TASK_FANOUT - 1) / GTAP_TASK_FANOUT;
             for (int s = 0; s < m; s += chunk) {
                 int e = s + chunk;
                 if (e > m) e = m;
@@ -331,7 +331,7 @@ __device__ void edgek_edge(int ei) {
                     fixed,
                     s, e);
             }
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
             record_task_profile(
                 K_KIND_EDGE_COUNT,
                 global_time() - t0,
@@ -348,7 +348,7 @@ __device__ void edgek_edge(int ei) {
 
         unsigned long long local = count_all_from_candidate_encoded(cand, m, need);
         if (local != 0ULL) atomicAdd(&g_answer, local);
-#ifdef GTAP_K_STATS
+#ifdef GTAP_STATS
         record_task_profile(
             K_KIND_EDGE_COUNT,
             global_time() - t0,
@@ -368,8 +368,8 @@ __device__ void edgek_edge(int ei) {
 __device__ void edgek_range(int begin_edge, int end_edge) {
     if (end_edge <= begin_edge) return;
 
-    if (end_edge - begin_edge > GTAP_K_RANGE_CUTOFF) {
-        int chunk = (end_edge - begin_edge + GTAP_K_TASK_FANOUT - 1) / GTAP_K_TASK_FANOUT;
+    if (end_edge - begin_edge > GTAP_RANGE_CUTOFF) {
+        int chunk = (end_edge - begin_edge + GTAP_TASK_FANOUT - 1) / GTAP_TASK_FANOUT;
         for (int s = begin_edge; s < end_edge; s += chunk) {
             int e = s + chunk;
             if (e > end_edge) e = end_edge;

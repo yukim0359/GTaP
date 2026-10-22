@@ -2,7 +2,7 @@
 
 #include "kcgpu_orient/kcgpu_orient_api.hpp"
 
-#include "host_graph.hpp"
+#include "timing.hpp"
 
 #include <cstdio>
 #include <time.h>
@@ -35,7 +35,6 @@ cudaError_t gtap_gpu_orient_csr(
     int** d_out_col_idx,
     int** d_out_edge_src,
     size_t* out_num_edges,
-    HostGraph* h_out_exec_graph,
     double* out_transfer_ms,
     double* out_orient_ms) {
     if (d_out_row_ptr == nullptr || d_out_col_idx == nullptr || d_out_edge_src == nullptr ||
@@ -43,6 +42,7 @@ cudaError_t gtap_gpu_orient_csr(
         n <= 0) {
         return cudaErrorInvalidValue;
     }
+    (void)undirected_edges;
 
     *d_out_row_ptr = nullptr;
     *d_out_col_idx = nullptr;
@@ -103,6 +103,7 @@ cudaError_t gtap_gpu_orient_csr(
 
     clock_gettime(CLOCK_MONOTONIC, &orient_stop);
     kcgpu_orient_host_state_destroy(host_state);
+    host_state = nullptr;
 
     *out_num_edges = num_oriented_edges;
     if (out_transfer_ms != nullptr) {
@@ -110,26 +111,6 @@ cudaError_t gtap_gpu_orient_csr(
     }
     if (out_orient_ms != nullptr) {
         *out_orient_ms = elapsed_ms(orient_start, orient_stop);
-    }
-
-    if (h_out_exec_graph != nullptr) {
-        h_out_exec_graph->n = n;
-        h_out_exec_graph->undirected_edges = undirected_edges;
-        h_out_exec_graph->oriented = true;
-        h_out_exec_graph->row_ptr.resize((size_t)n + 1);
-        h_out_exec_graph->col_idx.resize(num_oriented_edges);
-        err = cudaMemcpy(
-            h_out_exec_graph->row_ptr.data(),
-            *d_out_row_ptr,
-            (size_t)(n + 1) * sizeof(int),
-            cudaMemcpyDeviceToHost);
-        if (err != cudaSuccess) goto fail;
-        err = cudaMemcpy(
-            h_out_exec_graph->col_idx.data(),
-            *d_out_col_idx,
-            num_oriented_edges * sizeof(int),
-            cudaMemcpyDeviceToHost);
-        if (err != cudaSuccess) goto fail;
     }
 
     return cudaSuccess;
