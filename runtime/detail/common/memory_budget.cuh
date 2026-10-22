@@ -184,15 +184,6 @@ inline cudaError_t resolve_tasks_per_unit(
                 requested_tasks,
                 num_queues);
         }
-        const size_t queue_capacity = resolved_tasks_per_unit / queues;
-        if (queue_capacity == 0) {
-            return error.fail(
-                cudaErrorInvalidValue,
-                "%s=%d provides no slots per queue when num_queues=%d",
-                task_capacity_name,
-                requested_tasks,
-                num_queues);
-        }
     } else {
         size_t budget_bytes = 0;
         cudaError_t status = resolve_memory_budget(
