@@ -1,9 +1,11 @@
 # Job / smoke logs
 logs/
 
-# Graphs and regenerated plots
-data/
+# Regenerated plots
 img/
+
+# Binomial table. Regenerable from GTAP_K_NCR_ROWS x GTAP_K_NCR_COLS.
+data/nCr.txt
 
 # Local-only legacy sources
 legacy/
