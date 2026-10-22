@@ -59,7 +59,7 @@ __device__ __forceinline__ int get_task_id_from_warp_pool(
         }
     }
     const int free_count = *id_list_free_pos - old_alloc;
-    if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
+    if (free_count <= 0) {
         GTAP_DETAIL_RECORD_TASK_ID_POOL_EXHAUSTED(task_id, tasks_per_warp);
     }
     return task_id;

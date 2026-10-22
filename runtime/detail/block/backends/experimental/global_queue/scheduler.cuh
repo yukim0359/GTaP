@@ -139,7 +139,7 @@ __device__ __forceinline__ void push_global_queue(
         base_pos = atomicAdd(&d_queue_alloc, (unsigned int)push_cnt);
         // Overflow check (unsigned subtraction handles wrap-around)
         unsigned int head_val = load_L2(&d_queue_head);
-        if (base_pos + (unsigned int)push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit) - GTAP_DETAIL_QUEUE_MARGIN) {
+        if (base_pos + (unsigned int)push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit)) {
             GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
                 -1, 0,
                 d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit);

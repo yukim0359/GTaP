@@ -22,7 +22,7 @@ __device__ __forceinline__ void stage_task_id(TaskContext* ctx, int task_id) {
     int old_bottom = atomicAdd(&ctx->queue_bottom, 1);
     int top = load_L2(&q->top);
     const int queue_capacity = d_launch_config.queue_capacity;
-    if (old_bottom + 1 - top > queue_capacity - GTAP_DETAIL_QUEUE_MARGIN) {
+    if (old_bottom + 1 - top > queue_capacity) {
         GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
             task_id, -1, queue_capacity);
     }

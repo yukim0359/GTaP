@@ -257,7 +257,7 @@ __device__ __forceinline__ void stage_task_id(
         warp_queue_metadata(queue_idx, get_warp_id_global());
     int top = load_L2(&q->top);
     const int capacity = d_launch_config.queue_capacity;
-    if (old_tail + 1 - top > capacity - GTAP_DETAIL_QUEUE_MARGIN) {
+    if (old_tail + 1 - top > capacity) {
         GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
             task_id, queue_idx, capacity);
     }

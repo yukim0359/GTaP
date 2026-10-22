@@ -7,10 +7,6 @@
 
 // #define GTAP_DETAIL_INTERNAL_DEBUG
 
-// Safety thresholds for error detection
-#define GTAP_DETAIL_QUEUE_MARGIN 100
-#define GTAP_DETAIL_TASK_ID_POOL_MIN_FREE 100
-
 namespace gtap::detail {
 
 struct launch_config {
