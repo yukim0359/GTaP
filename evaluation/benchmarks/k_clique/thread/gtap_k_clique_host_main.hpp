@@ -44,6 +44,7 @@ struct GtapKCliqueDeviceBuffers {
 };
 
 struct GtapKCliqueRunResult {
+    // See README.md "Timing". count_e2e = orient + workspace + count_phase.
     double preprocess_ms = 0.0;
     double transfer_ms = 0.0;
     double orient_ms = 0.0;

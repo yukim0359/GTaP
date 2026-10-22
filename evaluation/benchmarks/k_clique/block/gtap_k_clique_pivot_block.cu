@@ -23,7 +23,7 @@ enum KProfileKind {
 #include "k_clique_block_device_state.cuh"
 #include "k_clique_pivot_block_counting.cuh"
 #include "k_clique_pivot_block_tasks.cuh"
-#include "../k_clique_ncr_host.hpp"
+#include "k_clique_ncr_host.hpp"
 #include "gtap_k_clique_block_host_main.hpp"
 
 #ifndef GTAP_DEFAULT_ORIENT
@@ -32,17 +32,10 @@ enum KProfileKind {
 
 static unsigned long long* g_d_nCr = nullptr;
 
-static std::string pivot_block_default_ncr_path(const char* source_file) {
-    std::string path(source_file);
-    const std::string::size_type pos = path.find_last_of("/\\");
-    if (pos == std::string::npos) return "../data/nCr.txt";
-    return path.substr(0, pos + 1) + "../data/nCr.txt";
-}
-
 static bool pivot_count_phase_begin(GtapKCliqueDeviceBuffers& buffers) {
     (void)buffers;
     std::vector<unsigned long long> ncr_host;
-    const std::string default_ncr_path = pivot_block_default_ncr_path(__FILE__);
+    const std::string default_ncr_path = gtap_k_default_ncr_path();
     const char* ncr_file = getenv("GTAP_K_NCR_FILE");
     if (ncr_file == nullptr) ncr_file = default_ncr_path.c_str();
     if (!gtap_k_load_ncr_table_from_file(ncr_file, ncr_host)) {

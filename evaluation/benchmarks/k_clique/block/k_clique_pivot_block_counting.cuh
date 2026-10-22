@@ -1,6 +1,6 @@
 #pragma once
 
-#include "k_clique_block_prefix_fixed.cuh"
+#include "k_clique_prefix_fixed.cuh"
 
 __device__ __forceinline__ bool is_bit_set(const unsigned long long* bits, int idx) {
     return (bits[idx >> 6] >> (idx & 63)) & 1ULL;

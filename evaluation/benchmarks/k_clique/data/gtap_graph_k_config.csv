@@ -1,5 +1,6 @@
-# Per graph×k GTAP build tuning (used by run_benchmark.sh).
-# Empty cells fall back to Makefile defaults (see load_gtap_graph_k_config.py).
+# Paper graph×k overrides (used by scripts/run_benchmark.sh).
+# Empty cells fall back to BUILD_DEFAULTS in load_gtap_graph_k_config.py
+# (those match Makefile smoke defaults, not this table).
 #
 # Columns:
 #   heavy, second_heavy, third_heavy

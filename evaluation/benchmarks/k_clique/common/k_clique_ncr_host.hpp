@@ -11,11 +11,11 @@ static inline size_t gtap_k_ncr_table_elems() {
     return (size_t)GTAP_K_NCR_ROWS * (size_t)GTAP_K_NCR_COLS;
 }
 
-static inline std::string gtap_k_default_ncr_path(const char* source_file) {
-    std::string path(source_file);
+static inline std::string gtap_k_default_ncr_path() {
+    std::string path(__FILE__);
     const std::string::size_type pos = path.find_last_of("/\\");
-    if (pos == std::string::npos) return "data/nCr.txt";
-    return path.substr(0, pos + 1) + "data/nCr.txt";
+    if (pos == std::string::npos) return "../data/nCr.txt";
+    return path.substr(0, pos + 1) + "../data/nCr.txt";
 }
 
 static inline bool gtap_k_load_ncr_table_from_file(

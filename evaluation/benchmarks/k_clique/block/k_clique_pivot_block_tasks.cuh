@@ -1,3 +1,8 @@
+// Pivot counting: where work becomes a GTaP task (block mode).
+// Same split as ../thread/k_clique_pivot_gtap_tasks.cuh; bit ops are block-cooperative.
+// slot / fixed / cl / pl: see that file and README.md "Task split".
+
+// Rebuild prefix from `fixed`, then scan PL ordinals [range_begin, range_end).
 #pragma gtap function
 __device__ void edgek_pivot_shared_prefix_task(
     int slot,
@@ -205,6 +210,7 @@ __device__ void edgek_pivot_shared_prefix_task(
 #endif
 }
 
+// One oriented edge: intersect, then inline pivot DFS or spawn prefix tasks.
 #pragma gtap function
 __device__ void edgek_edge(int ei) {
     int u = 0;
@@ -387,6 +393,7 @@ __device__ void edgek_edge(int ei) {
 #endif
 }
 
+// Split [begin_edge, end_edge) until each piece is <= RANGE_CUTOFF edges.
 #pragma gtap function
 __device__ void edgek_range(int begin_edge, int end_edge) {
     if (end_edge <= begin_edge) return;

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "k_clique_config_defaults.cuh"
 
 // Prefix path for stateless GTAP tasks: idx[level] is the pl branch taken at each depth.

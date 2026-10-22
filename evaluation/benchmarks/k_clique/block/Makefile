@@ -1,6 +1,6 @@
 # GTAP block pivot k-clique
 #
-# Same pivot algorithm + prefix task splitting as ../gtap_pivot (thread runtime),
+# Same pivot algorithm + prefix task splitting as ../thread gtap_pivot,
 # but uses gtap_block with KCGPU-style cooperative bit ops inside each CUDA block.
 #
 # Compare:
@@ -19,7 +19,7 @@ CXX_BIN    ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(PROJ_DIR)/runtime
 
 SRC := $(SCRIPT_DIR)/gtap_k_clique_pivot_block.cu
-SRC_GPU_ORIENT := $(K_CLIQUE_DIR)/k_clique_gpu_orient.cu
+SRC_GPU_ORIENT := $(K_CLIQUE_DIR)/common/k_clique_gpu_orient.cu
 KCGPU_ORIENT_LIB := $(K_CLIQUE_DIR)/bin/libkcgpu_orient.a
 OUT_DIR := $(SCRIPT_DIR)/bin
 OUT := $(OUT_DIR)/gtap_pivot_block
@@ -90,7 +90,7 @@ $(OUT): $(SRC) $(SRC_GPU_ORIENT) $(KCGPU_ORIENT_LIB) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
 	  -I"$(SCRIPT_DIR)" \
-	  -I"$(K_CLIQUE_DIR)" \
+	  -I"$(K_CLIQUE_DIR)/common" \
 	  -DGTAP_BLOCK_SIZE="$(GTAP_PIVOT_BLOCK_BLOCK_SIZE)" \
 	  -DGTAP_PIVOT_BLOCK_GRID_SIZE="$(GTAP_PIVOT_BLOCK_GRID_SIZE)" \
 	  -DGTAP_PIVOT_BLOCK_BLOCK_SIZE="$(GTAP_PIVOT_BLOCK_BLOCK_SIZE)" \

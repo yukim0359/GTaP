@@ -4,7 +4,7 @@
 #include <time.h>
 #include <vector>
 
-#include "../k_clique_gpu_orient.cuh"
+#include "k_clique_gpu_orient.cuh"
 
 #define CUDA_CHECK(call)                                                   \
     do {                                                                   \
@@ -16,8 +16,8 @@
         }                                                                  \
     } while (0)
 
-#include "../k_clique_host_graph.hpp"
-#include "../k_clique_ncr_host.hpp"
+#include "k_clique_host_graph.hpp"
+#include "k_clique_ncr_host.hpp"
 
 struct GtapKCliqueParsedArgs {
     bool file_mode = false;
@@ -47,6 +47,8 @@ struct GtapKCliqueDeviceBuffers {
 };
 
 struct GtapKCliqueRunResult {
+    // Narrower than the thread host: no count_e2e / transfer / orient split.
+    // preprocess_ms here is one blob (orient + transfer + workspace).
     double preprocess_ms = 0.0;
     double count_phase_ms = 0.0;
     double kernel_ms = 0.0;

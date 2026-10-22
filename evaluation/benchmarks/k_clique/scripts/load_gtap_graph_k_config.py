@@ -12,12 +12,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 K_CLIQUE_DIR = SCRIPT_DIR.parent
 DEFAULT_CONFIG = K_CLIQUE_DIR / "data" / "gtap_graph_k_config.csv"
 
-# Makefile defaults (gtap/evaluation/benchmarks/k_clique/Makefile).
-MAKEFILE_DEFAULTS = {
-    "heavy": 10_000_000,
-    "second_heavy": 16,
+# Fallback when a CSV cell is empty. Keep in sync with the *build defaults*
+# in ../Makefile (local smoke), not with paper rows in gtap_graph_k_config.csv.
+BUILD_DEFAULTS = {
+    "heavy": 32,
+    "second_heavy": 32,
     "third_heavy": 32,
-    "orientation_max_tasks_per_warp": 8192,
+    "orientation_max_tasks_per_warp": 150_000,
     "pivot_max_tasks_per_warp": 200_000,
 }
 
@@ -87,7 +88,7 @@ def resolve_entry(
     k: int,
 ) -> dict[str, int]:
     graph = _normalize_graph(graph)
-    merged = dict(MAKEFILE_DEFAULTS)
+    merged = dict(BUILD_DEFAULTS)
     exact = table.get((graph, k), {})
     merged.update(exact)
     return merged

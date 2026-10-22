@@ -49,7 +49,7 @@ static unsigned long long* g_d_nCr = nullptr;
 static bool pivot_count_phase_begin(GtapKCliqueDeviceBuffers& buffers) {
     (void)buffers;
     std::vector<unsigned long long> ncr_host;
-    const std::string default_ncr_path = gtap_k_default_ncr_path(__FILE__);
+    const std::string default_ncr_path = gtap_k_default_ncr_path();
     const char* ncr_file = getenv("GTAP_K_NCR_FILE");
     if (ncr_file == nullptr) ncr_file = default_ncr_path.c_str();
     if (!gtap_k_load_ncr_table_from_file(ncr_file, ncr_host)) {

@@ -1,3 +1,17 @@
+// Orientation counting: where work becomes a GTaP task (thread mode).
+//
+//   exec_kernel_k
+//     edgek_range[0, E)          split the oriented edge list
+//       edgek_edge(ei)           one directed edge (u, v); m = |N(u) ∩ N(v)|
+//         light m                count inline
+//         heavy + encode slot    encode once; spawn shared_encoded_range
+//         heavy, no slot         spawn encoded_range (rebuild encode)
+//         heavy child at depth   another shared_encoded_range
+//
+// slot  = shared encode-buffer index.
+// fixed = KRangeFixed.idx[d]: candidate chosen at depth d (rebuild prefix).
+// See README.md "Task split".
+
 #include "k_clique_prefix_fixed.cuh"
 
 __device__ __forceinline__ int heavy_threshold_for_depth(int depth) {
@@ -45,6 +59,7 @@ __device__ bool rebuild_encoded_prefix(
     return true;
 }
 
+// Walk candidate indices [range_begin, range_end) on a shared encode (slot).
 #pragma gtap function
 __device__ void edgek_shared_encoded_range_task(
     int slot,
@@ -145,6 +160,7 @@ __device__ void edgek_shared_encoded_range_task(
 #endif
 }
 
+// Same range walk without a shared slot: rebuild the encode on this worker.
 #pragma gtap function
 __device__ void edgek_encoded_range_task(
     int u,
@@ -212,6 +228,7 @@ __device__ void edgek_encoded_range_task(
     if (local != 0ULL) atomicAdd(&g_answer, local);
 }
 
+// One oriented edge: intersect, then inline count or spawn range tasks.
 #pragma gtap function
 __device__ void edgek_edge(int ei) {
     {
@@ -342,6 +359,7 @@ __device__ void edgek_edge(int ei) {
     }
 }
 
+// Split [begin_edge, end_edge) until each piece is <= RANGE_CUTOFF edges.
 #pragma gtap function
 __device__ void edgek_range(int begin_edge, int end_edge) {
     if (end_edge <= begin_edge) return;

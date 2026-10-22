@@ -1,3 +1,19 @@
+// Pivot counting: where work becomes a GTaP task (thread mode).
+//
+//   exec_kernel_k
+//     edgek_range[0, E)          split the oriented edge list
+//       edgek_edge(ei)           one directed edge (u, v); m = |N(u) ∩ N(v)|
+//         light / no slot        inline count_pivot_encoded
+//         heavy + encode slot    encode; spawn prefix tasks on PL chunks
+//         heavy prefix child     another prefix task at depth+1
+//
+// slot  = shared encode-buffer index.
+// fixed = branch indices used to rebuild the prefix.
+// cl    = current candidate bitset (KCGPU CL).
+// pl    = pivot-restricted remaining set (KCGPU PL).
+// See README.md "Task split".
+
+// Rebuild prefix from `fixed`, then scan PL ordinals [range_begin, range_end).
 #pragma gtap function
 __device__ void edgek_pivot_shared_prefix_task(
     int slot,
@@ -192,6 +208,7 @@ __device__ void edgek_pivot_shared_prefix_task(
 #endif
 }
 
+// One oriented edge: intersect, then inline pivot DFS or spawn prefix tasks.
 #pragma gtap function
 __device__ void edgek_edge(int ei) {
     int u = g_edge_src[ei];
@@ -325,6 +342,7 @@ __device__ void edgek_edge(int ei) {
 #endif
 }
 
+// Split [begin_edge, end_edge) until each piece is <= RANGE_CUTOFF edges.
 #pragma gtap function
 __device__ void edgek_range(int begin_edge, int end_edge) {
     if (end_edge <= begin_edge) return;

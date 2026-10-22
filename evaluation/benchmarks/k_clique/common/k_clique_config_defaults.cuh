@@ -1,6 +1,8 @@
 #pragma once
 
-// Shared compile-time defaults for GTaP k-clique (Makefile overrides via -D).
+// Smoke-run compile-time defaults. Makefile -D overrides these.
+// Paper graph×k values live in data/gtap_graph_k_config.csv and are not
+// applied unless a script rebuilds with those -D flags.
 #ifndef GTAP_K_RANGE_CUTOFF
 #define GTAP_K_RANGE_CUTOFF 128
 #endif

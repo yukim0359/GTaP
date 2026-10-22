@@ -1,3 +1,14 @@
+# GTaP k-clique benchmarks. See README.md for variants, data, and timing.
+#
+# Two layers of knobs:
+#   1. Build defaults in this file / common/k_clique_config_defaults.cuh
+#      (local smoke runs: `make && ./bin/gtap_orientation`).
+#   2. Paper graph×k overrides in data/gtap_graph_k_config.csv
+#      (applied by scripts/run_benchmark.sh via load_gtap_graph_k_config.py).
+#
+# GTAP_ORIENT=degree|degen is graph preprocessing, not the counting
+# algorithm. The binaries are orientation vs pivot (see README.md).
+
 BENCHMARK_NAME := k_clique
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -15,12 +26,15 @@ KCGPU_ROOT ?= $(abspath $(SCRIPT_DIR)/../../../../KCGPU)
 NVCC       ?= nvcc
 NVCC_ARCH_CODE := $(patsubst sm_%,%,$(CUDA_ARCH))
 
-SRC_GPU_ORIENT := $(SCRIPT_DIR)/k_clique_gpu_orient.cu
-SRC_KCGPU_ORIENT := $(SCRIPT_DIR)/kcgpu_orient/kcgpu_orient.cu
+COMMON_DIR := $(SCRIPT_DIR)/common
+THREAD_DIR := $(SCRIPT_DIR)/thread
+
+SRC_GPU_ORIENT := $(COMMON_DIR)/k_clique_gpu_orient.cu
+SRC_KCGPU_ORIENT := $(COMMON_DIR)/kcgpu_orient/kcgpu_orient.cu
 OBJ_KCGPU_ORIENT := $(OUT_DIR)/kcgpu_orient.o
 LIB_KCGPU_ORIENT := $(OUT_DIR)/libkcgpu_orient.a
-SRC_GTAP_ORIENTATION := $(SCRIPT_DIR)/gtap_k_clique_orientation.cu
-SRC_GTAP_PIVOT := $(SCRIPT_DIR)/gtap_k_clique_pivot.cu
+SRC_GTAP_ORIENTATION := $(THREAD_DIR)/gtap_k_clique_orientation.cu
+SRC_GTAP_PIVOT := $(THREAD_DIR)/gtap_k_clique_pivot.cu
 
 OUT_GTAP_ORIENTATION := $(OUT_DIR)/gtap_orientation
 OUT_GTAP_PIVOT := $(OUT_DIR)/gtap_pivot
@@ -79,9 +93,6 @@ GTAP_K_PIVOT_PREFIX_HEAVY_CANDIDATES ?= 8
 GTAP_K_PIVOT_PREFIX_WORK_THRESHOLD ?= 1024
 # Max subtasks when splitting a child PL range (chunk = ceil(pl_count / fanout)).
 GTAP_K_PIVOT_PREFIX_FANOUT ?= 128
-# 1: pass pl/cl prefix state by value to prefix tasks.
-# 0: old path; pass KRangeFixed branch indices and rebuild the prefix state in each task.
-GTAP_K_PIVOT_PREFIX_PASS_STATE ?= 0
 # Max prefix depth stored in KRangeFixed.idx[]; also caps pivot prefix spawn depth.
 GTAP_K_RANGE_MAX_FIXED ?= 24
 # Pivot prefix state levels (cl/pl/pivot scratch per level; <= BIT_BUFFER_COUNT/2).
@@ -139,7 +150,6 @@ print-vars:
 	@echo "GTAP_PIVOT_BLOCK_SIZE=$(GTAP_PIVOT_BLOCK_SIZE)"
 	@echo "GTAP_PIVOT_MAX_TASKS_PER_WARP=$(GTAP_PIVOT_MAX_TASKS_PER_WARP)"
 	@echo "GTAP_K_MAX_CANDIDATES=$(GTAP_K_MAX_CANDIDATES)"
-	@echo "GTAP_K_PIVOT_PREFIX_PASS_STATE=$(GTAP_K_PIVOT_PREFIX_PASS_STATE)"
 
 $(OUT_DIR):
 	mkdir -p "$(OUT_DIR)"
@@ -162,7 +172,8 @@ $(OUT_GTAP_ORIENTATION): $(SRC_GTAP_ORIENTATION) $(SRC_GPU_ORIENT) $(LIB_KCGPU_O
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
-	  -I"$(SCRIPT_DIR)" \
+	  -I"$(COMMON_DIR)" \
+	  -I"$(THREAD_DIR)" \
 	  -DGTAP_K_RUNTIME_GRID_SIZE="$(GTAP_ORIENTATION_GRID_SIZE)" \
 	  -DGTAP_K_RUNTIME_BLOCK_SIZE="$(GTAP_ORIENTATION_BLOCK_SIZE)" \
 	  -DGTAP_K_RUNTIME_MAX_TASKS_PER_WARP="$(GTAP_ORIENTATION_MAX_TASKS_PER_WARP)" \
@@ -191,7 +202,8 @@ $(OUT_GTAP_PIVOT): $(SRC_GTAP_PIVOT) $(SRC_GPU_ORIENT) $(LIB_KCGPU_ORIENT) | $(O
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
-	  -I"$(SCRIPT_DIR)" \
+	  -I"$(COMMON_DIR)" \
+	  -I"$(THREAD_DIR)" \
 	  -DGTAP_K_RUNTIME_GRID_SIZE="$(GTAP_PIVOT_GRID_SIZE)" \
 	  -DGTAP_K_RUNTIME_BLOCK_SIZE="$(GTAP_PIVOT_BLOCK_SIZE)" \
 	  -DGTAP_K_RUNTIME_MAX_TASKS_PER_WARP="$(GTAP_PIVOT_MAX_TASKS_PER_WARP)" \
@@ -206,7 +218,6 @@ $(OUT_GTAP_PIVOT): $(SRC_GTAP_PIVOT) $(SRC_GPU_ORIENT) $(LIB_KCGPU_ORIENT) | $(O
 	  -DGTAP_K_PIVOT_PREFIX_HEAVY_CANDIDATES="$(GTAP_K_PIVOT_PREFIX_HEAVY_CANDIDATES)" \
 	  -DGTAP_K_PIVOT_PREFIX_WORK_THRESHOLD="$(GTAP_K_PIVOT_PREFIX_WORK_THRESHOLD)" \
 	  -DGTAP_K_PIVOT_PREFIX_FANOUT="$(GTAP_K_PIVOT_PREFIX_FANOUT)" \
-	  -DGTAP_K_PIVOT_PREFIX_PASS_STATE="$(GTAP_K_PIVOT_PREFIX_PASS_STATE)" \
 	  -DGTAP_K_RANGE_MAX_FIXED="$(GTAP_K_RANGE_MAX_FIXED)" \
 	  -DGTAP_K_PIVOT_STATE_LEVELS="$(GTAP_K_PIVOT_STATE_LEVELS)" \
 	  -DGTAP_K_CUDA_STACK_SIZE="$(GTAP_PIVOT_CUDA_STACK_SIZE)" \
