@@ -102,6 +102,15 @@ __device__ __forceinline__ int pop_global_queue(int* execute_task_id, int max_co
 #endif
     }
 
+    if (count != 0) {
+        __syncwarp();
+        if (lane == 0) {
+            while (load_L2(&d_queue_consumed[queue_idx]) != base_head) {
+            }
+            atomicAdd(&d_queue_consumed[queue_idx], count);
+        }
+    }
+
     return count;
 }
 
@@ -220,8 +229,8 @@ __device__ __forceinline__ void push_global_queue(
         if (lane == 0) {
             base_pos = atomicAdd(&d_queue_alloc[kind], push_cnt);
             // Overflow check
-            int head_val = load_L2(&d_queue_head[kind]);
-            if (base_pos + push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity) - GTAP_DETAIL_QUEUE_MARGIN) {
+            int consumed_val = load_L2(&d_queue_consumed[kind]);
+            if (base_pos + push_cnt - consumed_val > (d_launch_config.total_scheduling_units * d_launch_config.queue_capacity)) {
             GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
                 -1, kind,
                 d_launch_config.total_scheduling_units * d_launch_config.queue_capacity);
@@ -279,6 +288,7 @@ __device__ __forceinline__ void push_initial_task(
         store_L2(global_queue_slot(initial_queue_idx, 0), new_tid);
         __threadfence();
         store_L2(&d_queue_head[initial_queue_idx], 0);
+        store_L2(&d_queue_consumed[initial_queue_idx], 0);
         store_L2(&d_queue_alloc[initial_queue_idx], 1);
         store_L2(&d_queue_tail[initial_queue_idx], 1);
         __threadfence();

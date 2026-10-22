@@ -34,9 +34,10 @@ __device__ __forceinline__ void stage_task_id(TaskContext* ctx, int queue_idx, i
 
     WarpTaskQueueMetadata* q = warp_queue_metadata_ptr(queue_idx, get_warp_id_global());
     int old_tail = atomicAdd(&ctx->queue_tails[queue_idx], 1);
+    // TODO: A stale cached head may be able to skip this load.
     int head = load_L2(&q->head);
     const int queue_capacity = d_launch_config.queue_capacity;
-    if (old_tail + 1 - head > queue_capacity - GTAP_DETAIL_QUEUE_MARGIN) {
+    if (old_tail + 1 - head > queue_capacity) {
         GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
             task_id, queue_idx, queue_capacity);
     }
@@ -49,15 +50,18 @@ __device__ __forceinline__ int pop_batch(int* execute_task_id, int max_count_to_
     WarpTaskQueueMetadata* my_queue = warp_queue_metadata_ptr(queue_idx, get_warp_id_global());
     int pop_count = 0;
     if (lane == 0) {
+        int old_queue_count = load_L2(&my_queue->count);
         while (true) {
-            int old_queue_count = load_L2(&my_queue->count);
             if (old_queue_count <= 0) break;
             int claim = min(max_count_to_pop, old_queue_count);
-            if (atomicCAS(&my_queue->count, old_queue_count, old_queue_count - claim) == old_queue_count) {
+            const int seen = atomicCAS(
+                &my_queue->count, old_queue_count, old_queue_count - claim);
+            if (seen == old_queue_count) {
                 pop_count = claim;
                 *tail -= claim;
                 break;
             }
+            old_queue_count = seen;
         }
     }
     pop_count = __shfl_sync(0xFFFFFFFFu, pop_count, 0);
@@ -304,22 +308,37 @@ __device__ __forceinline__ void push_batch_multi_queue(
         WarpTaskQueueMetadata* q = warp_queue_metadata_ptr(kind, warp_id_global);
         int total = ctx->generated_task_counts[kind];
         int staged_n = min(total, warp_size);
-        // TODO: Capacity-check a non-selected queue before moving its staged IDs.
-        // The first 32 skip the check in stage_task_id, and this move has none either.
         if (kind != k_max) {
-            for (int j = lane; j < staged_n; j += warp_size) {
+            const int capacity = d_launch_config.queue_capacity;
+            int base_tail = 0;
+
+            if (lane == 0) {
+                base_tail = queue_tails[kind];
+                const int head = load_L2(&q->head);
+                const long long required_slots =
+                    static_cast<long long>(base_tail) - head + staged_n;
+
+                if (required_slots > capacity) {
+                    GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
+                        -1, kind, capacity);
+                }
+            }
+            base_tail = __shfl_sync(0xFFFFFFFFu, base_tail, 0);
+
+            if (lane < staged_n) {
                 *warp_queue_slot_ptr(
                     kind,
                     warp_id_global,
-                    (queue_tails[kind] + j) %
-                        d_launch_config.queue_capacity) =
-                    ctx->staged_task_ids[kind * warp_size + j];
+                    (base_tail + lane) % capacity) =
+                    ctx->staged_task_ids[kind * warp_size + lane];
             }
-            if (lane == 0) {
-                queue_tails[kind] += staged_n;
-            }
+
             __threadfence();
             __syncwarp();
+
+            if (lane == 0) {
+                queue_tails[kind] = base_tail + staged_n;
+            }
         }
         if (lane == 0) {
             atomicAdd(&q->count, push_cnt);

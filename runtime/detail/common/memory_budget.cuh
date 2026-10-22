@@ -110,13 +110,7 @@ inline size_t minimum_required_bytes(
     size_t units,
     size_t queues
 ) {
-    const size_t min_queue_slots =
-        static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN) + 1;
-    size_t min_tasks_per_unit = 0;
-    if (!checked_mul(queues, min_queue_slots, &min_tasks_per_unit)) return SIZE_MAX;
-    if (min_tasks_per_unit < static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
-        min_tasks_per_unit = static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
-    }
+    const size_t min_tasks_per_unit = queues;
     size_t bytes = mul_memory_bytes(bytes_per_task, min_tasks_per_unit);
     bytes = mul_memory_bytes(bytes, units);
     return add_memory_bytes(fixed_bytes, bytes);
@@ -190,26 +184,6 @@ inline cudaError_t resolve_tasks_per_unit(
                 requested_tasks,
                 num_queues);
         }
-        const size_t queue_capacity = resolved_tasks_per_unit / queues;
-        if (queue_capacity <= static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN)) {
-            return error.fail(
-                cudaErrorInvalidValue,
-                "%s=%d provides %zu slots per queue; more than %d are required when num_queues=%d",
-                task_capacity_name,
-                requested_tasks,
-                queue_capacity,
-                GTAP_DETAIL_QUEUE_MARGIN,
-                num_queues);
-        }
-        if (resolved_tasks_per_unit <
-            static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
-            return error.fail(
-                cudaErrorInvalidValue,
-                "%s=%d is below the minimum of %d tasks per scheduling unit",
-                task_capacity_name,
-                requested_tasks,
-                GTAP_DETAIL_TASK_ID_POOL_MIN_FREE);
-        }
     } else {
         size_t budget_bytes = 0;
         cudaError_t status = resolve_memory_budget(
@@ -241,9 +215,7 @@ inline cudaError_t resolve_tasks_per_unit(
         // TODO: Distinguish insufficient memory budgets from configurations whose
         // minimum task capacity exceeds the task-count limit. Increasing the budget
         // cannot fix the latter.
-        if (queue_capacity <= static_cast<size_t>(GTAP_DETAIL_QUEUE_MARGIN) ||
-            resolved_tasks_per_unit <
-                static_cast<size_t>(GTAP_DETAIL_TASK_ID_POOL_MIN_FREE)) {
+        if (queue_capacity == 0) {
             return fail_insufficient_budget(
                 error,
                 budget_bytes,

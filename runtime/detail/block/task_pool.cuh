@@ -80,11 +80,11 @@ __device__ __forceinline__ int get_task_id_from_block_pool(
         }
     }
     int free_count = *id_list_free_pos_stale - old_alloc;
-    if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
+    if (free_count <= 0) {
         const int new_free_pos = load_L2(id_list_free_pos);
         *id_list_free_pos_stale = new_free_pos;
         free_count = new_free_pos - old_alloc;
-        if (free_count < GTAP_DETAIL_TASK_ID_POOL_MIN_FREE) {
+        if (free_count <= 0) {
             GTAP_DETAIL_RECORD_TASK_ID_POOL_EXHAUSTED(task_id, tasks_per_block);
         }
     }

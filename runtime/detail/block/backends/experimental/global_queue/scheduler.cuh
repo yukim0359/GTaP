@@ -60,6 +60,9 @@ __device__ __forceinline__ bool pop_global_queue(int* execute_task_id, bool prev
 #ifdef GTAP_DETAIL_INTERNAL_DEBUG
         printf("pop_global: %d in block %d\n", *execute_task_id, blockIdx.x);
 #endif
+        while (load_L2(&d_queue_consumed) != head) {
+        }
+        atomicAdd(&d_queue_consumed, 1u);
     } else {
         *execute_task_id = -1;
     }
@@ -138,8 +141,8 @@ __device__ __forceinline__ void push_global_queue(
     if (threadIdx.x == 0) {
         base_pos = atomicAdd(&d_queue_alloc, (unsigned int)push_cnt);
         // Overflow check (unsigned subtraction handles wrap-around)
-        unsigned int head_val = load_L2(&d_queue_head);
-        if (base_pos + (unsigned int)push_cnt - head_val > (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit) - GTAP_DETAIL_QUEUE_MARGIN) {
+        unsigned int consumed_val = load_L2(&d_queue_consumed);
+        if (base_pos + (unsigned int)push_cnt - consumed_val > (d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit)) {
             GTAP_DETAIL_RECORD_TASK_QUEUE_OVERFLOW(
                 -1, 0,
                 d_launch_config.total_scheduling_units * d_launch_config.tasks_per_scheduling_unit);
@@ -185,6 +188,7 @@ __device__ __forceinline__ void push_initial_task(
         store_L2(&d_global_task_queue[0], new_tid);
         __threadfence();
         store_L2(&d_queue_head, 0u);
+        store_L2(&d_queue_consumed, 0u);
         store_L2(&d_queue_alloc, 1u);
         store_L2(&d_queue_tail, 1u);
         __threadfence();
