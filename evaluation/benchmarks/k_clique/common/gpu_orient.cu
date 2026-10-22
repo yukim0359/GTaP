@@ -1,8 +1,8 @@
-#include "k_clique_gpu_orient.cuh"
+#include "gpu_orient.cuh"
 
 #include "kcgpu_orient/kcgpu_orient_api.hpp"
 
-#include "k_clique_host_graph.hpp"
+#include "host_graph.hpp"
 
 #include <cstdio>
 #include <time.h>

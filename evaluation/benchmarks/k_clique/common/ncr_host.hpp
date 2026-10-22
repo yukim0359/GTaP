@@ -1,6 +1,6 @@
 #pragma once
 
-#include "k_clique_config_defaults.cuh"
+#include "config_defaults.cuh"
 
 #include <cstdio>
 #include <cstdlib>

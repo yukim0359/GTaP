@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <cuda_runtime.h>
 
-#include "k_clique_host_graph.hpp"
-#include "k_clique_host_orient.hpp"
+#include "host_graph.hpp"
+#include "host_orient.hpp"
 
 // Orient an undirected CSR on the GPU using KCGPU orientation kernels (kcgpu_orient/).
 // Timing matches KCGPU: transfer = rowPtr H2D; orient = preprocess kernels (+ edge_src).

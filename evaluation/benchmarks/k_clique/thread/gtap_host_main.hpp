@@ -4,20 +4,26 @@
 #include <time.h>
 #include <vector>
 
-#include "k_clique_gpu_orient.cuh"
+#include "gtap_thread.cuh"
+#include "../common/config_defaults.cuh"
+#include "../common/gpu_orient.cuh"
+#include "device_state.cuh"
+
+__global__ void exec_kernel_k();
+
+#ifndef GTAP_DEFAULT_ORIENT
+#define GTAP_DEFAULT_ORIENT GTAP_ORIENT_DEGEN
+#endif
 
 #define CUDA_CHECK(call)                                                   \
     do {                                                                   \
         cudaError_t err__ = (call);                                        \
         if (err__ != cudaSuccess) {                                        \
-            fprintf(stderr, "CUDA error %s:%d: %s\n",                     \
+            fprintf(stderr, "CUDA error %s:%d: %s\n",                      \
                     __FILE__, __LINE__, cudaGetErrorString(err__));        \
             exit(1);                                                       \
         }                                                                  \
     } while (0)
-
-#include "k_clique_host_graph.hpp"
-#include "k_clique_ncr_host.hpp"
 
 struct GtapKCliqueParsedArgs {
     bool file_mode = false;
@@ -47,11 +53,16 @@ struct GtapKCliqueDeviceBuffers {
 };
 
 struct GtapKCliqueRunResult {
-    // Narrower than the thread host: no count_e2e / transfer / orient split.
-    // preprocess_ms here is one blob (orient + transfer + workspace).
+    // See README.md "Timing". count_e2e = orient + workspace + count_phase.
     double preprocess_ms = 0.0;
+    double transfer_ms = 0.0;
+    double orient_ms = 0.0;
+    double workspace_ms = 0.0;
     double count_phase_ms = 0.0;
+    double count_setup_ms = 0.0;
+    double gtap_initialize_ms = 0.0;
     double kernel_ms = 0.0;
+    double count_e2e_ms = 0.0;
     double cpu_ms = 0.0;
     unsigned long long gpu_count = 0ULL;
     unsigned long long cpu_count = 0ULL;
@@ -139,9 +150,8 @@ static bool gtap_k_clique_preprocess(
     HostGraph& exec_graph,
     GtapOrientMode& orient_mode,
     GtapKCliqueDeviceBuffers& buffers,
-    double& preprocess_ms) {
-    timespec preprocess_start, preprocess_stop;
-    clock_gettime(CLOCK_MONOTONIC, &preprocess_start);
+    GtapKCliqueRunResult& result) {
+    timespec orient_stop, preprocess_stop;
 
     orient_mode = parse_gtap_orient_from_env(GTAP_DEFAULT_ORIENT);
 
@@ -156,7 +166,9 @@ static bool gtap_k_clique_preprocess(
         &buffers.d_col_idx,
         &buffers.d_edge_src,
         &num_oriented_edges,
-        args.validate ? &exec_graph : nullptr));
+        args.validate ? &exec_graph : nullptr,
+        &result.transfer_ms,
+        &result.orient_ms));
     if (!args.validate) {
         exec_graph.n = args.graph.n;
         exec_graph.undirected_edges = args.graph.undirected_edges;
@@ -164,8 +176,10 @@ static bool gtap_k_clique_preprocess(
         exec_graph.col_idx.resize(num_oriented_edges);
     }
 
-    // Block runtime: one scratch set per CUDA block (blockIdx.x).
-    buffers.num_workers = GTAP_PIVOT_BLOCK_GRID_SIZE;
+    clock_gettime(CLOCK_MONOTONIC, &orient_stop);
+
+    buffers.num_workers =
+        GTAP_K_RUNTIME_GRID_SIZE * GTAP_K_RUNTIME_BLOCK_SIZE;
     const int words_per_worker = (GTAP_K_MAX_CANDIDATES + 63) >> 6;
     buffers.cand_scratch_ints =
         (size_t)buffers.num_workers * (size_t)GTAP_K_MAX_CANDIDATES;
@@ -195,6 +209,12 @@ static bool gtap_k_clique_preprocess(
         cudaMemcpyHostToDevice));
     if (hooks.set_cuda_stack_limit) {
         CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, GTAP_K_CUDA_STACK_SIZE));
+        size_t actual_stack_size = 0;
+        CUDA_CHECK(cudaDeviceGetLimit(
+            &actual_stack_size, cudaLimitStackSize));
+        printf(
+            "CUDA stack limit: requested=%d actual=%zu bytes\n",
+            GTAP_K_CUDA_STACK_SIZE, actual_stack_size);
     }
 #ifdef GTAP_K_STATS
     CUDA_CHECK(cudaMalloc(
@@ -209,7 +229,8 @@ static bool gtap_k_clique_preprocess(
 #endif
 
     clock_gettime(CLOCK_MONOTONIC, &preprocess_stop);
-    preprocess_ms = elapsed_ms(preprocess_start, preprocess_stop);
+    result.workspace_ms = elapsed_ms(orient_stop, preprocess_stop);
+    result.preprocess_ms = result.orient_ms + result.workspace_ms;
     return true;
 }
 
@@ -222,56 +243,25 @@ static bool gtap_k_clique_run_count_phase(
     timespec count_phase_start, count_phase_stop;
     clock_gettime(CLOCK_MONOTONIC, &count_phase_start);
 
+    timespec count_setup_start, count_setup_stop, gtap_init_start, gtap_init_stop;
+    clock_gettime(CLOCK_MONOTONIC, &count_setup_start);
+
     if (hooks.on_count_phase_begin != nullptr && !hooks.on_count_phase_begin(buffers)) {
         if (hooks.free_extras != nullptr) hooks.free_extras();
         gtap_k_clique_free_device_buffers(buffers);
         return false;
     }
 
-    {
-        const size_t task_stride = gtap_host_task_data_stride();
-        const size_t max_tasks_global =
-            (size_t)GTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK *
-            (size_t)GTAP_PIVOT_BLOCK_GRID_SIZE;
-        const size_t task_data_bytes = task_stride * max_tasks_global;
-        const size_t header_bytes = (size_t)40 * max_tasks_global;
-        const double pool_mib = task_data_bytes / (1024.0 * 1024.0);
-        fprintf(stderr,
-                "GTAP block runtime pool: MAX_TASKS_PER_BLOCK=%d GRID=%d "
-                "task_stride=%zu max_tasks_global=%zu task_data~%.1f MiB "
-                "headers~%.1f MiB\n",
-                GTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK,
-                GTAP_PIVOT_BLOCK_GRID_SIZE,
-                task_stride,
-                max_tasks_global,
-                pool_mib,
-                header_bytes / (1024.0 * 1024.0));
-        size_t free_bytes = 0;
-        size_t total_bytes = 0;
-        if (cudaMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess) {
-            fprintf(stderr,
-                    "GPU mem before gtap_initialize: free %.1f / total %.1f GiB\n",
-                    free_bytes / (1024.0 * 1024.0 * 1024.0),
-                    total_bytes / (1024.0 * 1024.0 * 1024.0));
-        }
-        fprintf(stderr,
-                "gtap_initialize: allocating + zeroing ~%.1f GiB (may take 1-2 min)...\n",
-                (pool_mib + header_bytes / (1024.0 * 1024.0) + 128.0) / 1024.0);
-        fflush(stderr);
-    }
-
-    timespec init_start, init_stop;
-    clock_gettime(CLOCK_MONOTONIC, &init_start);
-    gtap_block_config config{
-        .grid_size = GTAP_PIVOT_BLOCK_GRID_SIZE,
-        .block_size = GTAP_PIVOT_BLOCK_BLOCK_SIZE,
-        .max_tasks_per_block = GTAP_PIVOT_BLOCK_MAX_TASKS_PER_BLOCK,
+    clock_gettime(CLOCK_MONOTONIC, &gtap_init_start);
+    gtap_thread_config config{
+        .grid_size = GTAP_K_RUNTIME_GRID_SIZE,
+        .block_size = GTAP_K_RUNTIME_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_K_RUNTIME_MAX_TASKS_PER_WARP,
+        .num_queues = GTAP_K_RUNTIME_NUM_QUEUES,
     };
     cudaError_t err = gtap_initialize(config);
-    clock_gettime(CLOCK_MONOTONIC, &init_stop);
-    fprintf(stderr, "gtap_initialize done in %.1f s\n",
-            elapsed_ms(init_start, init_stop) / 1000.0);
-    fflush(stderr);
+    clock_gettime(CLOCK_MONOTONIC, &gtap_init_stop);
+    result.gtap_initialize_ms = elapsed_ms(gtap_init_start, gtap_init_stop);
     if (err != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(err));
         if (hooks.free_extras != nullptr) hooks.free_extras();
@@ -345,18 +335,19 @@ static bool gtap_k_clique_run_count_phase(
     }
 #endif
 
+    clock_gettime(CLOCK_MONOTONIC, &count_setup_stop);
+    result.count_setup_ms = elapsed_ms(count_setup_start, count_setup_stop) - result.gtap_initialize_ms;
+    if (result.count_setup_ms < 0.0) {
+        result.count_setup_ms = 0.0;
+    }
+
     cudaEvent_t start, stop;
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
-    fprintf(stderr, "launching exec_kernel_k<<<GRID=%d, BLOCK=%d>>> ...\n",
-            GTAP_PIVOT_BLOCK_GRID_SIZE, GTAP_PIVOT_BLOCK_BLOCK_SIZE);
-    fflush(stderr);
     CUDA_CHECK(cudaEventRecord(start));
     CUDA_CHECK(gtap_launch(exec_kernel_k));
     CUDA_CHECK(gtap_synchronize());
     CUDA_CHECK(cudaGetLastError());
-    fprintf(stderr, "exec_kernel_k finished\n");
-    fflush(stderr);
     CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
     clock_gettime(CLOCK_MONOTONIC, &count_phase_stop);
@@ -365,6 +356,8 @@ static bool gtap_k_clique_run_count_phase(
     float kernel_ms = 0.0f;
     CUDA_CHECK(cudaEventElapsedTime(&kernel_ms, start, stop));
     result.kernel_ms = kernel_ms;
+    result.count_e2e_ms =
+        result.orient_ms + result.workspace_ms + result.count_phase_ms;
     CUDA_CHECK(cudaMemcpyFromSymbol(&result.gpu_count, g_answer, sizeof(unsigned long long)));
     CUDA_CHECK(cudaMemcpyFromSymbol(
         &result.scratch_overflow, g_scratch_overflow, sizeof(int)));
@@ -413,17 +406,15 @@ static void gtap_k_clique_print_results(
     const GtapKCliqueDeviceBuffers& buffers,
     const GtapKCliqueRunResult& result) {
     if (args.file_mode) {
-        printf("k-clique graph file: %s n=%d k=%d edges=%zu mode=%s-oriented (GTAP block)\n",
+        printf("k-clique graph file: %s n=%d k=%d edges=%zu mode=%s-oriented\n",
                args.graph_path, args.n, args.k, args.graph.undirected_edges,
                gtap_orient_mode_name(orient_mode));
     } else {
-        printf("k-clique random graph: n=%d k=%d p=%d%% seed=%u edges=%zu mode=%s-oriented (GTAP block)\n",
+        printf("k-clique random graph: n=%d k=%d p=%d%% seed=%u edges=%zu mode=%s-oriented\n",
                args.n, args.k, args.edge_probability_percent, args.seed,
                args.graph.undirected_edges, gtap_orient_mode_name(orient_mode));
     }
     printf("oriented_edges: %zu\n", exec_graph.col_idx.size());
-    printf("GTAP_PIVOT_BLOCK_BLOCK_SIZE: %d\n", GTAP_PIVOT_BLOCK_BLOCK_SIZE);
-    printf("GTAP_PIVOT_BLOCK_GRID_SIZE: %d\n", GTAP_PIVOT_BLOCK_GRID_SIZE);
     printf("GTAP_K_RANGE_CUTOFF: %d\n", GTAP_K_RANGE_CUTOFF);
     printf("GTAP_K_MAX_CANDIDATES: %d\n", GTAP_K_MAX_CANDIDATES);
     printf("GTAP_K_BIT_BUFFER_COUNT: %d\n", GTAP_K_BIT_BUFFER_COUNT);
@@ -431,14 +422,24 @@ static void gtap_k_clique_print_results(
     if (hooks.print_variant_tuning != nullptr) {
         hooks.print_variant_tuning();
     }
-    printf("scratch blocks: %d\n", buffers.num_workers);
+    printf("scratch workers: %d\n", buffers.num_workers);
     printf("candidate scratch: %zu ints\n", buffers.cand_scratch_ints);
     printf("bit scratch: %zu uint64 words\n", buffers.bit_scratch_words);
     printf("encode slots: %d\n", GTAP_K_ENCODE_SLOTS);
-    printf("encode scratch: %zu uint64 words (slots + per-block)\n", buffers.encode_scratch_words);
+    printf("encode scratch: %zu uint64 words (slots + per-worker)\n", buffers.encode_scratch_words);
 #ifdef GTAP_K_STATS
     printf("GTaP max candidate length: %d / %d\n",
            result.candidate_highwater, GTAP_K_MAX_CANDIDATES);
+    {
+        printf("GTaP recurse calls (encoded): %llu (roots: %llu",
+               result.recurse_encoded_calls, result.recurse_encoded_roots);
+        if (result.recurse_encoded_roots != 0ULL) {
+            printf(", avg/root: %.2f",
+                   (double)result.recurse_encoded_calls /
+                   (double)result.recurse_encoded_roots);
+        }
+        printf(", max/root: %llu)\n", result.recurse_max_encoded_tree_calls);
+    }
 #endif
     printf("GTaP count: %llu\n", result.gpu_count);
     if (args.validate) {
@@ -451,10 +452,34 @@ static void gtap_k_clique_print_results(
         printf("Validation: %s\n",
                result.scratch_overflow ? "FAILED_SCRATCH_OVERFLOW" : "SKIPPED");
     }
+    printf("GTaP count e2e time: %.3f ms\n", result.count_e2e_ms);
     printf("GTaP count phase time: %.3f ms\n", result.count_phase_ms);
     printf("GTaP kernel time: %.3f ms\n", result.kernel_ms);
-    printf("GTaP preprocess+transfer time: %.3f ms\n", result.preprocess_ms);
+    printf("GTaP preprocess time: %.3f ms\n", result.preprocess_ms);
+    printf("GTaP transfer time: %.3f ms\n", result.transfer_ms);
+    printf("GTaP orient time: %.3f ms\n", result.orient_ms);
+    printf("GTaP workspace alloc time: %.3f ms\n", result.workspace_ms);
+    printf("GTaP count setup time: %.3f ms\n", result.count_setup_ms);
+    printf("GTaP gtap_initialize time: %.3f ms\n", result.gtap_initialize_ms);
     if (args.validate) printf("CPU execution time:  %.3f ms\n", result.cpu_ms);
+
+#ifdef GTAP_K_STATS
+    printf("Max task profile:\n");
+    for (int kind = 0; kind < K_PROFILE_KINDS; ++kind) {
+        int base = kind * K_PROFILE_FIELDS;
+        printf("  %-22s cycles=%llu u=%d v=%d m=%d a=%d b=%d c=%d d=%d worker=%d\n",
+               task_kind_name(kind),
+               result.task_max_cycles[kind],
+               result.task_max_info[base + 0],
+               result.task_max_info[base + 1],
+               result.task_max_info[base + 2],
+               result.task_max_info[base + 3],
+               result.task_max_info[base + 4],
+               result.task_max_info[base + 5],
+               result.task_max_info[base + 6],
+               result.task_max_info[base + 7]);
+    }
+#endif
 
 #ifdef GTAP_ENABLE_PROFILING
     if (hooks.profile_name != nullptr) {
@@ -480,7 +505,7 @@ static int gtap_k_clique_host_main(int argc, char** argv, const GtapKCliqueHostH
     GtapKCliqueDeviceBuffers buffers;
     GtapKCliqueRunResult result;
 
-    if (!gtap_k_clique_preprocess(args, hooks, exec_graph, orient_mode, buffers, result.preprocess_ms)) {
+    if (!gtap_k_clique_preprocess(args, hooks, exec_graph, orient_mode, buffers, result)) {
         return 1;
     }
 

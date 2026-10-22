@@ -1,5 +1,7 @@
 #pragma once
 
+#include "block_config_defaults.cuh"
+
 // Per-CUDA-block scratch (blockIdx.x). All threads in a block cooperate on one task.
 __device__ const int* g_row_ptr;
 __device__ const int* g_col_idx;

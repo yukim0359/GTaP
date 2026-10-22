@@ -113,7 +113,7 @@ static HostGraph orient_by_degree(const HostGraph& graph) {
     return oriented;
 }
 
-#include "k_clique_host_orient.hpp"
+#include "host_orient.hpp"
 
 static HostGraph generate_random_graph(int n, int edge_probability_percent, unsigned seed) {
     std::vector<std::pair<int, int>> edges;

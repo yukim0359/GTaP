@@ -1,5 +1,7 @@
 #pragma once
 
+#include "host_graph.hpp"
+
 #include <algorithm>
 #include <climits>
 #include <cstdio>

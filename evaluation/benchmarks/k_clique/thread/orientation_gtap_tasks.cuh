@@ -12,7 +12,11 @@
 // fixed = KRangeFixed.idx[d]: candidate chosen at depth d (rebuild prefix).
 // See README.md "Task split".
 
-#include "k_clique_prefix_fixed.cuh"
+#pragma once
+
+#include "gtap_thread.cuh"
+#include "orientation_counting.cuh"
+#include "../common/prefix_fixed.cuh"
 
 __device__ __forceinline__ int heavy_threshold_for_depth(int depth) {
     if (depth == 0) return GTAP_K_SECOND_HEAVY_CANDIDATES;

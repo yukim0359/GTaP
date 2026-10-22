@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "k_clique_block_config_defaults.cuh"
+#include "block_config_defaults.cuh"
 
 // #define GTAP_K_STATS
 #include "gtap_block.cuh"
@@ -20,15 +20,16 @@ enum KProfileKind {
     K_PROFILE_KINDS
 };
 
-#include "k_clique_block_device_state.cuh"
-#include "k_clique_pivot_block_counting.cuh"
-#include "k_clique_pivot_block_tasks.cuh"
-#include "k_clique_ncr_host.hpp"
-#include "gtap_k_clique_block_host_main.hpp"
+#include "block_device_state.cuh"
+#include "pivot_block_counting.cuh"
+#include "pivot_block_tasks.cuh"
+#include "../common/ncr_host.hpp"
 
 #ifndef GTAP_DEFAULT_ORIENT
 #define GTAP_DEFAULT_ORIENT GTAP_ORIENT_DEGEN
 #endif
+
+#include "gtap_block_host_main.hpp"
 
 static unsigned long long* g_d_nCr = nullptr;
 

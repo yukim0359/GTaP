@@ -1,7 +1,7 @@
 #pragma once
 
 // Block-variant defaults: cooperative bit ops inside each CUDA block (KCGPU-style).
-#include "k_clique_config_defaults.cuh"
+#include "../common/config_defaults.cuh"
 
 #ifndef GTAP_PIVOT_BLOCK_GRID_SIZE
 #define GTAP_PIVOT_BLOCK_GRID_SIZE 4000

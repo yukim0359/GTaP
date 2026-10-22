@@ -18,8 +18,8 @@ CUDA_ARCH  ?= sm_90
 CXX_BIN    ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(PROJ_DIR)/runtime
 
-SRC := $(SCRIPT_DIR)/gtap_k_clique_pivot_block.cu
-SRC_GPU_ORIENT := $(K_CLIQUE_DIR)/common/k_clique_gpu_orient.cu
+SRC := $(SCRIPT_DIR)/gtap_pivot_block.cu
+SRC_GPU_ORIENT := $(K_CLIQUE_DIR)/common/gpu_orient.cu
 KCGPU_ORIENT_LIB := $(K_CLIQUE_DIR)/bin/libkcgpu_orient.a
 OUT_DIR := $(SCRIPT_DIR)/bin
 OUT := $(OUT_DIR)/gtap_pivot_block

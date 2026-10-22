@@ -6,7 +6,7 @@
 // #define GTAP_ENABLE_PROFILING
 // #define GTAP_K_STATS
 #include "gtap_thread.cuh"
-#include "k_clique_config_defaults.cuh"
+#include "../common/config_defaults.cuh"
 
 #define K_PROFILE_FIELDS 8
 enum KProfileKind {
@@ -35,15 +35,15 @@ static const char* task_kind_name(int kind) {
 }
 #endif
 
-#include "k_clique_device_state.cuh"
-#include "k_clique_orientation_counting.cuh"
-#include "k_clique_orientation_gtap_tasks.cuh"
-#include "k_clique_host_graph.hpp"
-#include "gtap_k_clique_host_main.hpp"
+#include "device_state.cuh"
+#include "orientation_counting.cuh"
+#include "orientation_gtap_tasks.cuh"
+#include "../common/host_graph.hpp"
 
 #ifndef GTAP_DEFAULT_ORIENT
 #define GTAP_DEFAULT_ORIENT GTAP_ORIENT_DEGREE
 #endif
+#include "gtap_host_main.hpp"
 
 static void orientation_print_tuning() {
     printf("GTAP_K_HEAVY_CANDIDATES: %d\n", GTAP_K_HEAVY_CANDIDATES);

@@ -1,3 +1,8 @@
+#pragma once
+
+#include "gtap_thread.cuh"
+#include "device_state.cuh"
+
 __device__ __forceinline__ bool is_bit_set(const unsigned long long* bits, int idx) {
     return (bits[idx >> 6] >> (idx & 63)) & 1ULL;
 }

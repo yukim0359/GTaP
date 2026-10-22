@@ -1,3 +1,7 @@
+#pragma once
+
+#include "../common/config_defaults.cuh"
+
 __device__ const int* g_row_ptr;
 __device__ const int* g_col_idx;
 __device__ const int* g_edge_src;
