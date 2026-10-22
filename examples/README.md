@@ -41,6 +41,7 @@ make GTAP_ROOT=/path/to/gtap CUDA_PATH=/path/to/cuda
 | [mergesort](mergesort/) | Recursive parallel mergesort | thread |
 | [cilksort](cilksort/) | Parallel mergesort (Cilk-style) | thread |
 | [quicksort](quicksort/) | Ports of CUDA Samples cdpSimpleQuicksort and cdpAdvancedQuicksort | thread / block |
+| [rectmul](rectmul/) | Cilk-style rectangular matrix multiplication | thread / block |
 | [binary_tree](binary_tree/) | Synthetic tree workload (memory + compute) | thread / block |
 | [spmv](spmv/) | Sparse matrix–vector multiplication (divide-and-conquer) | thread / block |
 | [asynchronous_bfs](asynchronous_bfs/) | Asynchronous breadth-first search on real-world graphs | thread / block |
