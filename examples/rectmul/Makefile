@@ -1,14 +1,13 @@
 # GTaP example: rectmul (thread and block variants)
-GTAP_ROOT  ?= ../..
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+GTAP_ROOT  ?= $(abspath $(SCRIPT_DIR)/../..)
 CLANG_BIN  ?= $(GTAP_ROOT)/clang-gtap/build/bin/clang++
 GT_INC     ?= $(GTAP_ROOT)/runtime
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
-MATH_LIBS  ?= $(abspath $(CUDA_PATH)/../../math_libs/lib64)
-LDFLAGS    := -L"$(CUDA_PATH)/lib64" -L"$(MATH_LIBS)" \
-	-Wl,-rpath,"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(MATH_LIBS)" \
-	-lcudart -lcublas
+
+CUDA_PATH      ?= $(CUDA_HOME)
+CUDA_ARCH      ?= sm_90
+CUDA_LIB_DIR   ?= $(CUDA_PATH)/lib64
+CUBLAS_LIB_DIR ?= $(CUDA_LIB_DIR)
 
 SRC_THREAD        := $(SCRIPT_DIR)/rectmul_thread.cu
 SRC_BLOCK         := $(SCRIPT_DIR)/rectmul_block.cu
@@ -21,6 +20,8 @@ OUT_THREAD_YCHUNK := $(OUT_DIR)/rectmul_thread_ychunk
 OUT_BLOCK_YCHUNK  := $(OUT_DIR)/rectmul_block_ychunk
 
 GTAP_CFLAGS ?=
+LDFLAGS ?=
+LDLIBS  ?=
 
 .PHONY: all thread block thread-ychunk block-ychunk clean
 all: thread block thread-ychunk block-ychunk
@@ -43,7 +44,9 @@ $(OUT_THREAD): $(SRC_THREAD) $(SCRIPT_DIR)/rectmul_host.hpp | $(OUT_DIR)
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
 	  $(LDFLAGS) \
-	  "$(SRC_THREAD)" -o "$(OUT_THREAD)"
+	  -L"$(CUDA_LIB_DIR)" -L"$(CUBLAS_LIB_DIR)" \
+	  "$(SRC_THREAD)" -o "$(OUT_THREAD)" \
+	  -lcudart -lcublas $(LDLIBS)
 
 $(OUT_BLOCK): $(SRC_BLOCK) $(SCRIPT_DIR)/rectmul_host.hpp | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
@@ -52,7 +55,9 @@ $(OUT_BLOCK): $(SRC_BLOCK) $(SCRIPT_DIR)/rectmul_host.hpp | $(OUT_DIR)
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
 	  $(LDFLAGS) \
-	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK)"
+	  -L"$(CUDA_LIB_DIR)" -L"$(CUBLAS_LIB_DIR)" \
+	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK)" \
+	  -lcudart -lcublas $(LDLIBS)
 
 $(OUT_THREAD_YCHUNK): $(SRC_THREAD_YCHUNK) $(SCRIPT_DIR)/rectmul_host.hpp | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
@@ -61,7 +66,9 @@ $(OUT_THREAD_YCHUNK): $(SRC_THREAD_YCHUNK) $(SCRIPT_DIR)/rectmul_host.hpp | $(OU
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
 	  $(LDFLAGS) \
-	  "$(SRC_THREAD_YCHUNK)" -o "$(OUT_THREAD_YCHUNK)"
+	  -L"$(CUDA_LIB_DIR)" -L"$(CUBLAS_LIB_DIR)" \
+	  "$(SRC_THREAD_YCHUNK)" -o "$(OUT_THREAD_YCHUNK)" \
+	  -lcudart -lcublas $(LDLIBS)
 
 $(OUT_BLOCK_YCHUNK): $(SRC_BLOCK_YCHUNK) $(SCRIPT_DIR)/rectmul_host.hpp | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
@@ -70,7 +77,9 @@ $(OUT_BLOCK_YCHUNK): $(SRC_BLOCK_YCHUNK) $(SCRIPT_DIR)/rectmul_host.hpp | $(OUT_
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
 	  $(LDFLAGS) \
-	  "$(SRC_BLOCK_YCHUNK)" -o "$(OUT_BLOCK_YCHUNK)"
+	  -L"$(CUDA_LIB_DIR)" -L"$(CUBLAS_LIB_DIR)" \
+	  "$(SRC_BLOCK_YCHUNK)" -o "$(OUT_BLOCK_YCHUNK)" \
+	  -lcudart -lcublas $(LDLIBS)
 
 clean:
 	rm -f "$(OUT_THREAD)" "$(OUT_BLOCK)" \
