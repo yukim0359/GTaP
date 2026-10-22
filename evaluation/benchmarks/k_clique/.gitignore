@@ -4,7 +4,7 @@ logs/
 # Regenerated plots
 img/
 
-# Binomial table. Regenerable from GTAP_K_NCR_ROWS x GTAP_K_NCR_COLS.
+# Binomial table. Regenerable: make ncr (scripts/gen_ncr.py).
 data/nCr.txt
 
 # Local-only legacy sources

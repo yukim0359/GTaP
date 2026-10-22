@@ -113,7 +113,12 @@ else
 GTAP_EXTRA_CFLAGS += -UGTAP_ENABLE_PROFILING
 endif
 
-.PHONY: all gtap_orientation gtap_pivot clean print-vars
+NCR_TXT := $(SCRIPT_DIR)/data/nCr.txt
+SRC_GEN_NCR := $(SCRIPT_DIR)/scripts/gen_ncr.py
+GTAP_K_NCR_ROWS ?= 1001
+GTAP_K_NCR_COLS ?= 401
+
+.PHONY: all gtap_orientation gtap_pivot ncr clean print-vars
 
 all: gtap_orientation gtap_pivot
 
@@ -209,6 +214,12 @@ $(OUT_GTAP_PIVOT): $(SRC_GTAP_PIVOT) $(SRC_GPU_ORIENT) $(LIB_KCGPU_ORIENT) | $(O
 	  $(GTAP_CFLAGS) $(GTAP_EXTRA_CFLAGS) \
 	  "$(SRC_GTAP_PIVOT)" "$(SRC_GPU_ORIENT)" -o "$(OUT_GTAP_PIVOT)" \
 	  -L"$(CUDA_PATH)/lib64" -L"$(OUT_DIR)" -lcudart -lkcgpu_orient
+
+ncr: $(NCR_TXT)
+
+$(NCR_TXT): $(SRC_GEN_NCR)
+	mkdir -p "$(SCRIPT_DIR)/data"
+	python3 "$(SRC_GEN_NCR)" --rows $(GTAP_K_NCR_ROWS) --cols $(GTAP_K_NCR_COLS) "$(NCR_TXT)"
 
 clean:
 	rm -f $(OUT_GTAP_ORIENTATION) $(OUT_GTAP_PIVOT) $(OBJ_KCGPU_ORIENT) $(LIB_KCGPU_ORIENT)
