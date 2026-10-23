@@ -45,3 +45,12 @@ __device__ __forceinline__ int next_set_bit_from(
     *out_word = word;
     return (word << 6) + (__ffsll((long long)mask) - 1);
 }
+
+__device__ __forceinline__ bool range_has_set_bit(
+        const unsigned long long* bits, int words,
+        int range_begin, int range_end) {
+    if (range_end <= range_begin) return false;
+    int word;
+    int idx = next_set_bit_from(bits, words, range_begin, &word);
+    return idx >= 0 && idx < range_end;
+}

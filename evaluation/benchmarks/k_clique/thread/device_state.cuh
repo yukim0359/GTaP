@@ -2,6 +2,34 @@
 
 #include "config_defaults.cuh"
 
+// Worker scratch. Steal copies task args (slot, prefix, range), not these
+// buffers. A stolen task rebuilds bitsets from adjacency + prefix.
+//
+// cand (g_cand_scratch)
+//   Per worker: int[g_max_candidates]. Sorted vertex IDs N+(u)∩N+(v).
+//   Filled in count_from_edge / count_candidate_range_from_edge, then used
+//   to build an adjacency matrix. Child slot-tasks do not keep this array.
+//
+// bitset (g_bit_scratch)
+//   Per worker: g_bit_buffer_count sets, each max_words() uint64s.
+//   Layout [worker][buffer_index][word]. Bits are candidate *indices*
+//   (rows of the adjacency), not vertex IDs.
+//   Orientation: count = k. count_cliques_in_bitset keeps the parent set
+//   at buffer_index and writes the child at buffer_index+1, so one slot
+//   per live DFS frame. Restore uses [0, depth] as that chain.
+//   Pivot: count = 2 * measured max; even = PL, odd = CL, per level.
+//
+// adjacency (g_candidate_adjacency_scratch)
+//   cand×cand bit-matrix, pitch max_words() per row.
+//   [0, GTAP_ADJACENCY_SLOTS) : shared. Heavy edge takes a slot, children
+//   reuse it, parent taskwaits then releases.
+//   [SLOTS, SLOTS + num_workers) : one private matrix per worker.
+//   Light path uses this and does not spawn. Heavy + no free slot also
+//   uses this, but still spawns from_edge (each child rebuilds).
+//
+// pivot stack (g_pivot_stack_scratch)
+//   Iterative pivot DFS: next / drop / pivot, one int per level per worker.
+
 __device__ __constant__ const int* g_row_ptr;
 __device__ __constant__ const int* g_col_idx;
 __device__ __constant__ const int* g_edge_src;
@@ -96,10 +124,12 @@ __device__ __forceinline__ int words_for_len(int len) {
     return (len + 63) >> 6;
 }
 
+// This worker's vertex-ID list for the current edge.
 __device__ __forceinline__ int* cand_buffer() {
     return g_cand_scratch + (size_t)worker_id_global() * g_max_candidates;
 }
 
+// This worker's selectable-index set at `buffer_index` (search depth).
 __device__ __forceinline__ unsigned long long* candidate_bitset_buffer(
         int buffer_index) {
     int words = max_words();
@@ -108,6 +138,7 @@ __device__ __forceinline__ unsigned long long* candidate_bitset_buffer(
            (size_t)words;
 }
 
+// This worker's private adjacency matrix (after the shared slot block).
 __device__ __forceinline__ unsigned long long* candidate_adjacency_buffer() {
     return g_candidate_adjacency_scratch +
            ((size_t)GTAP_ADJACENCY_SLOTS + (size_t)worker_id_global()) *
@@ -115,6 +146,7 @@ __device__ __forceinline__ unsigned long long* candidate_adjacency_buffer() {
            (size_t)max_words();
 }
 
+// Shared adjacency matrix at `slot`. Children of a heavy edge reuse this.
 __device__ __forceinline__ unsigned long long* candidate_adjacency_slot_buffer(int slot) {
     return g_candidate_adjacency_scratch +
            (size_t)slot *

@@ -10,6 +10,7 @@
 //
 // slot   = shared adjacency-buffer index.
 // prefix = SearchPrefix: candidate index chosen at each search depth.
+// cand / bitset / adjacency: see thread/device_state.cuh.
 // See README.md "Task split".
 
 #pragma once
@@ -41,25 +42,28 @@ __device__ __forceinline__ int shared_range_wait_profile_kind(int depth) {
 }
 #endif
 
-__device__ bool restore_candidates_from_prefix(
+// Rebuild this worker's bitset[0..depth] from adjacency + prefix.
+// Returns the size at `depth`, or -1 on failure.
+__device__ int restore_candidates_from_prefix(
         const unsigned long long* adjacency, int candidate_count, int depth,
         const SearchPrefix& prefix) {
-    if (depth <= 0) return true;
-    if (depth + 1 >= g_bit_buffer_count) return false;
-    if (depth > GTAP_MAX_PREFIX_DEPTH) return false;
+    if (depth <= 0) return 0;
+    if (depth + 1 >= g_bit_buffer_count) return -1;
+    if (depth > GTAP_MAX_PREFIX_DEPTH) return -1;
 
     init_full_bitset(candidate_bitset_buffer(0), candidate_count);
+    int child_count = 0;
     for (int i = 0; i < depth; ++i) {
         int candidate_index = prefix.candidate_indices[i];
         if (candidate_index < 0 || candidate_index >= candidate_count) {
-            return false;
+            return -1;
         }
-        int child_count = build_child_candidates(
+        child_count = build_child_candidates(
             adjacency, candidate_count, candidate_bitset_buffer(i),
             candidate_index, candidate_bitset_buffer(i + 1));
-        if (child_count == 0) return false;
+        if (child_count == 0) return -1;
     }
-    return true;
+    return child_count;
 }
 
 // Walk candidate indices [range_begin, range_end) using the adjacency in `slot`.
@@ -84,13 +88,8 @@ __device__ void count_candidate_range_from_slot(
     const unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
 
     if (depth > 0) {
-        if (!restore_candidates_from_prefix(
-                adjacency, candidate_count, depth, prefix)) {
-            return;
-        }
-        int words = words_for_len(candidate_count);
-        int active_count = popcount_bits(
-            candidate_bitset_buffer(depth), words);
+        int active_count = restore_candidates_from_prefix(
+            adjacency, candidate_count, depth, prefix);
         if (active_count < target_size - depth) return;
     } else {
         init_full_bitset(candidate_bitset_buffer(0), candidate_count);
@@ -100,6 +99,7 @@ __device__ void count_candidate_range_from_slot(
     unsigned long long* child_candidates = candidate_bitset_buffer(depth + 1);
     int split_threshold = split_threshold_for_depth(depth);
     int chunk = chunk_size(candidate_count, GTAP_WAIT_FANOUT);
+    int words = words_for_len(candidate_count);
     unsigned long long clique_count = 0ULL;
     bool spawned = false;
     for (int candidate_index = range_begin; candidate_index < range_end; ++candidate_index) {
@@ -115,12 +115,14 @@ __device__ void count_candidate_range_from_slot(
         int child_count = build_child_candidates(
             adjacency, candidate_count, active_candidates, candidate_index,
             child_candidates);
+        if (child_count < child_vertices_needed) continue;
         if (child_count >= split_threshold && child_vertices_needed > 2) {
             SearchPrefix child_prefix = extend_search_prefix(
                 prefix, depth, candidate_index);
             for (int s = 0; s < candidate_count; s += chunk) {
                 int e = s + chunk;
                 if (e > candidate_count) e = candidate_count;
+                if (!range_has_set_bit(child_candidates, words, s, e)) continue;
                 spawned = true;
                 #pragma gtap task
                 count_candidate_range_from_slot(
@@ -128,9 +130,9 @@ __device__ void count_candidate_range_from_slot(
                     child_prefix,
                     s, e);
             }
-        } else if (child_count >= child_vertices_needed) {
+        } else {
             clique_count += count_cliques_in_bitset(
-                adjacency, candidate_count, child_candidates,
+                adjacency, candidate_count, child_candidates, child_count,
                 child_vertices_needed, depth + 1);
         }
     }
@@ -154,7 +156,9 @@ __device__ void count_candidate_range_from_slot(
 #endif
 }
 
-// Same candidate-range walk: rebuild the adjacency from (u, v) on this worker.
+// Same walk as from_slot, but there is no shared adjacency.
+// This worker rebuilds cand + adjacency from (u, v). Deeper children
+// do the same; no taskwait (nothing shared to release).
 #pragma gtap function
 __device__ void count_candidate_range_from_edge(
         int u, int v, int depth, SearchPrefix prefix, int range_begin,
@@ -176,13 +180,8 @@ __device__ void count_candidate_range_from_edge(
     build_candidate_adjacency(cand, candidate_count, adjacency);
 
     if (depth > 0) {
-        if (!restore_candidates_from_prefix(
-                adjacency, candidate_count, depth, prefix)) {
-            return;
-        }
-        int words = words_for_len(candidate_count);
-        int active_count = popcount_bits(
-            candidate_bitset_buffer(depth), words);
+        int active_count = restore_candidates_from_prefix(
+            adjacency, candidate_count, depth, prefix);
         if (active_count < target_size - depth) return;
     } else {
         init_full_bitset(candidate_bitset_buffer(0), candidate_count);
@@ -192,6 +191,7 @@ __device__ void count_candidate_range_from_edge(
     unsigned long long* child_candidates = candidate_bitset_buffer(depth + 1);
     int split_threshold = split_threshold_for_depth(depth);
     int chunk = chunk_size(candidate_count, GTAP_TASK_FANOUT);
+    int words = words_for_len(candidate_count);
     unsigned long long clique_count = 0ULL;
     for (int candidate_index = range_begin; candidate_index < range_end;
          ++candidate_index) {
@@ -207,21 +207,23 @@ __device__ void count_candidate_range_from_edge(
         int child_count = build_child_candidates(
             adjacency, candidate_count, active_candidates, candidate_index,
             child_candidates);
+        if (child_count < child_vertices_needed) continue;
         if (child_count >= split_threshold && child_vertices_needed > 2) {
             SearchPrefix child_prefix = extend_search_prefix(
                 prefix, depth, candidate_index);
             for (int s = 0; s < candidate_count; s += chunk) {
                 int e = s + chunk;
                 if (e > candidate_count) e = candidate_count;
+                if (!range_has_set_bit(child_candidates, words, s, e)) continue;
                 #pragma gtap task
                 count_candidate_range_from_edge(
                     u, v, depth + 1,
                     child_prefix,
                     s, e);
             }
-        } else if (child_count >= child_vertices_needed) {
+        } else {
             clique_count += count_cliques_in_bitset(
-                adjacency, candidate_count, child_candidates,
+                adjacency, candidate_count, child_candidates, child_count,
                 child_vertices_needed, depth + 1);
         }
     }

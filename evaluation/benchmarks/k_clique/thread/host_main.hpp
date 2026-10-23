@@ -41,6 +41,7 @@ static void alloc_scratch(
     clock_gettime(CLOCK_MONOTONIC, &measure_stop);
     result.measure_ms = elapsed_ms(measure_start, measure_stop);
     buffers.max_candidates = measured < 1 ? 1 : measured;
+    // Slot counts: see thread/device_state.cuh.
     if (bit_kind == BitScratchKind::ByMaxCandidates) {
         buffers.bit_buffer_count = buffers.max_candidates * 2;
     } else {
@@ -50,9 +51,12 @@ static void alloc_scratch(
     buffers.num_workers = config.grid_size * config.block_size;
     const int max_cand = buffers.max_candidates;
     const int words_per_worker = (max_cand + 63) >> 6;
+    // cand: one int list per worker.
     buffers.cand_scratch_ints = (size_t)buffers.num_workers * (size_t)max_cand;
+    // bitset: workers × (k or 2*measured) × words.
     buffers.bit_scratch_words =
         (size_t)buffers.num_workers * (size_t)buffers.bit_buffer_count * (size_t)words_per_worker;
+    // adjacency: shared slots + one private matrix per worker.
     buffers.candidate_adjacency_scratch_words =
         ((size_t)GTAP_ADJACENCY_SLOTS + (size_t)buffers.num_workers) *
         (size_t)max_cand *

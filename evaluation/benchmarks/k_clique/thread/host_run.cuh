@@ -38,6 +38,9 @@ struct GtapKCliqueDeviceBuffers {
     int bit_buffer_count = 0;
 };
 
+// How many bitset slots per worker (g_bit_buffer_count).
+// ByK: orientation DFS frames, count = k.
+// ByMaxCandidates: pivot CL+PL per level, count = 2 * measured max.
 enum class BitScratchKind {
     ByK = 0,
     ByMaxCandidates
