@@ -22,8 +22,8 @@ static void print_run_settings(
     printf("GTAP_PIVOT_BLOCK_BLOCK_SIZE: %d\n", config.block_size);
     printf("GTAP_PIVOT_BLOCK_GRID_SIZE: %d\n", config.grid_size);
     printf("GTAP_RANGE_CUTOFF: %d\n", GTAP_RANGE_CUTOFF);
-    printf("GTAP_MAX_CANDIDATES: %d\n", GTAP_MAX_CANDIDATES);
-    printf("GTAP_BIT_BUFFER_COUNT: %d\n", GTAP_BIT_BUFFER_COUNT);
+    printf("max candidates: %d (measured)\n", buffers.max_candidates);
+    printf("bit buffer count: %d\n", buffers.bit_buffer_count);
     printf("GTAP_CUDA_STACK_SIZE: %d\n", GTAP_CUDA_STACK_SIZE);
 }
 
@@ -33,11 +33,12 @@ static void print_run_result(
     printf("scratch blocks: %d\n", buffers.num_workers);
     printf("candidate scratch: %zu ints\n", buffers.cand_scratch_ints);
     printf("bit scratch: %zu uint64 words\n", buffers.bit_scratch_words);
-    printf("encode slots: %d\n", GTAP_ENCODE_SLOTS);
-    printf("encode scratch: %zu uint64 words (slots + per-block)\n", buffers.encode_scratch_words);
+    printf("adjacency slots: %d\n", GTAP_ADJACENCY_SLOTS);
+    printf("adjacency scratch: %zu uint64 words (slots + per-block)\n", buffers.candidate_adjacency_scratch_words);
+    printf("pivot stack: %zu ints\n", buffers.pivot_stack_ints);
 #ifdef GTAP_STATS
     printf("GTaP max candidate length: %d / %d\n",
-           result.candidate_highwater, GTAP_MAX_CANDIDATES);
+           result.candidate_highwater, buffers.max_candidates);
 #endif
     printf("GTaP count: %llu\n", result.gpu_count);
     if (result.scratch_overflow) {

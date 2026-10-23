@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     bool initialized = false;
 
     orient_graph(graph, orient_mode, buffers, result);
-    alloc_scratch(config, buffers, result);
+    alloc_scratch(config, buffers, result, options.k, BitScratchKind::ByK);
 
     timespec count_phase_start, count_phase_stop;
     timespec count_setup_start, count_setup_stop;
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
         elapsed_ms(count_setup_start, count_setup_stop) - result.gtap_initialize_ms;
     if (result.count_setup_ms < 0.0) result.count_setup_ms = 0.0;
 
-    launch_and_measure(exec_kernel, result);
+    launch_and_measure(count_cliques_kernel, result);
     clock_gettime(CLOCK_MONOTONIC, &count_phase_stop);
     result.count_phase_ms = elapsed_ms(count_phase_start, count_phase_stop);
     result.count_e2e_ms = result.orient_ms + result.workspace_ms + result.count_phase_ms;

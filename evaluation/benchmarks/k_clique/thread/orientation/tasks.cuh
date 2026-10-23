@@ -1,15 +1,15 @@
 // Orientation counting: where work becomes a GTaP task (thread mode).
 //
-//   exec_kernel_k
-//     edgek_range[0, E)          split the oriented edge list
-//       edgek_edge(ei)           one directed edge (u, v); m = |N(u) ∩ N(v)|
-//         light m                count inline
-//         heavy + encode slot    encode once; spawn shared_encoded_range
-//         heavy, no slot         spawn encoded_range (rebuild encode)
-//         heavy child at depth   another shared_encoded_range
+//   count_cliques_kernel
+//     count_edge_range[0, E)
+//       count_from_edge(ei)
+//         light cand_count                count inline
+//         heavy + encode slot    encode once; spawn count_candidate_range_from_slot
+//         heavy, no slot         spawn count_candidate_range_from_edge
+//         heavy child at depth   another count_candidate_range_from_slot
 //
-// slot  = shared encode-buffer index.
-// fixed = KRangeFixed.idx[d]: candidate chosen at depth d (rebuild prefix).
+// slot   = shared adjacency-buffer index.
+// prefix = SearchPrefix: candidate index chosen at each search depth.
 // See README.md "Task split".
 
 #pragma once
@@ -18,16 +18,14 @@
 #include "counting.cuh"
 #include "../../common/prefix_fixed.cuh"
 
-__device__ __forceinline__ int heavy_threshold_for_depth(int depth) {
+__device__ __forceinline__ int split_threshold_for_depth(int depth) {
     if (depth == 0) return GTAP_SECOND_HEAVY_CANDIDATES;
     if (depth == 1) return GTAP_THIRD_HEAVY_CANDIDATES;
     return 1000000000;
 }
 
-__device__ __forceinline__ int range_fanout_for_depth(int m, int depth, bool shared_slot_path) {
-    int fanout = shared_slot_path ? GTAP_WAIT_FANOUT : GTAP_TASK_FANOUT;
-    (void)depth;
-    return (m + fanout - 1) / fanout;
+__device__ __forceinline__ int chunk_size(int count, int max_tasks) {
+    return (count + max_tasks - 1) / max_tasks;
 }
 
 #ifdef GTAP_STATS
@@ -43,349 +41,311 @@ __device__ __forceinline__ int shared_range_wait_profile_kind(int depth) {
 }
 #endif
 
-__device__ bool rebuild_encoded_prefix(
-    const unsigned long long* enc,
-    int m,
-    int depth,
-    const KRangeFixed& fixed) {
+__device__ bool restore_candidates_from_prefix(
+        const unsigned long long* adjacency, int candidate_count, int depth,
+        const SearchPrefix& prefix) {
     if (depth <= 0) return true;
-    if (depth + 1 >= GTAP_BIT_BUFFER_COUNT) return false;
-    if (depth > GTAP_RANGE_MAX_FIXED) return false;
+    if (depth + 1 >= g_bit_buffer_count) return false;
+    if (depth > GTAP_MAX_PREFIX_DEPTH) return false;
 
-    init_full_bits(bit_buffer(0), m);
+    init_full_bitset(candidate_bitset_buffer(0), candidate_count);
     for (int i = 0; i < depth; ++i) {
-        int fi = fixed.idx[i];
-        if (fi < 0 || fi >= m) return false;
-        int child_count = make_child_bits_encoded(
-            enc, m, bit_buffer(i), fi, bit_buffer(i + 1));
+        int candidate_index = prefix.candidate_indices[i];
+        if (candidate_index < 0 || candidate_index >= candidate_count) {
+            return false;
+        }
+        int child_count = build_child_candidates(
+            adjacency, candidate_count, candidate_bitset_buffer(i),
+            candidate_index, candidate_bitset_buffer(i + 1));
         if (child_count == 0) return false;
     }
     return true;
 }
 
-// Walk candidate indices [range_begin, range_end) on a shared encode (slot).
+// Walk candidate indices [range_begin, range_end) using the adjacency in `slot`.
 #pragma gtap function
-__device__ void edgek_shared_encoded_range_task(
-    int slot,
-    int u,
-    int v,
-    int m,
-    int depth,
-    KRangeFixed fixed,
-    int range_begin,
-    int range_end) {
+__device__ void count_candidate_range_from_slot(
+        int slot, int u, int v, int candidate_count, int depth,
+        SearchPrefix prefix, int range_begin, int range_end) {
 #ifdef GTAP_STATS
-    unsigned long long t0 = global_time();
+    unsigned long long start_time = global_time();
 #endif
-    int need = clique_tail_need();
-    if (m < need || m > GTAP_MAX_CANDIDATES) return;
-    if (depth < 0 || depth + 1 >= GTAP_BIT_BUFFER_COUNT) return;
+    const int target_size = vertices_needed_after_edge();
+    const int child_vertices_needed = target_size - depth - 1;
+    if (candidate_count < target_size || candidate_count > g_max_candidates) {
+        return;
+    }
+    if (depth < 0 || depth + 1 >= g_bit_buffer_count) return;
 
     if (range_begin < 0) range_begin = 0;
-    if (range_end > m) range_end = m;
+    if (range_end > candidate_count) range_end = candidate_count;
     if (range_end <= range_begin) return;
 
-    const unsigned long long* enc = encode_slot_buffer(slot);
+    const unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
 
     if (depth > 0) {
-        if (!rebuild_encoded_prefix(enc, m, depth, fixed)) {
+        if (!restore_candidates_from_prefix(
+                adjacency, candidate_count, depth, prefix)) {
             return;
         }
-        int words = words_for_len(m);
-        int pc = popcount_bits(bit_buffer(depth), words);
-        if (pc < need - depth) return;
+        int words = words_for_len(candidate_count);
+        int active_count = popcount_bits(
+            candidate_bitset_buffer(depth), words);
+        if (active_count < target_size - depth) return;
     } else {
-        init_full_bits(bit_buffer(0), m);
+        init_full_bitset(candidate_bitset_buffer(0), candidate_count);
     }
 
-    unsigned long long local = 0ULL;
-    int child_need = need - depth - 1;
+    unsigned long long* active_candidates = candidate_bitset_buffer(depth);
+    unsigned long long* child_candidates = candidate_bitset_buffer(depth + 1);
+    int split_threshold = split_threshold_for_depth(depth);
+    int chunk = chunk_size(candidate_count, GTAP_WAIT_FANOUT);
+    unsigned long long clique_count = 0ULL;
     bool spawned = false;
-    for (int idx = range_begin; idx < range_end; ++idx) {
-        unsigned long long* P_cur = bit_buffer(depth);
-        unsigned long long* P_child = bit_buffer(depth + 1);
-        if (depth > 0 && !is_bit_set(P_cur, idx)) continue;
-
-        if (child_need == 0) {
-            ++local;
+    for (int candidate_index = range_begin; candidate_index < range_end; ++candidate_index) {
+        if (depth > 0 && !is_bit_set(active_candidates, candidate_index)) {
             continue;
         }
 
-        int child_count = make_child_bits_encoded(enc, m, P_cur, idx, P_child);
-        int heavy = heavy_threshold_for_depth(depth);
-        if (child_count >= heavy && child_need > 2) {
-            int chunk = range_fanout_for_depth(m, depth, true);
-            KRangeFixed child_fixed = append_range_fixed(fixed, depth, idx);
-            for (int s = 0; s < m; s += chunk) {
+        if (child_vertices_needed == 0) {
+            ++clique_count;
+            continue;
+        }
+
+        int child_count = build_child_candidates(
+            adjacency, candidate_count, active_candidates, candidate_index,
+            child_candidates);
+        if (child_count >= split_threshold && child_vertices_needed > 2) {
+            SearchPrefix child_prefix = extend_search_prefix(
+                prefix, depth, candidate_index);
+            for (int s = 0; s < candidate_count; s += chunk) {
                 int e = s + chunk;
-                if (e > m) e = m;
+                if (e > candidate_count) e = candidate_count;
                 spawned = true;
                 #pragma gtap task
-                edgek_shared_encoded_range_task(
-                    slot, u, v, m, depth + 1,
-                    child_fixed,
+                count_candidate_range_from_slot(
+                    slot, u, v, candidate_count, depth + 1,
+                    child_prefix,
                     s, e);
             }
-        } else if (child_count >= child_need) {
-            local += count_encoded_recursive(enc, m, P_child, child_need, depth + 1);
+        } else if (child_count >= child_vertices_needed) {
+            clique_count += count_cliques_in_bitset(
+                adjacency, candidate_count, child_candidates,
+                child_vertices_needed, depth + 1);
         }
     }
 
-    if (local != 0ULL) atomicAdd(&g_answer, local);
+    if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
     if (spawned) {
 #ifdef GTAP_STATS
         unsigned long long wait_start = global_time();
 #endif
         #pragma gtap taskwait
 #ifdef GTAP_STATS
-        record_task_profile(
-            shared_range_wait_profile_kind(depth),
-            global_time() - wait_start,
-            u,
-            v,
-            m,
-            range_begin,
-            range_end,
-            spawned ? 1 : 0,
-            (int)local);
+        record_task_profile(shared_range_wait_profile_kind(depth), global_time() - wait_start,
+                            u, v, candidate_count, range_begin, range_end, spawned ? 1 : 0,
+                            (int)clique_count);
 #endif
     }
 #ifdef GTAP_STATS
-    record_task_profile(
-        shared_range_profile_kind(depth),
-        global_time() - t0,
-        u,
-        v,
-        m,
-        range_begin,
-        range_end,
-        spawned ? 1 : 0,
-        (int)local);
+    record_task_profile(shared_range_profile_kind(depth), global_time() - start_time,
+                        u, v, candidate_count, range_begin, range_end, spawned ? 1 : 0,
+                        (int)clique_count);
 #endif
 }
 
-// Same range walk without a shared slot: rebuild the encode on this worker.
+// Same candidate-range walk: rebuild the adjacency from (u, v) on this worker.
 #pragma gtap function
-__device__ void edgek_encoded_range_task(
-    int u,
-    int v,
-    int depth,
-    KRangeFixed fixed,
-    int range_begin,
-    int range_end) {
-
+__device__ void count_candidate_range_from_edge(
+        int u, int v, int depth, SearchPrefix prefix, int range_begin,
+        int range_end) {
     int* cand = cand_buffer();
-    int m = intersect_rows_to_candidate(u, v, cand);
-    int need = clique_tail_need();
-    if (m < need || m > GTAP_MAX_CANDIDATES) return;
-    if (depth < 0 || depth + 1 >= GTAP_BIT_BUFFER_COUNT) return;
+    int candidate_count = collect_common_neighbors(u, v, cand);
+    const int target_size = vertices_needed_after_edge();
+    const int child_vertices_needed = target_size - depth - 1;
+    if (candidate_count < target_size || candidate_count > g_max_candidates) {
+        return;
+    }
+    if (depth < 0 || depth + 1 >= g_bit_buffer_count) return;
 
     if (range_begin < 0) range_begin = 0;
-    if (range_end > m) range_end = m;
+    if (range_end > candidate_count) range_end = candidate_count;
     if (range_end <= range_begin) return;
 
-    unsigned long long* enc = encode_buffer();
-    build_encoded_candidate_graph(cand, m, enc);
+    unsigned long long* adjacency = candidate_adjacency_buffer();
+    build_candidate_adjacency(cand, candidate_count, adjacency);
 
     if (depth > 0) {
-        if (!rebuild_encoded_prefix(enc, m, depth, fixed)) {
+        if (!restore_candidates_from_prefix(
+                adjacency, candidate_count, depth, prefix)) {
             return;
         }
-        int words = words_for_len(m);
-        int pc = popcount_bits(bit_buffer(depth), words);
-        if (pc < need - depth) return;
+        int words = words_for_len(candidate_count);
+        int active_count = popcount_bits(
+            candidate_bitset_buffer(depth), words);
+        if (active_count < target_size - depth) return;
     } else {
-        init_full_bits(bit_buffer(0), m);
+        init_full_bitset(candidate_bitset_buffer(0), candidate_count);
     }
 
-    unsigned long long local = 0ULL;
-    int child_need = need - depth - 1;
-    for (int idx = range_begin; idx < range_end; ++idx) {
-        unsigned long long* P_cur = bit_buffer(depth);
-        unsigned long long* P_child = bit_buffer(depth + 1);
-        if (depth > 0 && !is_bit_set(P_cur, idx)) continue;
-
-        if (child_need == 0) {
-            ++local;
+    unsigned long long* active_candidates = candidate_bitset_buffer(depth);
+    unsigned long long* child_candidates = candidate_bitset_buffer(depth + 1);
+    int split_threshold = split_threshold_for_depth(depth);
+    int chunk = chunk_size(candidate_count, GTAP_TASK_FANOUT);
+    unsigned long long clique_count = 0ULL;
+    for (int candidate_index = range_begin; candidate_index < range_end;
+         ++candidate_index) {
+        if (depth > 0 && !is_bit_set(active_candidates, candidate_index)) {
             continue;
         }
 
-        int child_count = make_child_bits_encoded(enc, m, P_cur, idx, P_child);
-        int heavy = heavy_threshold_for_depth(depth);
-        if (child_count >= heavy && child_need > 2) {
-            int chunk = range_fanout_for_depth(m, depth, false);
-            KRangeFixed child_fixed = append_range_fixed(fixed, depth, idx);
-            for (int s = 0; s < m; s += chunk) {
+        if (child_vertices_needed == 0) {
+            ++clique_count;
+            continue;
+        }
+
+        int child_count = build_child_candidates(
+            adjacency, candidate_count, active_candidates, candidate_index,
+            child_candidates);
+        if (child_count >= split_threshold && child_vertices_needed > 2) {
+            SearchPrefix child_prefix = extend_search_prefix(
+                prefix, depth, candidate_index);
+            for (int s = 0; s < candidate_count; s += chunk) {
                 int e = s + chunk;
-                if (e > m) e = m;
+                if (e > candidate_count) e = candidate_count;
                 #pragma gtap task
-                edgek_encoded_range_task(
+                count_candidate_range_from_edge(
                     u, v, depth + 1,
-                    child_fixed,
+                    child_prefix,
                     s, e);
             }
-        } else if (child_count >= child_need) {
-            local += count_encoded_recursive(enc, m, P_child, child_need, depth + 1);
+        } else if (child_count >= child_vertices_needed) {
+            clique_count += count_cliques_in_bitset(
+                adjacency, candidate_count, child_candidates,
+                child_vertices_needed, depth + 1);
         }
     }
 
-    if (local != 0ULL) atomicAdd(&g_answer, local);
+    if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
 }
 
-// One oriented edge: intersect, then inline count or spawn range tasks.
+// One oriented edge: intersect, then count inline or spawn candidate-range tasks.
 #pragma gtap function
-__device__ void edgek_edge(int ei) {
-    {
-        int u = g_edge_src[ei];
-        int v = g_col_idx[ei];
+__device__ void count_from_edge(int ei) {
+    int u = g_edge_src[ei];
+    int v = g_col_idx[ei];
 #ifdef GTAP_STATS
-        unsigned long long t0 = global_time();
+    unsigned long long start_time = global_time();
 #endif
-        int need = clique_tail_need();
-        if (g_row_ptr[u + 1] - g_row_ptr[u] < need ||
-            g_row_ptr[v + 1] - g_row_ptr[v] < need) {
-            return;
-        }
+    const int target_size = vertices_needed_after_edge();
+    if (g_row_ptr[u + 1] - g_row_ptr[u] < target_size ||
+        g_row_ptr[v + 1] - g_row_ptr[v] < target_size) {
+        return;
+    }
 
-        int* cand = cand_buffer();
-        int m = intersect_rows_to_candidate(u, v, cand);
-        if (m < need) return;
+    int* cand = cand_buffer();
+    int candidate_count = collect_common_neighbors(u, v, cand);
+    if (candidate_count < target_size) return;
 
-        if (need == 2) {
-            unsigned long long local = count_full_candidate_edges(cand, m);
-            if (local != 0ULL) atomicAdd(&g_answer, local);
+    if (target_size == 2) {
+        unsigned long long clique_count = count_edges_in_candidates(
+            cand, candidate_count);
+        if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
 #ifdef GTAP_STATS
-            record_task_profile(
-                K_KIND_EDGE_COUNT,
-                global_time() - t0,
-                u,
-                v,
-                m,
-                -1,
-                5,
-                0,
-                (int)local);
+        record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time,
+                            u, v, candidate_count, -1, 5, 0, (int)clique_count);
 #endif
-            return;
-        }
+        return;
+    }
 
-        if (m >= GTAP_HEAVY_CANDIDATES) {
-            int slot = acquire_encode_slot();
-            if (slot >= 0) {
-                unsigned long long* enc = encode_slot_buffer(slot);
-                build_encoded_candidate_graph(cand, m, enc);
+    // 1) Heavy + slot: encode once, spawn count_candidate_range_from_slot.
+    if (candidate_count >= GTAP_HEAVY_CANDIDATES) {
+        int slot = acquire_candidate_adjacency_slot();
+        if (slot >= 0) {
+            unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
+            build_candidate_adjacency(cand, candidate_count, adjacency);
 
-                KRangeFixed fixed;
-                int chunk = (m + GTAP_WAIT_FANOUT - 1) / GTAP_WAIT_FANOUT;
-                for (int s = 0; s < m; s += chunk) {
-                    int e = s + chunk;
-                    if (e > m) e = m;
-                    #pragma gtap task
-                    edgek_shared_encoded_range_task(
-                        slot, u, v, m, 0,
-                        fixed,
-                        s, e);
-                }
-
-#ifdef GTAP_STATS
-                unsigned long long wait_start = global_time();
-#endif
-                #pragma gtap taskwait
-#ifdef GTAP_STATS
-                record_task_profile(
-                    K_KIND_EDGE_WAIT,
-                    global_time() - wait_start,
-                    u,
-                    v,
-                    m,
-                    slot,
-                    1,
-                    0,
-                    0);
-#endif
-
-                release_encode_slot(slot);
-#ifdef GTAP_STATS
-                record_task_profile(
-                    K_KIND_EDGE_COUNT,
-                    global_time() - t0,
-                    u,
-                    v,
-                    m,
-                    slot,
-                    1,
-                    0,
-                    0);
-#endif
-                return;
-            }
-
-            KRangeFixed fixed;
-            int chunk = (m + GTAP_TASK_FANOUT - 1) / GTAP_TASK_FANOUT;
-            for (int s = 0; s < m; s += chunk) {
+            SearchPrefix prefix;
+            int chunk = chunk_size(candidate_count, GTAP_WAIT_FANOUT);
+            for (int s = 0; s < candidate_count; s += chunk) {
                 int e = s + chunk;
-                if (e > m) e = m;
+                if (e > candidate_count) e = candidate_count;
                 #pragma gtap task
-                edgek_encoded_range_task(
-                    u, v, 0,
-                    fixed,
+                count_candidate_range_from_slot(
+                    slot, u, v, candidate_count, 0,
+                    prefix,
                     s, e);
             }
+
 #ifdef GTAP_STATS
-            record_task_profile(
-                K_KIND_EDGE_COUNT,
-                global_time() - t0,
-                u,
-                v,
-                m,
-                -1,
-                3,
-                0,
-                0);
+            unsigned long long wait_start = global_time();
+#endif
+            #pragma gtap taskwait
+#ifdef GTAP_STATS
+            record_task_profile(K_KIND_EDGE_WAIT, global_time() - wait_start,
+                                u, v, candidate_count, slot, 1, 0, 0);
+#endif
+
+            release_candidate_adjacency_slot(slot);
+#ifdef GTAP_STATS
+            record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time,
+                                u, v, candidate_count, slot, 1, 0, 0);
 #endif
             return;
         }
 
-        unsigned long long local = count_all_from_candidate_encoded(cand, m, need);
-        if (local != 0ULL) atomicAdd(&g_answer, local);
+        // 2) Heavy, no slot: spawn count_candidate_range_from_edge.
+        SearchPrefix prefix;
+        int chunk = chunk_size(candidate_count, GTAP_TASK_FANOUT);
+        for (int s = 0; s < candidate_count; s += chunk) {
+            int e = s + chunk;
+            if (e > candidate_count) e = candidate_count;
+            #pragma gtap task
+            count_candidate_range_from_edge(
+                u, v, 0,
+                prefix,
+                s, e);
+        }
 #ifdef GTAP_STATS
-        record_task_profile(
-            K_KIND_EDGE_COUNT,
-            global_time() - t0,
-            u,
-            v,
-            m,
-            -1,
-            2,
-            0,
-            (int)local);
+        record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time,
+                            u, v, candidate_count, -1, 3, 0, 0);
 #endif
+        return;
     }
+
+    // 3) Light: count inline.
+    unsigned long long clique_count = count_cliques_in_candidates(
+        cand, candidate_count, target_size);
+    if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
+#ifdef GTAP_STATS
+    record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time,
+                        u, v, candidate_count, -1, 2, 0, (int)clique_count);
+#endif
 }
 
 // Split [begin_edge, end_edge) until each piece is <= RANGE_CUTOFF edges.
 #pragma gtap function
-__device__ void edgek_range(int begin_edge, int end_edge) {
+__device__ void count_edge_range(int begin_edge, int end_edge) {
     if (end_edge <= begin_edge) return;
 
     if (end_edge - begin_edge > GTAP_RANGE_CUTOFF) {
-        int chunk = (end_edge - begin_edge + GTAP_TASK_FANOUT - 1) / GTAP_TASK_FANOUT;
+        int chunk = chunk_size(end_edge - begin_edge, GTAP_TASK_FANOUT);
         for (int s = begin_edge; s < end_edge; s += chunk) {
             int e = s + chunk;
             if (e > end_edge) e = end_edge;
             #pragma gtap task
-            edgek_range(s, e);
+            count_edge_range(s, e);
         }
         return;
     }
 
     for (int ei = begin_edge; ei < end_edge; ++ei) {
         #pragma gtap task
-        edgek_edge(ei);
+        count_from_edge(ei);
     }
 }
 
-__global__ void exec_kernel_k() {
+__global__ void count_cliques_kernel() {
     #pragma gtap entry
-    edgek_range(0, g_num_edges);
+    count_edge_range(0, g_num_edges);
 }

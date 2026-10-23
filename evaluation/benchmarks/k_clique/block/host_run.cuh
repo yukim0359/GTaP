@@ -24,14 +24,23 @@ struct GtapKCliqueDeviceBuffers {
     int* d_edge_src = nullptr;
     int* d_cand_scratch = nullptr;
     unsigned long long* d_bit_scratch = nullptr;
-    unsigned long long* d_encode_scratch = nullptr;
-    int* d_encode_slot_stack = nullptr;
+    unsigned long long* d_candidate_adjacency_scratch = nullptr;
+    int* d_candidate_adjacency_slot_stack = nullptr;
+    int* d_pivot_stack = nullptr;
 
     size_t cand_scratch_ints = 0;
     size_t bit_scratch_words = 0;
-    size_t encode_scratch_words = 0;
+    size_t candidate_adjacency_scratch_words = 0;
+    size_t pivot_stack_ints = 0;
     size_t num_oriented_edges = 0;
     int num_workers = 0;
+    int max_candidates = 0;
+    int bit_buffer_count = 0;
+};
+
+enum class BitScratchKind {
+    ByK = 0,
+    ByMaxCandidates
 };
 
 struct GtapKCliqueRunResult {
@@ -55,8 +64,9 @@ static void free_device_buffers(GtapKCliqueDeviceBuffers& buffers) {
     cudaFree(buffers.d_edge_src);
     cudaFree(buffers.d_cand_scratch);
     cudaFree(buffers.d_bit_scratch);
-    cudaFree(buffers.d_encode_scratch);
-    cudaFree(buffers.d_encode_slot_stack);
+    cudaFree(buffers.d_candidate_adjacency_scratch);
+    cudaFree(buffers.d_candidate_adjacency_slot_stack);
+    cudaFree(buffers.d_pivot_stack);
     buffers = GtapKCliqueDeviceBuffers{};
 }
 
@@ -73,13 +83,13 @@ static cudaError_t init_device_state(
     const HostOptions& options,
     const GtapKCliqueDeviceBuffers& buffers) {
     const int num_exec_edges = (int)buffers.num_oriented_edges;
-    const int encode_slot_top_init = GTAP_ENCODE_SLOTS;
+    const int candidate_adjacency_slot_top_init = GTAP_ADJACENCY_SLOTS;
     unsigned long long zero = 0ULL;
     int scratch_overflow = 0;
-    int encode_slot_lock_init = 0;
+    int candidate_adjacency_slot_lock_init = 0;
     CUDA_CHECK(cudaMemcpyToSymbol(g_answer, &zero, sizeof(unsigned long long)));
     CUDA_CHECK(cudaMemcpyToSymbol(g_scratch_overflow, &scratch_overflow, sizeof(int)));
-    CUDA_CHECK(cudaMemcpyToSymbol(g_encode_slot_lock, &encode_slot_lock_init, sizeof(int)));
+    CUDA_CHECK(cudaMemcpyToSymbol(g_candidate_adjacency_slot_lock, &candidate_adjacency_slot_lock_init, sizeof(int)));
 #ifdef GTAP_STATS
     int candidate_highwater = 0;
     unsigned long long profile_cycles_zero[K_PROFILE_KINDS] = {0ULL};
@@ -94,17 +104,24 @@ static cudaError_t init_device_state(
         profile_info_zero,
         sizeof(profile_info_zero)));
 #endif
-    CUDA_CHECK(cudaMemcpyToSymbol(g_encode_slot_top, &encode_slot_top_init, sizeof(int)));
+    CUDA_CHECK(cudaMemcpyToSymbol(g_candidate_adjacency_slot_top, &candidate_adjacency_slot_top_init, sizeof(int)));
     CUDA_CHECK(cudaMemcpyToSymbol(g_num_edges, &num_exec_edges, sizeof(int)));
     CUDA_CHECK(cudaMemcpyToSymbol(g_clique_k, &options.k, sizeof(int)));
+    CUDA_CHECK(cudaMemcpyToSymbol(
+        g_max_candidates, &buffers.max_candidates, sizeof(int)));
+    CUDA_CHECK(cudaMemcpyToSymbol(
+        g_bit_buffer_count, &buffers.bit_buffer_count, sizeof(int)));
+    CUDA_CHECK(cudaMemcpyToSymbol(
+        g_num_workers, &buffers.num_workers, sizeof(int)));
     cudaError_t err = bind_graph(
         buffers.d_row_ptr,
         buffers.d_col_idx,
         buffers.d_edge_src,
         buffers.d_cand_scratch,
         buffers.d_bit_scratch,
-        buffers.d_encode_scratch,
-        buffers.d_encode_slot_stack);
+        buffers.d_candidate_adjacency_scratch,
+        buffers.d_candidate_adjacency_slot_stack,
+        buffers.d_pivot_stack);
     if (err != cudaSuccess) {
         fprintf(stderr, "bind_graph failed: %s\n", cudaGetErrorString(err));
         return err;

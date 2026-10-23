@@ -8,10 +8,11 @@ __device__ __constant__ const int* g_col_idx;
 __device__ __constant__ const int* g_edge_src;
 __device__ __constant__ int* g_cand_scratch;
 __device__ __constant__ unsigned long long* g_bit_scratch;
-__device__ __constant__ unsigned long long* g_encode_scratch;
-__device__ __constant__ int* g_encode_slot_stack;
-__device__ int g_encode_slot_top;
-__device__ int g_encode_slot_lock;
+__device__ __constant__ unsigned long long* g_candidate_adjacency_scratch;
+__device__ __constant__ int* g_candidate_adjacency_slot_stack;
+__device__ __constant__ int* g_pivot_stack_scratch;
+__device__ int g_candidate_adjacency_slot_top;
+__device__ int g_candidate_adjacency_slot_lock;
 __device__ unsigned long long g_answer;
 __device__ int g_scratch_overflow;
 #ifdef GTAP_STATS
@@ -21,6 +22,9 @@ __device__ int g_task_max_info[K_PROFILE_KINDS * K_PROFILE_FIELDS];
 #endif
 __device__ __constant__ int g_num_edges;
 __device__ __constant__ int g_clique_k;
+__device__ __constant__ int g_max_candidates;
+__device__ __constant__ int g_bit_buffer_count;
+__device__ __constant__ int g_num_workers;
 
 static inline cudaError_t bind_graph(
     const int* d_row_ptr,
@@ -28,8 +32,9 @@ static inline cudaError_t bind_graph(
     const int* d_edge_src,
     int* d_cand_scratch,
     unsigned long long* d_bit_scratch,
-    unsigned long long* d_encode_scratch,
-    int* d_encode_slot_stack) {
+    unsigned long long* d_candidate_adjacency_scratch,
+    int* d_candidate_adjacency_slot_stack,
+    int* d_pivot_stack) {
     cudaError_t st = cudaMemcpyToSymbol(g_row_ptr, &d_row_ptr, sizeof(d_row_ptr));
     if (st != cudaSuccess) return st;
     st = cudaMemcpyToSymbol(g_col_idx, &d_col_idx, sizeof(d_col_idx));
@@ -40,9 +45,13 @@ static inline cudaError_t bind_graph(
     if (st != cudaSuccess) return st;
     st = cudaMemcpyToSymbol(g_bit_scratch, &d_bit_scratch, sizeof(d_bit_scratch));
     if (st != cudaSuccess) return st;
-    st = cudaMemcpyToSymbol(g_encode_scratch, &d_encode_scratch, sizeof(d_encode_scratch));
+    st = cudaMemcpyToSymbol(g_candidate_adjacency_scratch, &d_candidate_adjacency_scratch, sizeof(d_candidate_adjacency_scratch));
     if (st != cudaSuccess) return st;
-    return cudaMemcpyToSymbol(g_encode_slot_stack, &d_encode_slot_stack, sizeof(d_encode_slot_stack));
+    st = cudaMemcpyToSymbol(
+        g_candidate_adjacency_slot_stack, &d_candidate_adjacency_slot_stack, sizeof(d_candidate_adjacency_slot_stack));
+    if (st != cudaSuccess) return st;
+    return cudaMemcpyToSymbol(
+        g_pivot_stack_scratch, &d_pivot_stack, sizeof(d_pivot_stack));
 }
 
 __device__ __forceinline__ int block_worker_id() {
@@ -50,7 +59,39 @@ __device__ __forceinline__ int block_worker_id() {
 }
 
 __device__ __forceinline__ int max_words() {
-    return (GTAP_MAX_CANDIDATES + 63) >> 6;
+    return (g_max_candidates + 63) >> 6;
+}
+
+enum class PivotStackField {
+    Next = 0,
+    Drop,
+    Pivot
+};
+
+enum { kPivotStackFields = 3 };
+
+__device__ __forceinline__ int pivot_state_levels() {
+    return g_bit_buffer_count >> 1;
+}
+
+// Worker-minor: [field][level][worker]. One integer DFS stack per CUDA block.
+struct PivotStackCol {
+    int* base;
+    int stride;
+
+    __device__ __forceinline__ int& operator[](int level) const {
+        return base[(size_t)level * (size_t)stride];
+    }
+};
+
+__device__ __forceinline__ PivotStackCol pivot_stack(PivotStackField field) {
+    int levels = pivot_state_levels();
+    return {
+        g_pivot_stack_scratch +
+            ((size_t)(int)field * (size_t)levels * (size_t)g_num_workers) +
+            (size_t)block_worker_id(),
+        g_num_workers
+    };
 }
 
 __device__ __forceinline__ int words_for_len(int len) {
@@ -58,26 +99,28 @@ __device__ __forceinline__ int words_for_len(int len) {
 }
 
 __device__ __forceinline__ int* cand_buffer() {
-    return g_cand_scratch + (size_t)block_worker_id() * GTAP_MAX_CANDIDATES;
+    return g_cand_scratch + (size_t)block_worker_id() * g_max_candidates;
 }
 
-__device__ __forceinline__ unsigned long long* bit_buffer(int level) {
+__device__ __forceinline__ unsigned long long* candidate_bitset_buffer(
+        int buffer_index) {
     int words = max_words();
     return g_bit_scratch +
-           ((size_t)block_worker_id() * GTAP_BIT_BUFFER_COUNT + level) * (size_t)words;
+           ((size_t)block_worker_id() * g_bit_buffer_count + buffer_index) *
+           (size_t)words;
 }
 
-__device__ __forceinline__ unsigned long long* encode_buffer() {
-    return g_encode_scratch +
-           ((size_t)GTAP_ENCODE_SLOTS + (size_t)block_worker_id()) *
-           (size_t)GTAP_MAX_CANDIDATES *
+__device__ __forceinline__ unsigned long long* candidate_adjacency_buffer() {
+    return g_candidate_adjacency_scratch +
+           ((size_t)GTAP_ADJACENCY_SLOTS + (size_t)block_worker_id()) *
+           (size_t)g_max_candidates *
            (size_t)max_words();
 }
 
-__device__ __forceinline__ unsigned long long* encode_slot_buffer(int slot) {
-    return g_encode_scratch +
+__device__ __forceinline__ unsigned long long* candidate_adjacency_slot_buffer(int slot) {
+    return g_candidate_adjacency_scratch +
            (size_t)slot *
-           (size_t)GTAP_MAX_CANDIDATES *
+           (size_t)g_max_candidates *
            (size_t)max_words();
 }
 
@@ -93,38 +136,38 @@ __device__ __forceinline__ unsigned long long global_time() {
 }
 #endif
 
-__device__ __forceinline__ void encode_slot_lock() {
-    while (atomicCAS(&g_encode_slot_lock, 0, 1) != 0) {
+__device__ __forceinline__ void candidate_adjacency_slot_lock() {
+    while (atomicCAS(&g_candidate_adjacency_slot_lock, 0, 1) != 0) {
     }
 }
 
-__device__ __forceinline__ void encode_slot_unlock() {
+__device__ __forceinline__ void candidate_adjacency_slot_unlock() {
     __threadfence();
-    atomicExch(&g_encode_slot_lock, 0);
+    atomicExch(&g_candidate_adjacency_slot_lock, 0);
 }
 
-__device__ __forceinline__ int acquire_encode_slot() {
-    encode_slot_lock();
-    if (g_encode_slot_top <= 0) {
-        encode_slot_unlock();
+__device__ __forceinline__ int acquire_candidate_adjacency_slot() {
+    candidate_adjacency_slot_lock();
+    if (g_candidate_adjacency_slot_top <= 0) {
+        candidate_adjacency_slot_unlock();
         return -1;
     }
-    --g_encode_slot_top;
-    int slot = g_encode_slot_stack[g_encode_slot_top];
-    encode_slot_unlock();
+    --g_candidate_adjacency_slot_top;
+    int slot = g_candidate_adjacency_slot_stack[g_candidate_adjacency_slot_top];
+    candidate_adjacency_slot_unlock();
     return slot;
 }
 
-__device__ __forceinline__ void release_encode_slot(int slot) {
-    encode_slot_lock();
-    if (g_encode_slot_top >= GTAP_ENCODE_SLOTS) {
-        encode_slot_unlock();
+__device__ __forceinline__ void release_candidate_adjacency_slot(int slot) {
+    candidate_adjacency_slot_lock();
+    if (g_candidate_adjacency_slot_top >= GTAP_ADJACENCY_SLOTS) {
+        candidate_adjacency_slot_unlock();
         mark_overflow();
         return;
     }
-    g_encode_slot_stack[g_encode_slot_top] = slot;
-    ++g_encode_slot_top;
-    encode_slot_unlock();
+    g_candidate_adjacency_slot_stack[g_candidate_adjacency_slot_top] = slot;
+    ++g_candidate_adjacency_slot_top;
+    candidate_adjacency_slot_unlock();
 }
 
 #ifdef GTAP_STATS
@@ -133,7 +176,7 @@ __device__ __forceinline__ void record_task_profile(
     unsigned long long cycles,
     int u,
     int v,
-    int m,
+    int cand_count,
     int a,
     int b,
     int c,
@@ -143,7 +186,7 @@ __device__ __forceinline__ void record_task_profile(
         int base = kind * K_PROFILE_FIELDS;
         g_task_max_info[base + 0] = u;
         g_task_max_info[base + 1] = v;
-        g_task_max_info[base + 2] = m;
+        g_task_max_info[base + 2] = cand_count;
         g_task_max_info[base + 3] = a;
         g_task_max_info[base + 4] = b;
         g_task_max_info[base + 5] = c;

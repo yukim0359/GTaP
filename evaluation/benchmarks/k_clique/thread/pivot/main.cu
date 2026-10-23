@@ -49,8 +49,7 @@ static void print_pivot_tuning() {
     printf("GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES: %d\n", GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES);
     printf("GTAP_PIVOT_PREFIX_WORK_THRESHOLD: %d\n", GTAP_PIVOT_PREFIX_WORK_THRESHOLD);
     printf("GTAP_PIVOT_PREFIX_FANOUT: %d\n", GTAP_PIVOT_PREFIX_FANOUT);
-    printf("GTAP_RANGE_MAX_FIXED: %d\n", GTAP_RANGE_MAX_FIXED);
-    printf("GTAP_PIVOT_STATE_LEVELS: %d\n", GTAP_PIVOT_STATE_LEVELS);
+    printf("GTAP_MAX_PREFIX_DEPTH: %d\n", GTAP_MAX_PREFIX_DEPTH);
 }
 
 int main(int argc, char** argv) {
@@ -61,7 +60,7 @@ int main(int argc, char** argv) {
     if (!validate_problem(options, graph)) return 1;
 
     gtap_thread_config config{
-        .grid_size = 1600,
+        .grid_size = 1584,
         .block_size = 32,
         .max_tasks_per_warp = 200000,
         .num_queues = 1,
@@ -77,7 +76,7 @@ int main(int argc, char** argv) {
     bool initialized = false;
 
     orient_graph(graph, orient_mode, buffers, result);
-    alloc_scratch(config, buffers, result);
+    alloc_scratch(config, buffers, result, options.k, BitScratchKind::ByMaxCandidates);
 
     timespec count_phase_start, count_phase_stop;
     timespec count_setup_start, count_setup_stop;
@@ -118,7 +117,7 @@ int main(int argc, char** argv) {
         elapsed_ms(count_setup_start, count_setup_stop) - result.gtap_initialize_ms;
     if (result.count_setup_ms < 0.0) result.count_setup_ms = 0.0;
 
-    launch_and_measure(exec_kernel, result);
+    launch_and_measure(count_cliques_kernel, result);
     clock_gettime(CLOCK_MONOTONIC, &count_phase_stop);
     result.count_phase_ms = elapsed_ms(count_phase_start, count_phase_stop);
     result.count_e2e_ms = result.orient_ms + result.workspace_ms + result.count_phase_ms;

@@ -36,8 +36,7 @@ static void print_pivot_tuning() {
     printf("GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES: %d\n", GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES);
     printf("GTAP_PIVOT_PREFIX_WORK_THRESHOLD: %d\n", GTAP_PIVOT_PREFIX_WORK_THRESHOLD);
     printf("GTAP_PIVOT_PREFIX_FANOUT: %d\n", GTAP_PIVOT_PREFIX_FANOUT);
-    printf("GTAP_RANGE_MAX_FIXED: %d\n", GTAP_RANGE_MAX_FIXED);
-    printf("GTAP_PIVOT_STATE_LEVELS: %d\n", GTAP_PIVOT_STATE_LEVELS);
+    printf("GTAP_MAX_PREFIX_DEPTH: %d\n", GTAP_MAX_PREFIX_DEPTH);
 }
 
 int main(int argc, char** argv) {
@@ -62,7 +61,7 @@ int main(int argc, char** argv) {
     timespec preprocess_start, preprocess_stop;
     clock_gettime(CLOCK_MONOTONIC, &preprocess_start);
     orient_graph(graph, orient_mode, buffers);
-    alloc_scratch(config, buffers);
+    alloc_scratch(config, buffers, options.k, BitScratchKind::ByMaxCandidates);
     clock_gettime(CLOCK_MONOTONIC, &preprocess_stop);
     result.preprocess_ms = elapsed_ms(preprocess_start, preprocess_stop);
 
@@ -113,11 +112,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    fprintf(stderr, "launching exec_kernel<<<GRID=%d, BLOCK=%d>>> ...\n",
+    fprintf(stderr, "launching count_cliques_kernel<<<GRID=%d, BLOCK=%d>>> ...\n",
             config.grid_size, config.block_size);
     fflush(stderr);
-    launch_and_measure(exec_kernel, result);
-    fprintf(stderr, "exec_kernel finished\n");
+    launch_and_measure(count_cliques_kernel, result);
+    fprintf(stderr, "count_cliques_kernel finished\n");
     fflush(stderr);
     clock_gettime(CLOCK_MONOTONIC, &count_phase_stop);
     result.count_phase_ms = elapsed_ms(count_phase_start, count_phase_stop);

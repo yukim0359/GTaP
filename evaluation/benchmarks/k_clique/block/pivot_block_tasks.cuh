@@ -10,34 +10,34 @@
 
 // Rebuild prefix from `fixed`, then scan PL ordinals [range_begin, range_end).
 #pragma gtap function
-__device__ void edgek_pivot_shared_prefix_task(
+__device__ void count_pivot_prefix_from_slot(
     int slot,
     int u,
     int v,
-    int m,
+    int cand_count,
     int root_pivot,
     int depth,
-    KRangeFixed fixed,
+    SearchPrefix fixed,
     int range_begin,
     int range_end) {
 #ifdef GTAP_STATS
     unsigned long long t0 = global_time();
 #endif
-    int need = clique_tail_need();
-    if (m < need || m > GTAP_MAX_CANDIDATES) return;
-    if (depth < 0 || depth >= GTAP_RANGE_MAX_FIXED) return;
+    int need = vertices_needed_after_edge();
+    if (cand_count < need || cand_count > g_max_candidates) return;
+    if (depth < 0 || depth >= GTAP_MAX_PREFIX_DEPTH) return;
     if (range_begin < 0) range_begin = 0;
 
-    const unsigned long long* enc = encode_slot_buffer(slot);
-    constexpr int max_state_levels = K_PIVOT_STATE_LEVELS;
+    const unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
+    const int max_state_levels = pivot_state_levels();
     int parent_pl_count = 0;
     int parent_rsize = 0;
     int parent_drop = 0;
     int parent_pivot = 0;
     unsigned long long terminal_count = 0ULL;
     int rebuild_status = rebuild_pivot_prefix_block(
-        enc,
-        m,
+        adjacency,
+        cand_count,
         need,
         root_pivot,
         depth,
@@ -58,7 +58,7 @@ __device__ void edgek_pivot_shared_prefix_task(
     }
 
     int target = need + 1;
-    int words = words_for_len(m);
+    int words = words_for_len(cand_count);
     if (range_end > parent_pl_count) range_end = parent_pl_count;
     if (range_end <= range_begin) return;
     unsigned long long local = 0ULL;
@@ -74,16 +74,16 @@ __device__ void edgek_pivot_shared_prefix_task(
     int new_word = 0;
     for (int skip = 0; skip < range_begin; ++skip) {
         int idx = next_set_bit_from(parent_pl, words, scan_from, &new_word);
-        if (idx < 0 || idx >= m) return;
+        if (idx < 0 || idx >= cand_count) return;
         scan_from = idx + 1;
     }
 
     for (int ordinal = range_begin; ordinal < range_end; ++ordinal) {
         int new_idx = next_set_bit_from(parent_pl, words, scan_from, &new_word);
-        if (new_idx < 0 || new_idx >= m) break;
+        if (new_idx < 0 || new_idx >= cand_count) break;
         scan_from = new_idx + 1;
         int child_level = depth + 1;
-        if (child_level >= max_state_levels || child_level >= (GTAP_BIT_BUFFER_COUNT >> 1)) {
+        if (child_level >= max_state_levels) {
             if (threadIdx.x == 0) g_scratch_overflow = 1;
             continue;
         }
@@ -94,11 +94,11 @@ __device__ void edgek_pivot_shared_prefix_task(
 
         unsigned long long* child_cl = pivot_cl_buffer(child_level);
         int child_cl_count = make_kcgpu_child_cl_block(
-            enc, m, parent_cl, parent_pl, new_idx, new_word, child_cl);
+            adjacency, cand_count, parent_cl, parent_pl, new_idx, new_word, child_cl);
 
         int child_max_intersection = 0;
         int child_pivot = choose_kcgpu_pivot_from_cl_block(
-            enc, m, child_cl, words, &child_max_intersection);
+            adjacency, cand_count, child_cl, words, &child_max_intersection);
         if (child_pivot < 0) {
             if (child_rsize >= target) {
                 local += lookup_nCr(child_drop, child_rsize - target);
@@ -107,7 +107,7 @@ __device__ void edgek_pivot_shared_prefix_task(
         }
 
         int child_pl_count = make_kcgpu_pl_block(
-            enc, m, child_cl, child_pivot, pivot_pl_buffer(child_level));
+            adjacency, cand_count, child_cl, child_pivot, pivot_pl_buffer(child_level));
 
         if (child_pl_count == 0) {
             continue;
@@ -130,12 +130,12 @@ __device__ void edgek_pivot_shared_prefix_task(
             child_max_intersection >= GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES ||
             child_pl_count >= GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES;
         bool should_spawn =
-            child_level < GTAP_RANGE_MAX_FIXED &&
+            child_level < GTAP_MAX_PREFIX_DEPTH &&
             effective_rsize < target &&
             heavy_prefix &&
             work_estimate >= (unsigned long long)GTAP_PIVOT_PREFIX_WORK_THRESHOLD;
         if (should_spawn) {
-            KRangeFixed child_fixed = append_range_fixed(fixed, depth, new_idx);
+            SearchPrefix child_fixed = extend_search_prefix(fixed, depth, new_idx);
             int chunk = (child_pl_count + GTAP_PIVOT_PREFIX_FANOUT - 1) / GTAP_PIVOT_PREFIX_FANOUT;
             if (chunk < 1) chunk = 1;
             for (int s = 0; s < child_pl_count; s += chunk) {
@@ -147,17 +147,16 @@ __device__ void edgek_pivot_shared_prefix_task(
 #endif
                 if (threadIdx.x == 0) {
                     #pragma gtap task
-                    edgek_pivot_shared_prefix_task(
-                        slot, u, v, m, root_pivot, child_level, child_fixed, s, e);
+                    count_pivot_prefix_from_slot(
+                        slot, u, v, cand_count, root_pivot, child_level, child_fixed, s, e);
                 }
             }
         } else {
             local += count_pivot_encoded_from_state_block(
-                enc,
-                m,
+                adjacency,
+                cand_count,
                 target,
                 child_level,
-                child_pl_count,
                 child_rsize,
                 child_drop,
                 child_pivot);
@@ -167,16 +166,8 @@ __device__ void edgek_pivot_shared_prefix_task(
     if (threadIdx.x == 0 && local != 0ULL) atomicAdd(&g_answer, local);
 #ifdef GTAP_STATS
     if (threadIdx.x == 0) {
-        record_task_profile(
-            K_KIND_PIVOT_PREFIX_BODY,
-            global_time() - t0,
-            u,
-            v,
-            m,
-            depth,
-            range_begin,
-            spawned_count,
-            (int)(max_work_estimate > 2147483647ULL ? 2147483647ULL : max_work_estimate));
+        record_task_profile(K_KIND_PIVOT_PREFIX_BODY, global_time() - t0, u, v, cand_count, depth, range_begin,
+                            spawned_count, (int)(max_work_estimate > 2147483647ULL ? 2147483647ULL : max_work_estimate));
     }
 #endif
     if (spawned) {
@@ -187,38 +178,22 @@ __device__ void edgek_pivot_shared_prefix_task(
         #pragma gtap taskwait
 #ifdef GTAP_STATS
         if (threadIdx.x == 0) {
-            record_task_profile(
-                K_KIND_PIVOT_PREFIX_WAIT,
-                global_time() - wait_start,
-                u,
-                v,
-                m,
-                depth,
-                range_begin,
-                spawned_count,
-                0);
+            record_task_profile(K_KIND_PIVOT_PREFIX_WAIT, global_time() - wait_start,
+                                u, v, cand_count, depth, range_begin, spawned_count, 0);
         }
 #endif
     }
 #ifdef GTAP_STATS
     if (threadIdx.x == 0) {
-        record_task_profile(
-            K_KIND_PIVOT_SHARED_PREFIX,
-            global_time() - t0,
-            u,
-            v,
-            m,
-            depth,
-            range_begin,
-            spawned_count,
-            (int)local);
+        record_task_profile(K_KIND_PIVOT_SHARED_PREFIX, global_time() - t0,
+                            u, v, cand_count, depth, range_begin, spawned_count, (int)local);
     }
 #endif
 }
 
 // One oriented edge: intersect, then inline pivot DFS or spawn prefix tasks.
 #pragma gtap function
-__device__ void edgek_edge(int ei) {
+__device__ void count_from_edge(int ei) {
     int u = 0;
     int v = 0;
     if (threadIdx.x == 0) {
@@ -239,7 +214,7 @@ __device__ void edgek_edge(int ei) {
     unsigned long long t0 = 0ULL;
     if (threadIdx.x == 0) t0 = global_time();
 #endif
-    int need = clique_tail_need();
+    int need = vertices_needed_after_edge();
     bool skip = false;
     if (threadIdx.x == 0) {
         skip = (g_row_ptr[u + 1] - g_row_ptr[u] < need ||
@@ -251,18 +226,18 @@ __device__ void edgek_edge(int ei) {
     if (s_skip) return;
 
     int* cand = cand_buffer();
-    __shared__ int s_m;
+    __shared__ int s_cand_count;
     if (threadIdx.x == 0) {
-        s_m = intersect_rows_to_candidate(u, v, cand);
+        s_cand_count = collect_common_neighbors(u, v, cand);
     }
     __syncthreads();
-    int m = s_m;
-    if (m < need) return;
+    int cand_count = s_cand_count;
+    if (cand_count < need) return;
 
     if (need == 2) {
         __shared__ unsigned long long s_local;
         if (threadIdx.x == 0) {
-            s_local = count_full_candidate_edges(cand, m);
+            s_local = count_edges_in_candidates(cand, cand_count);
         }
         __syncthreads();
         if (threadIdx.x == 0 && s_local != 0ULL) {
@@ -270,71 +245,53 @@ __device__ void edgek_edge(int ei) {
         }
 #ifdef GTAP_STATS
         if (threadIdx.x == 0) {
-            record_task_profile(
-                K_KIND_EDGE_COUNT,
-                global_time() - t0,
-                u,
-                v,
-                m,
-                -1,
-                5,
-                0,
-                (int)s_local);
+            record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, -1, 5, 0, (int)s_local);
         }
 #endif
         return;
     }
 
-    if (m >= GTAP_PIVOT_SHARED_SPLIT_CANDIDATES) {
+    if (cand_count >= GTAP_PIVOT_SHARED_SPLIT_CANDIDATES) {
         int slot = -1;
-        if (threadIdx.x == 0) slot = acquire_encode_slot();
+        if (threadIdx.x == 0) slot = acquire_candidate_adjacency_slot();
         __shared__ int s_slot;
         if (threadIdx.x == 0) s_slot = slot;
         __syncthreads();
         slot = s_slot;
         if (slot >= 0) {
-            unsigned long long* enc = encode_slot_buffer(slot);
-            build_encoded_candidate_graph_symmetric_block(cand, m, enc);
+            unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
+            build_candidate_adjacency_symmetric_block(cand, cand_count, adjacency);
             int root_pivot = -1;
             unsigned long long* root_pl = pivot_pl_buffer(0);
-            int root_count = prepare_pivot_root_pl_block(enc, m, &root_pivot, root_pl);
+            int root_count = prepare_pivot_root_pl_block(adjacency, cand_count, &root_pivot, root_pl);
             if (root_count <= 0) {
-                if (threadIdx.x == 0) release_encode_slot(slot);
+                if (threadIdx.x == 0) release_candidate_adjacency_slot(slot);
 #ifdef GTAP_STATS
                 if (threadIdx.x == 0) {
-                    record_task_profile(
-                        K_KIND_EDGE_COUNT,
-                        global_time() - t0,
-                        u,
-                        v,
-                        m,
-                        root_pivot,
-                        10,
-                        root_count,
-                        0);
+                    record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, root_pivot, 10, root_count, 0);
                 }
 #endif
                 return;
             }
             bool spawned = false;
-            int words = words_for_len(m);
+            int words = words_for_len(cand_count);
             for (int word = 0; word < words; ++word) {
                 unsigned long long bits = root_pl[word];
                 while (bits) {
                     unsigned long long bit = bits & (~bits + 1ULL);
                     int root_idx = (word << 6) + (__ffsll((long long)bit) - 1);
                     bits ^= bit;
-                    if (root_idx >= m) continue;
-                    KRangeFixed root_fixed;
-                    root_fixed.idx[0] = root_idx;
-                    for (int s = 0; s < m; s += GTAP_PIVOT_PREFIX_CHUNK) {
+                    if (root_idx >= cand_count) continue;
+                    SearchPrefix root_fixed;
+                    root_fixed.candidate_indices[0] = root_idx;
+                    for (int s = 0; s < cand_count; s += GTAP_PIVOT_PREFIX_CHUNK) {
                         int e = s + GTAP_PIVOT_PREFIX_CHUNK;
-                        if (e > m) e = m;
+                        if (e > cand_count) e = cand_count;
                         spawned = true;
                         if (threadIdx.x == 0) {
                             #pragma gtap task
-                            edgek_pivot_shared_prefix_task(
-                                slot, u, v, m, root_pivot, 1, root_fixed, s, e);
+                            count_pivot_prefix_from_slot(
+                                slot, u, v, cand_count, root_pivot, 1, root_fixed, s, e);
                         }
                     }
                 }
@@ -347,61 +304,35 @@ __device__ void edgek_edge(int ei) {
                 #pragma gtap taskwait
 #ifdef GTAP_STATS
                 if (threadIdx.x == 0) {
-                    record_task_profile(
-                        K_KIND_PIVOT_SHARED_WAIT,
-                        global_time() - wait_start,
-                        u,
-                        v,
-                        m,
-                        root_pivot,
-                        root_count,
-                        GTAP_PIVOT_PREFIX_CHUNK,
-                        0);
+                    record_task_profile(K_KIND_PIVOT_SHARED_WAIT, global_time() - wait_start,
+                                        u, v, cand_count, root_pivot, root_count, GTAP_PIVOT_PREFIX_CHUNK, 0);
                 }
 #endif
             }
-            if (threadIdx.x == 0) release_encode_slot(slot);
+            if (threadIdx.x == 0) release_candidate_adjacency_slot(slot);
 #ifdef GTAP_STATS
             if (threadIdx.x == 0) {
-                record_task_profile(
-                    K_KIND_EDGE_COUNT,
-                    global_time() - t0,
-                    u,
-                    v,
-                    m,
-                    root_pivot,
-                    10,
-                    root_count,
-                    0);
+                record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, root_pivot, 10, root_count, 0);
             }
 #endif
             return;
         }
     }
 
-    unsigned long long* enc = encode_buffer();
-    build_encoded_candidate_graph_symmetric_block(cand, m, enc);
-    unsigned long long local = count_pivot_encoded_block(enc, m, need);
+    unsigned long long* adjacency = candidate_adjacency_buffer();
+    build_candidate_adjacency_symmetric_block(cand, cand_count, adjacency);
+    unsigned long long local = count_pivot_encoded_block(adjacency, cand_count, need);
     if (threadIdx.x == 0 && local != 0ULL) atomicAdd(&g_answer, local);
 #ifdef GTAP_STATS
     if (threadIdx.x == 0) {
-        record_task_profile(
-            K_KIND_EDGE_COUNT,
-            global_time() - t0,
-            u,
-            v,
-            m,
-            -1,
-            2,
-            0,
-            (int)local);
+        record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, -1, 2, 0, (int)local);
     }
 #endif
 }
 
 // Split [begin_edge, end_edge) until each piece is <= RANGE_CUTOFF edges.
 #pragma gtap function
-__device__ void edgek_range(int begin_edge, int end_edge) {
+__device__ void count_edge_range(int begin_edge, int end_edge) {
     if (end_edge <= begin_edge) return;
 
     if (end_edge - begin_edge > GTAP_RANGE_CUTOFF) {
@@ -411,7 +342,7 @@ __device__ void edgek_range(int begin_edge, int end_edge) {
             if (e > end_edge) e = end_edge;
             if (threadIdx.x == 0) {
                 #pragma gtap task
-                edgek_range(s, e);
+                count_edge_range(s, e);
             }
         }
         return;
@@ -420,12 +351,12 @@ __device__ void edgek_range(int begin_edge, int end_edge) {
     for (int ei = begin_edge; ei < end_edge; ++ei) {
         if (threadIdx.x == 0) {
             #pragma gtap task
-            edgek_edge(ei);
+            count_from_edge(ei);
         }
     }
 }
 
-__global__ void exec_kernel_k() {
+__global__ void count_cliques_kernel() {
     #pragma gtap entry
-    edgek_range(0, g_num_edges);
+    count_edge_range(0, g_num_edges);
 }

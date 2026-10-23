@@ -18,7 +18,7 @@ __device__ __forceinline__ void clear_bits(unsigned long long* bits, int words) 
     for (int w = 0; w < words; ++w) bits[w] = 0ULL;
 }
 
-__device__ __forceinline__ void init_full_bits(unsigned long long* bits, int len) {
+__device__ __forceinline__ void init_full_bitset(unsigned long long* bits, int len) {
     int words = words_for_len(len);
     for (int w = 0; w < words; ++w) bits[w] = ~0ULL;
     int rem = len & 63;
@@ -49,11 +49,12 @@ __device__ __forceinline__ unsigned long long lookup_nCr(int drop, int c) {
     return binomial_ull(drop, c);
 }
 
-__device__ __forceinline__ int clique_tail_need() {
+__device__ __forceinline__ int vertices_needed_after_edge() {
     return g_clique_k - 2;
 }
 
-__device__ __forceinline__ int intersect_rows_to_candidate(int u, int v, int* cand) {
+// Writes common neighbors to candidates. Returns their count, or -1 on overflow.
+__device__ __forceinline__ int collect_common_neighbors(int u, int v, int* cand) {
     int iu = g_row_ptr[u];
     int eu = g_row_ptr[u + 1];
     int iv = g_row_ptr[v];
@@ -63,7 +64,7 @@ __device__ __forceinline__ int intersect_rows_to_candidate(int u, int v, int* ca
         int a = g_col_idx[iu];
         int b = g_col_idx[iv];
         if (a == b) {
-            if (len >= GTAP_MAX_CANDIDATES) {
+            if (len >= g_max_candidates) {
                 mark_overflow();
                 return -1;
             }
@@ -82,17 +83,17 @@ __device__ __forceinline__ int intersect_rows_to_candidate(int u, int v, int* ca
     return len;
 }
 
-__device__ __forceinline__ unsigned long long count_full_candidate_edges(
+__device__ __forceinline__ unsigned long long count_edges_in_candidates(
     const int* cand,
-    int m) {
-    unsigned long long local = 0ULL;
-    for (int i = 0; i < m; ++i) {
+    int cand_count) {
+    unsigned long long edge_count = 0ULL;
+    for (int i = 0; i < cand_count; ++i) {
         int j = 0;
         int x = cand[i];
         int p = g_row_ptr[x];
         int p_end = g_row_ptr[x + 1];
         int count = 0;
-        while (j < m && p < p_end) {
+        while (j < cand_count && p < p_end) {
             int a = cand[j];
             int b = g_col_idx[p];
             if (a == b) {
@@ -105,31 +106,22 @@ __device__ __forceinline__ unsigned long long count_full_candidate_edges(
                 ++p;
             }
         }
-        local += (unsigned long long)count;
+        edge_count += (unsigned long long)count;
     }
-    return local;
+    return edge_count;
 }
 
 __device__ __forceinline__ unsigned long long* pivot_pl_buffer(int level) {
-    return bit_buffer(level << 1);
+    return candidate_bitset_buffer(level << 1);
 }
 
 __device__ __forceinline__ unsigned long long* pivot_cl_buffer(int level) {
-    return bit_buffer((level << 1) + 1);
+    return candidate_bitset_buffer((level << 1) + 1);
 }
 
-#define K_PIVOT_STATE_LEVELS \
-    ((GTAP_PIVOT_STATE_LEVELS < (GTAP_BIT_BUFFER_COUNT >> 1)) \
-         ? GTAP_PIVOT_STATE_LEVELS \
-         : (GTAP_BIT_BUFFER_COUNT >> 1))
-
-#if K_PIVOT_STATE_LEVELS <= 1
-#error "K_PIVOT_STATE_LEVELS must be at least 2"
-#endif
-
-__device__ __forceinline__ unsigned long long valid_bits_mask_for_word(int word, int words, int m) {
+__device__ __forceinline__ unsigned long long valid_bits_mask_for_word(int word, int words, int cand_count) {
     if (word + 1 != words) return ~0ULL;
-    int rem = m & 63;
+    int rem = cand_count & 63;
     return rem == 0 ? ~0ULL : ((1ULL << rem) - 1ULL);
 }
 
@@ -154,10 +146,10 @@ __device__ __forceinline__ int next_set_bit_from(
 }
 
 __device__ __forceinline__ unsigned long long count_encoded_edges_in_bitset(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     const unsigned long long* P) {
-    int words = words_for_len(m);
+    int words = words_for_len(cand_count);
     int stride = max_words();
     unsigned long long local = 0ULL;
 
@@ -167,10 +159,10 @@ __device__ __forceinline__ unsigned long long count_encoded_edges_in_bitset(
             unsigned long long bit = bits & (~bits + 1ULL);
             int local_idx = (word << 6) + (__ffsll((long long)bit) - 1);
             bits ^= bit;
-            if (local_idx >= m) continue;
+            if (local_idx >= cand_count) continue;
 
             const unsigned long long* row =
-                enc + (size_t)local_idx * (size_t)stride;
+                adjacency + (size_t)local_idx * (size_t)stride;
 
             for (int w = 0; w < words; ++w) {
                 unsigned long long p = P[w];
@@ -237,65 +229,65 @@ __device__ __forceinline__ bool row_contains_vertex_block(
     return lo < end && g_col_idx[lo] == target;
 }
 
-__device__ __forceinline__ void build_encoded_candidate_graph_symmetric_block(
+__device__ __forceinline__ void build_candidate_adjacency_symmetric_block(
     const int* cand,
-    int m,
-    unsigned long long* enc) {
-    int words = words_for_len(m);
+    int cand_count,
+    unsigned long long* adjacency) {
+    int words = words_for_len(cand_count);
     int stride = max_words();
 
 #if GTAP_BLOCK_ENCODE_KCGPU_STYLE
-    int total_words = m * words;
+    int total_words = cand_count * words;
     for (int offset = threadIdx.x; offset < total_words; offset += blockDim.x) {
         int row = offset / words;
         int word = offset - row * words;
-        enc[(size_t)row * (size_t)stride + word] = 0ULL;
+        adjacency[(size_t)row * (size_t)stride + word] = 0ULL;
     }
     __syncthreads();
 
     int lane = threadIdx.x & 31;
     int warp = threadIdx.x >> 5;
     int warps_per_block = (blockDim.x + 31) >> 5;
-    for (int row = warp; row < m; row += warps_per_block) {
+    for (int row = warp; row < cand_count; row += warps_per_block) {
         int x = cand[row];
         int begin = g_row_ptr[x];
         int end = g_row_ptr[x + 1];
-        for (int i = lane; i < m; i += 32) {
+        for (int i = lane; i < cand_count; i += 32) {
             if (i == row) continue;
             if (row_contains_vertex_block(begin, end, cand[i])) {
                 atomicOr(
-                    enc + (size_t)row * (size_t)stride + (i >> 6),
+                    adjacency + (size_t)row * (size_t)stride + (i >> 6),
                     1ULL << (i & 63));
                 atomicOr(
-                    enc + (size_t)i * (size_t)stride + (row >> 6),
+                    adjacency + (size_t)i * (size_t)stride + (row >> 6),
                     1ULL << (row & 63));
             }
         }
     }
     __syncthreads();
 #else
-    for (int row = threadIdx.x; row < m; row += blockDim.x) {
-        unsigned long long* dst = enc + (size_t)row * (size_t)stride;
+    for (int row = threadIdx.x; row < cand_count; row += blockDim.x) {
+        unsigned long long* dst = adjacency + (size_t)row * (size_t)stride;
         clear_bits(dst, words);
     }
     __syncthreads();
 
-    for (int row = threadIdx.x; row < m; row += blockDim.x) {
+    for (int row = threadIdx.x; row < cand_count; row += blockDim.x) {
         int i = 0;
         int x = cand[row];
         int j = g_row_ptr[x];
         int j_end = g_row_ptr[x + 1];
 
-        while (i < m && j < j_end) {
+        while (i < cand_count && j < j_end) {
             int a = cand[i];
             int b = g_col_idx[j];
 
             if (a == b) {
                 atomicOr(
-                    enc + (size_t)row * (size_t)stride + (i >> 6),
+                    adjacency + (size_t)row * (size_t)stride + (i >> 6),
                     1ULL << (i & 63));
                 atomicOr(
-                    enc + (size_t)i * (size_t)stride + (row >> 6),
+                    adjacency + (size_t)i * (size_t)stride + (row >> 6),
                     1ULL << (row & 63));
                 ++i;
                 ++j;
@@ -311,16 +303,16 @@ __device__ __forceinline__ void build_encoded_candidate_graph_symmetric_block(
 }
 
 __device__ __forceinline__ int make_kcgpu_child_cl_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     const unsigned long long* parent_cl,
     const unsigned long long* parent_pl,
     int new_idx,
     int new_word,
     unsigned long long* child_cl) {
-    int words = words_for_len(m);
+    int words = words_for_len(cand_count);
     int stride = max_words();
-    const unsigned long long* row = enc + (size_t)new_idx * (size_t)stride;
+    const unsigned long long* row = adjacency + (size_t)new_idx * (size_t)stride;
     int bit = new_idx & 63;
     unsigned long long same_word_mask = (~((1ULL << bit) - 1ULL)) | ~parent_pl[new_word];
 
@@ -329,7 +321,7 @@ __device__ __forceinline__ int make_kcgpu_child_cl_block(
             (new_word < w) ? ~parent_pl[w] :
             ((new_word > w) ? ~0ULL : same_word_mask);
         child_cl[w] =
-            parent_cl[w] & row[w] & order_mask & valid_bits_mask_for_word(w, words, m);
+            parent_cl[w] & row[w] & order_mask & valid_bits_mask_for_word(w, words, cand_count);
     }
     __syncthreads();
 
@@ -342,8 +334,8 @@ __device__ __forceinline__ int make_kcgpu_child_cl_block(
 }
 
 __device__ __forceinline__ int choose_kcgpu_pivot_from_cl_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     const unsigned long long* cl,
     int words,
     int* max_intersection) {
@@ -351,9 +343,9 @@ __device__ __forceinline__ int choose_kcgpu_pivot_from_cl_block(
     int local_best_count = -1;
     int local_best_idx = -1;
 
-    for (int idx = threadIdx.x; idx < m; idx += blockDim.x) {
+    for (int idx = threadIdx.x; idx < cand_count; idx += blockDim.x) {
         if (!is_bit_set(cl, idx)) continue;
-        const unsigned long long* row = enc + (size_t)idx * (size_t)stride;
+        const unsigned long long* row = adjacency + (size_t)idx * (size_t)stride;
         int count = 0;
         for (int w = 0; w < words; ++w) {
             count += __popcll(cl[w] & row[w]);
@@ -373,21 +365,21 @@ __device__ __forceinline__ int choose_kcgpu_pivot_from_cl_block(
 }
 
 __device__ __forceinline__ int make_kcgpu_pl_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     const unsigned long long* cl,
     int pivot,
     unsigned long long* pl) {
-    int words = words_for_len(m);
+    int words = words_for_len(cand_count);
     int stride = max_words();
-    const unsigned long long* row = enc + (size_t)pivot * (size_t)stride;
+    const unsigned long long* row = adjacency + (size_t)pivot * (size_t)stride;
 
     __shared__ int s_count;
     if (threadIdx.x == 0) s_count = 0;
     __syncthreads();
 
     for (int w = threadIdx.x; w < words; w += blockDim.x) {
-        unsigned long long bits = cl[w] & ~row[w] & valid_bits_mask_for_word(w, words, m);
+        unsigned long long bits = cl[w] & ~row[w] & valid_bits_mask_for_word(w, words, cand_count);
         pl[w] = bits;
         atomicAdd(&s_count, __popcll(bits));
     }
@@ -396,91 +388,84 @@ __device__ __forceinline__ int make_kcgpu_pl_block(
 }
 
 __device__ unsigned long long count_pivot_encoded_loop_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     int target,
     int start_level,
-    int start_pl_count,
     int start_rsize,
     int start_drop,
     int start_pivot) {
-    int words = words_for_len(m);
-    constexpr int max_state_levels = K_PIVOT_STATE_LEVELS;
-    int max_buffer_levels = GTAP_BIT_BUFFER_COUNT >> 1;
+    int words = words_for_len(cand_count);
+    const int max_state_levels = pivot_state_levels();
     if (start_level < 0 || start_level >= max_state_levels) {
         if (threadIdx.x == 0) g_scratch_overflow = 1;
         return 0ULL;
     }
 
-    int level_count[max_state_levels];
-    int level_index[max_state_levels];
-    int level_prev[max_state_levels];
-    int rsize[max_state_levels];
-    int drop[max_state_levels];
-    int level_pivot[max_state_levels];
-    level_count[start_level] = start_pl_count;
-    rsize[start_level] = start_rsize;
-    drop[start_level] = start_drop;
-    level_pivot[start_level] = start_pivot;
-    level_index[start_level] = 0;
-    level_prev[start_level] = 0;
+    PivotStackCol next_candidate = pivot_stack(PivotStackField::Next);
+    PivotStackCol drop = pivot_stack(PivotStackField::Drop);
+    PivotStackCol pivot = pivot_stack(PivotStackField::Pivot);
+    if (threadIdx.x == 0) {
+        drop[start_level] = start_drop;
+        pivot[start_level] = start_pivot;
+        next_candidate[start_level] = 0;
+    }
+    __syncthreads();
 
     unsigned long long local = 0ULL;
     int level = start_level;
     while (level >= start_level) {
-        if (level_count[level] <= level_index[level]) {
+        unsigned long long* parent_pl = pivot_pl_buffer(level);
+        unsigned long long* parent_cl = pivot_cl_buffer(level);
+        int new_word = 0;
+        int new_idx = next_set_bit_from(
+            parent_pl, words, next_candidate[level], &new_word);
+        if (new_idx < 0 || new_idx >= cand_count) {
             --level;
             continue;
         }
 
-        unsigned long long* parent_pl = pivot_pl_buffer(level);
-        unsigned long long* parent_cl = pivot_cl_buffer(level);
-        int new_word = 0;
-        int new_idx = next_set_bit_from(parent_pl, words, level_prev[level], &new_word);
-        if (new_idx < 0 || new_idx >= m) {
-            level_index[level] = level_count[level];
-            continue;
-        }
-
-        level_prev[level] = new_idx + 1;
-        ++level_index[level];
+        if (threadIdx.x == 0) next_candidate[level] = new_idx + 1;
+        __syncthreads();
 
         int child_level = level + 1;
-        if (child_level >= max_state_levels || child_level >= max_buffer_levels) {
+        if (child_level >= max_state_levels) {
             if (threadIdx.x == 0) g_scratch_overflow = 1;
             continue;
         }
-        rsize[child_level] = rsize[level] + 1;
-        drop[child_level] = drop[level] + (new_idx == level_pivot[level] ? 1 : 0);
 
-        if (rsize[child_level] - drop[child_level] > target) {
+        int child_rsize = start_rsize + (child_level - start_level);
+        int child_drop = drop[level] + (new_idx == pivot[level] ? 1 : 0);
+        if (child_rsize - child_drop > target) {
             continue;
         }
 
         unsigned long long* child_cl = pivot_cl_buffer(child_level);
         make_kcgpu_child_cl_block(
-            enc, m, parent_cl, parent_pl, new_idx, new_word, child_cl);
+            adjacency, cand_count, parent_cl, parent_pl, new_idx, new_word, child_cl);
 
         int child_max_intersection = 0;
         int child_pivot = choose_kcgpu_pivot_from_cl_block(
-            enc, m, child_cl, words, &child_max_intersection);
+            adjacency, cand_count, child_cl, words, &child_max_intersection);
 
         if (child_pivot < 0) {
-            if (rsize[child_level] >= target) {
-                local += lookup_nCr(drop[child_level], rsize[child_level] - target);
+            if (child_rsize >= target) {
+                local += lookup_nCr(child_drop, child_rsize - target);
             }
             continue;
         }
 
-        level_pivot[child_level] = child_pivot;
-        level_count[child_level] = make_kcgpu_pl_block(
-            enc, m, child_cl, child_pivot, pivot_pl_buffer(child_level));
-        level_index[child_level] = 0;
-        level_prev[child_level] = 0;
-
-        if (level_count[child_level] == 0) {
+        int pl_count = make_kcgpu_pl_block(
+            adjacency, cand_count, child_cl, child_pivot, pivot_pl_buffer(child_level));
+        if (pl_count == 0) {
             continue;
         }
+        if (threadIdx.x == 0) {
+            drop[child_level] = child_drop;
+            pivot[child_level] = child_pivot;
+            next_candidate[child_level] = 0;
+        }
+        __syncthreads();
 
         level = child_level;
     }
@@ -492,72 +477,71 @@ __device__ unsigned long long count_pivot_encoded_loop_block(
 }
 
 __device__ unsigned long long count_pivot_encoded_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     int need) {
     if (need == 0) return 1ULL;
-    if (need == 1) return (unsigned long long)m;
+    if (need == 1) return (unsigned long long)cand_count;
     if (need == 2) {
         __shared__ unsigned long long s_edge_count;
         if (threadIdx.x == 0) {
             unsigned long long* full = pivot_cl_buffer(0);
-            init_full_bits(full, m);
-            s_edge_count = count_encoded_edges_in_bitset(enc, m, full);
+            init_full_bitset(full, cand_count);
+            s_edge_count = count_encoded_edges_in_bitset(adjacency, cand_count, full);
         }
         __syncthreads();
         return s_edge_count;
     }
 
     int target = need + 1;
-    int words = words_for_len(m);
+    int words = words_for_len(cand_count);
 
     if (threadIdx.x == 0) {
         unsigned long long* cl0 = pivot_cl_buffer(0);
-        init_full_bits(cl0, m);
+        init_full_bitset(cl0, cand_count);
     }
     __syncthreads();
 
     int max_intersection = 0;
     int pivot = choose_kcgpu_pivot_from_cl_block(
-        enc, m, pivot_cl_buffer(0), words, &max_intersection);
+        adjacency, cand_count, pivot_cl_buffer(0), words, &max_intersection);
     if (pivot < 0 || max_intersection <= 0) return 0ULL;
 
-    int pl_count = make_kcgpu_pl_block(enc, m, pivot_cl_buffer(0), pivot, pivot_pl_buffer(0));
+    int pl_count = make_kcgpu_pl_block(adjacency, cand_count, pivot_cl_buffer(0), pivot, pivot_pl_buffer(0));
     return count_pivot_encoded_loop_block(
-        enc, m, target, 0, pl_count, 1, 0, pivot);
+        adjacency, cand_count, target, 0, 1, 0, pivot);
 }
 
 __device__ unsigned long long count_pivot_encoded_from_state_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     int target,
     int start_level,
-    int start_pl_count,
     int start_rsize,
     int start_drop,
     int start_pivot) {
     return count_pivot_encoded_loop_block(
-        enc, m, target, start_level, start_pl_count, start_rsize, start_drop, start_pivot);
+        adjacency, cand_count, target, start_level, start_rsize, start_drop, start_pivot);
 }
 
 __device__ __forceinline__ int prepare_pivot_root_pl_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     int* pivot_out,
     unsigned long long* root_pl) {
-    int words = words_for_len(m);
+    int words = words_for_len(cand_count);
     if (threadIdx.x == 0) {
-        init_full_bits(pivot_cl_buffer(0), m);
+        init_full_bitset(pivot_cl_buffer(0), cand_count);
         clear_bits(root_pl, words);
     }
     __syncthreads();
 
     int max_intersection = 0;
     int pivot = choose_kcgpu_pivot_from_cl_block(
-        enc, m, pivot_cl_buffer(0), words, &max_intersection);
+        adjacency, cand_count, pivot_cl_buffer(0), words, &max_intersection);
     *pivot_out = pivot;
     if (pivot < 0 || max_intersection <= 0) return 0;
-    return make_kcgpu_pl_block(enc, m, pivot_cl_buffer(0), pivot, root_pl);
+    return make_kcgpu_pl_block(adjacency, cand_count, pivot_cl_buffer(0), pivot, root_pl);
 }
 
 #define K_PREFIX_REBUILD_INVALID 0
@@ -565,27 +549,27 @@ __device__ __forceinline__ int prepare_pivot_root_pl_block(
 #define K_PREFIX_REBUILD_TERMINAL 2
 
 __device__ int rebuild_pivot_prefix_block(
-    const unsigned long long* enc,
-    int m,
+    const unsigned long long* adjacency,
+    int cand_count,
     int need,
     int root_pivot,
     int depth,
-    const KRangeFixed& fixed,
+    const SearchPrefix& fixed,
     int* pl_count_out,
     int* rsize_out,
     int* drop_out,
     int* pivot_out,
     unsigned long long* terminal_count) {
     *terminal_count = 0ULL;
-    constexpr int max_state_levels = K_PIVOT_STATE_LEVELS;
-    if (depth < 0 || depth >= max_state_levels || depth > GTAP_RANGE_MAX_FIXED) {
+    const int max_state_levels = pivot_state_levels();
+    if (depth < 0 || depth >= max_state_levels || depth > GTAP_MAX_PREFIX_DEPTH) {
         return K_PREFIX_REBUILD_INVALID;
     }
-    int words = words_for_len(m);
+    int words = words_for_len(cand_count);
     int target = need + 1;
 
     if (threadIdx.x == 0) {
-        init_full_bits(pivot_cl_buffer(0), m);
+        init_full_bitset(pivot_cl_buffer(0), cand_count);
     }
     __syncthreads();
 
@@ -596,7 +580,7 @@ __device__ int rebuild_pivot_prefix_block(
     if (pivot >= 0) {
         if (threadIdx.x == 0) {
             const unsigned long long* row =
-                enc + (size_t)pivot * (size_t)max_words();
+                adjacency + (size_t)pivot * (size_t)max_words();
             int mi = 0;
             for (int w = 0; w < words; ++w) {
                 mi += __popcll(pivot_cl_buffer(0)[w] & row[w]);
@@ -609,7 +593,7 @@ __device__ int rebuild_pivot_prefix_block(
         pivot = s_pivot;
     } else {
         pivot = choose_kcgpu_pivot_from_cl_block(
-            enc, m, pivot_cl_buffer(0), words, &max_intersection);
+            adjacency, cand_count, pivot_cl_buffer(0), words, &max_intersection);
     }
     if (pivot < 0 || max_intersection <= 0) return K_PREFIX_REBUILD_INVALID;
 
@@ -617,17 +601,17 @@ __device__ int rebuild_pivot_prefix_block(
     int cur_drop = 0;
     int cur_pivot = pivot;
     int cur_pl_count = make_kcgpu_pl_block(
-        enc, m, pivot_cl_buffer(0), pivot, pivot_pl_buffer(0));
+        adjacency, cand_count, pivot_cl_buffer(0), pivot, pivot_pl_buffer(0));
 
     for (int level = 0; level < depth; ++level) {
-        int new_idx = fixed.idx[level];
-        if (new_idx < 0 || new_idx >= m) return K_PREFIX_REBUILD_INVALID;
+        int new_idx = fixed.candidate_indices[level];
+        if (new_idx < 0 || new_idx >= cand_count) return K_PREFIX_REBUILD_INVALID;
         unsigned long long* parent_pl = pivot_pl_buffer(level);
         unsigned long long* parent_cl = pivot_cl_buffer(level);
         if (!is_bit_set(parent_pl, new_idx)) return K_PREFIX_REBUILD_INVALID;
 
         int child_level = level + 1;
-        if (child_level >= max_state_levels || child_level >= (GTAP_BIT_BUFFER_COUNT >> 1)) {
+        if (child_level >= max_state_levels) {
             if (threadIdx.x == 0) g_scratch_overflow = 1;
             return K_PREFIX_REBUILD_INVALID;
         }
@@ -639,11 +623,11 @@ __device__ int rebuild_pivot_prefix_block(
 
         unsigned long long* child_cl = pivot_cl_buffer(child_level);
         make_kcgpu_child_cl_block(
-            enc, m, parent_cl, parent_pl, new_idx, new_word, child_cl);
+            adjacency, cand_count, parent_cl, parent_pl, new_idx, new_word, child_cl);
 
         int child_max_intersection = 0;
         int child_pivot = choose_kcgpu_pivot_from_cl_block(
-            enc, m, child_cl, words, &child_max_intersection);
+            adjacency, cand_count, child_cl, words, &child_max_intersection);
         if (child_pivot < 0) {
             if (cur_rsize >= target) {
                 *terminal_count = lookup_nCr(cur_drop, cur_rsize - target);
@@ -654,7 +638,7 @@ __device__ int rebuild_pivot_prefix_block(
 
         cur_pivot = child_pivot;
         cur_pl_count = make_kcgpu_pl_block(
-            enc, m, child_cl, child_pivot, pivot_pl_buffer(child_level));
+            adjacency, cand_count, child_cl, child_pivot, pivot_pl_buffer(child_level));
         if (cur_pl_count == 0) {
             return K_PREFIX_REBUILD_INVALID;
         }

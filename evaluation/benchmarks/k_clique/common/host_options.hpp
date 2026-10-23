@@ -67,14 +67,6 @@ static bool validate_problem(const HostOptions& options, const HostGraph& graph)
         fprintf(stderr, "k must be in [3, n], got k=%d n=%d\n", options.k, graph.n);
         return false;
     }
-    if (options.k - 3 > GTAP_BIT_BUFFER_COUNT) {
-        fprintf(stderr,
-                "GTAP_BIT_BUFFER_COUNT=%d is too small for k=%d; need at least %d\n",
-                GTAP_BIT_BUFFER_COUNT,
-                options.k,
-                options.k - 3);
-        return false;
-    }
     return true;
 }
 

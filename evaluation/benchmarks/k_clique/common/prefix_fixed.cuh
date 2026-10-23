@@ -2,18 +2,19 @@
 
 #include "config_defaults.cuh"
 
-// Prefix path for stateless GTAP tasks: idx[level] is the pl branch taken at each depth.
-struct KRangeFixed {
-    int idx[GTAP_RANGE_MAX_FIXED];
+// Candidate index chosen at each search depth.
+// Only the first `depth` entries are valid.
+struct SearchPrefix {
+    int candidate_indices[GTAP_MAX_PREFIX_DEPTH];
 };
 
-__device__ __forceinline__ KRangeFixed append_range_fixed(
-    const KRangeFixed& fixed,
-    int depth,
-    int idx) {
-    KRangeFixed next = fixed;
-    if (depth >= 0 && depth < GTAP_RANGE_MAX_FIXED) {
-        next.idx[depth] = idx;
+__device__ __forceinline__ SearchPrefix extend_search_prefix(
+        const SearchPrefix& prefix,
+        int depth,
+        int idx) {
+    SearchPrefix next = prefix;
+    if (depth >= 0 && depth < GTAP_MAX_PREFIX_DEPTH) {
+        next.candidate_indices[depth] = idx;
     }
     return next;
 }
