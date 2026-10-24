@@ -10,5 +10,8 @@ data/nCr.txt
 # Local-only legacy sources
 legacy/
 
+# Block-mode implementation
+block/
+
 # Benchmark run outputs (regenerate via scripts/)
 k579/

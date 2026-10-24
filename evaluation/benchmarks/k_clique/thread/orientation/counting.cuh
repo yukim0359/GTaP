@@ -14,7 +14,7 @@ __device__ unsigned long long count_cliques_in_bitset(
     if (active_count < need) return 0ULL;
     if (need == 1) return (unsigned long long)active_count;
     if (need == 2) {
-        return count_encoded_edges_in_bitset(
+        return count_edges_in_bitset(
             adjacency, cand_count, active_candidates);
     }
 

@@ -40,7 +40,7 @@ static const char* task_kind_name(int kind) {
 #include "../../common/ncr_host.hpp"
 #include "../../common/timing.hpp"
 #include "../host_run.cuh"
-#include "../host_main.hpp"
+#include "../host_setup.cuh"
 #include "../host_report.hpp"
 
 static void print_pivot_tuning() {

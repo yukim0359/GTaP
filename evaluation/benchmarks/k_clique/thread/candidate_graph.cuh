@@ -70,7 +70,9 @@ __device__ __forceinline__ unsigned long long count_edges_in_candidates(
     return edge_count;
 }
 
-// Directed adjacency: row i keeps neighbors of cand[i] that appear later in `cand`.
+// Directed adjacency: row i stores N+(cand[i]) ∩ cand from the oriented CSR.
+// Bits are candidate indices, not vertex IDs; `cand` order does not filter
+// which neighbors are kept.
 __device__ __forceinline__ void build_candidate_adjacency(
         const int* cand, int cand_count, unsigned long long* adjacency) {
     int words = words_for_len(cand_count);
@@ -155,14 +157,15 @@ __device__ __forceinline__ int build_child_candidates(
     return child_count;
 }
 
-__device__ __forceinline__ unsigned long long count_encoded_edges_in_bitset(
-        const unsigned long long* adjacency, int cand_count, const unsigned long long* P) {
+__device__ __forceinline__ unsigned long long count_edges_in_bitset(
+        const unsigned long long* adjacency, int cand_count,
+        const unsigned long long* active_candidates) {
     int words = words_for_len(cand_count);
     int stride = max_words();
     unsigned long long clique_count = 0ULL;
 
     for (int word = 0; word < words; ++word) {
-        unsigned long long bits = P[word];
+        unsigned long long bits = active_candidates[word];
         while (bits) {
             unsigned long long bit = bits & (~bits + 1ULL);
             int candidate_index = (word << 6) + (__ffsll((long long)bit) - 1);
@@ -173,7 +176,7 @@ __device__ __forceinline__ unsigned long long count_encoded_edges_in_bitset(
                 adjacency + (size_t)candidate_index * (size_t)stride;
 
             for (int w = 0; w < words; ++w) {
-                unsigned long long p = P[w];
+                unsigned long long p = active_candidates[w];
                 if (p != 0ULL) {
                     clique_count += (unsigned long long)__popcll(p & row[w]);
                 }

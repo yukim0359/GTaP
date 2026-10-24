@@ -18,7 +18,7 @@
 #include "gtap_thread.cuh"
 #include "counting.cuh"
 #include "prefix.cuh"
-#include "../../common/prefix_fixed.cuh"
+#include "../../common/search_prefix.cuh"
 
 __device__ __forceinline__ unsigned long long pivot_prefix_work_estimate(
         int child_pl_count, int child_cl_count, int child_max_intersection,

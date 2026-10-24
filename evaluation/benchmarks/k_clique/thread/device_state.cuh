@@ -28,7 +28,8 @@
 //   uses this, but still spawns from_edge (each child rebuilds).
 //
 // pivot stack (g_pivot_stack_scratch)
-//   Iterative pivot DFS: next / drop / pivot, one int per level per worker.
+//   Pivot only. Allocated in alloc_scratch when BitScratchKind::ByMaxCandidates.
+//   Accessors: pivot/pivot_stack.cuh.
 
 __device__ __constant__ const int* g_row_ptr;
 __device__ __constant__ const int* g_col_idx;
@@ -57,7 +58,7 @@ static inline cudaError_t bind_graph(
         const int* d_row_ptr, const int* d_col_idx, const int* d_edge_src,
         int* d_cand_scratch, unsigned long long* d_bit_scratch,
         unsigned long long* d_candidate_adjacency_scratch,
-        int* d_candidate_adjacency_slot_stack, int* d_pivot_stack) {
+        int* d_candidate_adjacency_slot_stack) {
     cudaError_t st = cudaMemcpyToSymbol(g_row_ptr, &d_row_ptr, sizeof(d_row_ptr));
     if (st != cudaSuccess) return st;
     st = cudaMemcpyToSymbol(g_col_idx, &d_col_idx, sizeof(d_col_idx));
@@ -73,9 +74,11 @@ static inline cudaError_t bind_graph(
         &d_candidate_adjacency_scratch,
         sizeof(d_candidate_adjacency_scratch));
     if (st != cudaSuccess) return st;
-    st = cudaMemcpyToSymbol(
+    return cudaMemcpyToSymbol(
         g_candidate_adjacency_slot_stack, &d_candidate_adjacency_slot_stack, sizeof(d_candidate_adjacency_slot_stack));
-    if (st != cudaSuccess) return st;
+}
+
+static inline cudaError_t bind_pivot_stack(int* d_pivot_stack) {
     return cudaMemcpyToSymbol(
         g_pivot_stack_scratch, &d_pivot_stack, sizeof(d_pivot_stack));
 }
@@ -86,38 +89,6 @@ __device__ __forceinline__ int worker_id_global() {
 
 __device__ __forceinline__ int max_words() {
     return (g_max_candidates + 63) >> 6;
-}
-
-enum class PivotStackField {
-    Next = 0,
-    Drop,
-    Pivot
-};
-
-enum { kPivotStackFields = 3 };
-
-__device__ __forceinline__ int pivot_state_levels() {
-    return g_bit_buffer_count >> 1;
-}
-
-// Worker-minor: [field][level][worker]. Same (field, level) is contiguous across a warp.
-struct PivotStackCol {
-    int* base;
-    int stride;
-
-    __device__ __forceinline__ int& operator[](int level) const {
-        return base[(size_t)level * (size_t)stride];
-    }
-};
-
-__device__ __forceinline__ PivotStackCol pivot_stack(PivotStackField field) {
-    int levels = pivot_state_levels();
-    return {
-        g_pivot_stack_scratch +
-            ((size_t)(int)field * (size_t)levels * (size_t)g_num_workers) +
-            (size_t)worker_id_global(),
-        g_num_workers
-    };
 }
 
 __device__ __forceinline__ int words_for_len(int len) {

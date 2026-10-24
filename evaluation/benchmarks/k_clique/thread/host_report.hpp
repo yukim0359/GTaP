@@ -20,7 +20,7 @@ static void print_run_settings(
     printf("GTAP_BLOCK_SIZE: %d\n", config.block_size);
     printf("GTAP_MAX_TASKS_PER_WARP: %d\n", config.max_tasks_per_warp);
     printf("GTAP_RANGE_CUTOFF: %d\n", GTAP_RANGE_CUTOFF);
-    printf("max candidates: %d (measured)\n", buffers.max_candidates);
+    printf("candidate capacity: %d (degree bound)\n", buffers.max_candidates);
     printf("bit buffer count: %d\n", buffers.bit_buffer_count);
     printf("GTAP_CUDA_STACK_SIZE: %d\n", GTAP_CUDA_STACK_SIZE);
 }
@@ -32,7 +32,9 @@ static void print_run_result(
     printf("bit scratch: %zu uint64 words\n", buffers.bit_scratch_words);
     printf("adjacency slots: %d\n", GTAP_ADJACENCY_SLOTS);
     printf("adjacency scratch: %zu uint64 words (slots + per-worker)\n", buffers.candidate_adjacency_scratch_words);
-    printf("pivot stack: %zu ints\n", buffers.pivot_stack_ints);
+    if (buffers.pivot_stack_ints != 0) {
+        printf("pivot stack: %zu ints\n", buffers.pivot_stack_ints);
+    }
 #ifdef GTAP_STATS
     printf("GTaP max candidate length: %d / %d\n",
            result.candidate_highwater, buffers.max_candidates);

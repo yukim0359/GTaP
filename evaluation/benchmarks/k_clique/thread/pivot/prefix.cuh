@@ -1,7 +1,7 @@
 #pragma once
 
 #include "counting.cuh"
-#include "../../common/prefix_fixed.cuh"
+#include "../../common/search_prefix.cuh"
 
 #define K_PREFIX_REBUILD_INVALID 0
 #define K_PREFIX_REBUILD_READY 1

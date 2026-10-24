@@ -127,11 +127,17 @@ static cudaError_t init_device_state(
         buffers.d_cand_scratch,
         buffers.d_bit_scratch,
         buffers.d_candidate_adjacency_scratch,
-        buffers.d_candidate_adjacency_slot_stack,
-        buffers.d_pivot_stack);
+        buffers.d_candidate_adjacency_slot_stack);
     if (err != cudaSuccess) {
         fprintf(stderr, "bind_graph failed: %s\n", cudaGetErrorString(err));
         return err;
+    }
+    if (buffers.d_pivot_stack) {
+        err = bind_pivot_stack(buffers.d_pivot_stack);
+        if (err != cudaSuccess) {
+            fprintf(stderr, "bind_pivot_stack failed: %s\n", cudaGetErrorString(err));
+            return err;
+        }
     }
     return cudaSuccess;
 }

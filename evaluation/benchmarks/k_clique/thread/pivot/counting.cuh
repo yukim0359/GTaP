@@ -5,6 +5,7 @@
 #include "../bitset.cuh"
 #include "../candidate_graph.cuh"
 #include "ncr.cuh"
+#include "pivot_stack.cuh"
 
 __device__ __forceinline__ unsigned long long* pivot_pl_buffer(int level) {
     return candidate_bitset_buffer(level << 1);
@@ -222,7 +223,7 @@ __device__ unsigned long long count_pivot_encoded(
     if (need == 2) {
         unsigned long long* full = pivot_cl_buffer(0);
         init_full_bitset(full, cand_count);
-        return count_encoded_edges_in_bitset(adjacency, cand_count, full);
+        return count_edges_in_bitset(adjacency, cand_count, full);
     }
 
     int target = need + 1;  // KCGPU edge pivot uses kcount = k - 1.

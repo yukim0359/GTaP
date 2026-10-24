@@ -17,7 +17,7 @@
 
 #include "gtap_thread.cuh"
 #include "counting.cuh"
-#include "../../common/prefix_fixed.cuh"
+#include "../../common/search_prefix.cuh"
 
 __device__ __forceinline__ int split_threshold_for_depth(int depth) {
     if (depth == 0) return GTAP_SECOND_HEAVY_CANDIDATES;
@@ -267,7 +267,7 @@ __device__ void count_from_edge(int ei) {
             unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
             build_candidate_adjacency(cand, candidate_count, adjacency);
 
-            SearchPrefix prefix;
+            SearchPrefix prefix{};
             int chunk = chunk_size(candidate_count, GTAP_WAIT_FANOUT);
             for (int s = 0; s < candidate_count; s += chunk) {
                 int e = s + chunk;
@@ -297,7 +297,7 @@ __device__ void count_from_edge(int ei) {
         }
 
         // 2) Heavy, no slot: spawn count_candidate_range_from_edge.
-        SearchPrefix prefix;
+        SearchPrefix prefix{};
         int chunk = chunk_size(candidate_count, GTAP_TASK_FANOUT);
         for (int s = 0; s < candidate_count; s += chunk) {
             int e = s + chunk;

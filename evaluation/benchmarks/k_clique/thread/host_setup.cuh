@@ -50,21 +50,18 @@ static void alloc_scratch(
 
     buffers.num_workers = config.grid_size * config.block_size;
     const int max_cand = buffers.max_candidates;
-    const int words_per_worker = (max_cand + 63) >> 6;
+    const int words_per_bitset = (max_cand + 63) >> 6;
     // cand: one int list per worker.
     buffers.cand_scratch_ints = (size_t)buffers.num_workers * (size_t)max_cand;
     // bitset: workers × (k or 2*measured) × words.
     buffers.bit_scratch_words =
-        (size_t)buffers.num_workers * (size_t)buffers.bit_buffer_count * (size_t)words_per_worker;
+        (size_t)buffers.num_workers * (size_t)buffers.bit_buffer_count * (size_t)words_per_bitset;
     // adjacency: shared slots + one private matrix per worker.
     buffers.candidate_adjacency_scratch_words =
         ((size_t)GTAP_ADJACENCY_SLOTS + (size_t)buffers.num_workers) *
         (size_t)max_cand *
-        (size_t)words_per_worker;
-    int pivot_levels = buffers.bit_buffer_count >> 1;
-    if (pivot_levels < 1) pivot_levels = 1;
-    buffers.pivot_stack_ints =
-        (size_t)buffers.num_workers * (size_t)kPivotStackFields * (size_t)pivot_levels;
+        (size_t)words_per_bitset;
+    buffers.pivot_stack_ints = 0;
 
     std::vector<int> candidate_adjacency_slot_stack((size_t)GTAP_ADJACENCY_SLOTS);
     for (int i = 0; i < GTAP_ADJACENCY_SLOTS; ++i) {
@@ -78,7 +75,15 @@ static void alloc_scratch(
         &buffers.d_candidate_adjacency_scratch, buffers.candidate_adjacency_scratch_words * sizeof(unsigned long long)));
     CUDA_CHECK(cudaMalloc(
         &buffers.d_candidate_adjacency_slot_stack, candidate_adjacency_slot_stack.size() * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&buffers.d_pivot_stack, buffers.pivot_stack_ints * sizeof(int)));
+    if (bit_kind == BitScratchKind::ByMaxCandidates) {
+        int pivot_levels = buffers.bit_buffer_count >> 1;
+        if (pivot_levels < 1) pivot_levels = 1;
+        // Next / Drop / Pivot. See pivot/pivot_stack.cuh.
+        buffers.pivot_stack_ints =
+            (size_t)buffers.num_workers * 3ull * (size_t)pivot_levels;
+        CUDA_CHECK(cudaMalloc(
+            &buffers.d_pivot_stack, buffers.pivot_stack_ints * sizeof(int)));
+    }
     CUDA_CHECK(cudaMemcpy(
         buffers.d_candidate_adjacency_slot_stack,
         candidate_adjacency_slot_stack.data(),
