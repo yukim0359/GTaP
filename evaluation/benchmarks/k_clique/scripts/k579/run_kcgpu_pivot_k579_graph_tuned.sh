@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-K_CLIQUE_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+K_CLIQUE_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
 K579_DIR="$K_CLIQUE_DIR/k579"
 
 K_VALUES=${K_VALUES:-"5 7 9"}
@@ -45,7 +45,7 @@ env \
     KCGPU_VARIANT_SET="$KCGPU_VARIANT_SET" \
     RESULTS_FILE="$RESULTS_FILE" \
     LOG_DIR="$LOG_DIR" \
-    "$SCRIPT_DIR/run_benchmark.sh"
+    "$SCRIPT_DIR/../common/run_benchmark.sh"
 
 if [ "$SUMMARIZE" = "1" ]; then
     python3 "$SCRIPT_DIR/summarize_k579_repeats.py" \

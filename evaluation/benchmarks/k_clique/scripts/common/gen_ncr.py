@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-K_CLIQUE_DIR = SCRIPT_DIR.parent
+K_CLIQUE_DIR = SCRIPT_DIR.parent.parent
 DEFAULT_PATH = K_CLIQUE_DIR / "data" / "nCr.txt"
 DEFAULT_ROWS = 1001
 DEFAULT_COLS = 401

@@ -49,7 +49,7 @@ AXES_HEIGHT_FRAC = 0.975 - 0.075
 OUTPUT_FORMAT = "pdf"
 COLORBAR_HEIGHT_SHRINK = 0.88
 COLORBAR_LABEL_OFFSET_PT = (-3.0, -2.0)  # (left, down) in points
-DEFAULT_APP_NAME = "k_clique_pivot"
+DEFAULT_APP_NAME = "as-Skitter-9"
 STRONG_STATE = "Working"
 
 
@@ -394,7 +394,7 @@ def main() -> None:
     parser.add_argument(
         "--profile-dir",
         type=Path,
-        default=K_CLIQUE_DIR / "profile",
+        default=K_CLIQUE_DIR / "profile" / "pivot",
         help="Directory containing k-clique GTaP result directories",
     )
     parser.add_argument(

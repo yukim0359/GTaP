@@ -10,7 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-K_CLIQUE_DIR = SCRIPT_DIR.parent
+K_CLIQUE_DIR = SCRIPT_DIR.parent.parent
 K579_RESULTS = K_CLIQUE_DIR / "k579" / "results"
 DEFAULT_ORIENTATION_CSV = K579_RESULTS / "gtap_kcgpu_orientation_k579_e2e_results_avg.csv"
 DEFAULT_PIVOT_CSV = K579_RESULTS / "gtap_kcgpu_pivot_k579_e2e_results_avg.csv"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-K_CLIQUE_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+K_CLIQUE_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
 GTAP_ROOT=$(cd "$K_CLIQUE_DIR/../../.." && pwd)
 WORK_ROOT=$(cd "$GTAP_ROOT/.." && pwd)
 KCGPU_DIR=${KCGPU_DIR:-"$WORK_ROOT/KCGPU"}

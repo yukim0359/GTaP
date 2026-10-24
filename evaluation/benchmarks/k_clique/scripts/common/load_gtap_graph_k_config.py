@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-K_CLIQUE_DIR = SCRIPT_DIR.parent
+K_CLIQUE_DIR = SCRIPT_DIR.parent.parent
 DEFAULT_CONFIG = K_CLIQUE_DIR / "data" / "gtap_graph_k_config.csv"
 
 # Fallback when a CSV cell is empty. heavy/second/third match Makefile

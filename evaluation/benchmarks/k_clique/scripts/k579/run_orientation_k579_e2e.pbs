@@ -5,7 +5,7 @@
 #PBS -W group_list=gc64
 #PBS -j oe
 
-cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 export KCGPU_PROFILE=0
 export GTAP_ENABLE_PROFILING=0
@@ -18,4 +18,4 @@ export AVG_RESULTS_FILE="$PWD/k579/results/gtap_kcgpu_orientation_k579_e2e_resul
 export BEST_SUMMARY_FILE="$PWD/k579/results/gtap_kcgpu_orientation_k579_e2e_best_summary.csv"
 export LOG_DIR="$PWD/k579/logs/orientation_e2e"
 
-./scripts/run_kcgpu_orientation_k579_graph_tuned.sh
+./scripts/k579/run_kcgpu_orientation_k579_graph_tuned.sh

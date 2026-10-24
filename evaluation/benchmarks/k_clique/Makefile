@@ -4,7 +4,7 @@
 #   1. Build defaults in this file / common/config_defaults.cuh
 #      and thread/config_defaults.cuh
 #   2. Paper graph×k overrides in data/gtap_graph_k_config.csv
-#      (applied by scripts/run_benchmark.sh via load_gtap_graph_k_config.py).
+#      (applied by scripts/common/run_benchmark.sh via load_gtap_graph_k_config.py).
 #
 # Runtime (no rebuild): GTAP_ORIENT, GTAP_GRID_SIZE, GTAP_BLOCK_SIZE,
 # GTAP_MAX_TASKS_PER_WARP. Each binary has its own launch default.
@@ -103,7 +103,7 @@ GTAP_EXTRA_CFLAGS += -UGTAP_ENABLE_PROFILING
 endif
 
 NCR_TXT := $(SCRIPT_DIR)/data/nCr.txt
-SRC_GEN_NCR := $(SCRIPT_DIR)/scripts/gen_ncr.py
+SRC_GEN_NCR := $(SCRIPT_DIR)/scripts/common/gen_ncr.py
 GTAP_NCR_ROWS ?= 1001
 GTAP_NCR_COLS ?= 401
 

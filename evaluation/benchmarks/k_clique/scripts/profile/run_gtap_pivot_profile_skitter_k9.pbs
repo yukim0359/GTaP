@@ -8,14 +8,14 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-K_CLIQUE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+K_CLIQUE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GTAP_ROOT="$(cd "$K_CLIQUE_DIR/../../.." && pwd)"
 KCGPU_DIR="${KCGPU_DIR:-$GTAP_ROOT/../KCGPU}"
 GRAPH="${GRAPH:-$KCGPU_DIR/graphs/as-Skitter/as-Skitter.mtx}"
 cd "$K_CLIQUE_DIR"
 PROF=profile
 
-read -r HEAVY SECOND THIRD _ORIENT_MTP PIVOT_MTP < <(python3 scripts/load_gtap_graph_k_config.py --values as-Skitter 9)
+read -r HEAVY SECOND THIRD _ORIENT_MTP PIVOT_MTP < <(python3 scripts/common/load_gtap_graph_k_config.py --values as-Skitter 9)
 make -B gtap_pivot GTAP_ENABLE_PROFILING=1 \
   GTAP_HEAVY_CANDIDATES="$HEAVY" \
   GTAP_SECOND_HEAVY_CANDIDATES="$SECOND" \

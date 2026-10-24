@@ -11,7 +11,7 @@
 # Usage:
 #   qsub run_gtap_pivot_profile_figures.pbs
 
-cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 python3 ../../scripts/plot_k_clique_pivot_timeline_paper.py \
   --profile-dir ./profile/pivot \

@@ -6,6 +6,8 @@
 # Build and profiling outputs
 **/bin/
 profile/
+!**/scripts/profile/
+!**/scripts/profile/**
 pdf/
 *.ncu-rep
 

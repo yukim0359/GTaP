@@ -12,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-K_CLIQUE_DIR = SCRIPT_DIR.parent
+K_CLIQUE_DIR = SCRIPT_DIR.parent.parent
 K579_DIR = K_CLIQUE_DIR / "k579"
 RESULTS_DIR = K579_DIR / "results"
 

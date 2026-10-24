@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-K_CLIQUE_DIR = SCRIPT_DIR.parent
+K_CLIQUE_DIR = SCRIPT_DIR.parent.parent
 K579_DIR = K_CLIQUE_DIR / "k579"
 DEFAULT_INPUT = K_CLIQUE_DIR / "k579" / "results" / "gtap_kcgpu_k579_e2e_init_included_best_summary.csv"
 DEFAULT_OUTPUT = K579_DIR / "latex" / "k579_benchmark_tables.tex"
