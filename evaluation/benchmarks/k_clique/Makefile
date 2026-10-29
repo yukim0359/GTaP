@@ -52,7 +52,7 @@ GTAP_TASK_FANOUT ?= 128
 # Encoded graph scratch (enc size follows the measured oriented max degree).
 # Bit scratch: orientation uses k slots; pivot uses 2 * measured max degree.
 # Pivot DFS integer stacks (next / drop / pivot) are global, sized to measured max.
-# Shared adjacency slots; slot failure -> per-worker candidate_adjacency_buffer.
+# Shared adjacency slots; slot failure -> candidate_adjacency_private_buffer.
 GTAP_ADJACENCY_SLOTS ?= 4096
 
 # --- orientation-only split thresholds ---

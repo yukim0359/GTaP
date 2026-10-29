@@ -3,12 +3,12 @@
 //   count_cliques_kernel
 //     count_edge_range[0, E)
 //       count_from_edge(ei)
-//         light / no slot        inline count_pivot_encoded
+//         light / no slot        inline count_cliques_in_pivot_bitset
 //         heavy + encode slot    encode; spawn count_pivot_prefix_from_slot
 //         heavy prefix child     another count_pivot_prefix_from_slot at depth+1
 //
 // slot  = shared encode-buffer index.
-// fixed = SearchPrefix: candidate index chosen at each search depth.
+// prefix = SearchPrefix: candidate index chosen at each search depth.
 // cl    = current candidate bitset (KCGPU CL).
 // pl    = pivot-restricted remaining set (KCGPU PL).
 // See README.md "Task split".
@@ -43,20 +43,20 @@ __device__ __forceinline__ unsigned long long pivot_prefix_work_estimate(
     return estimate > cap ? cap : estimate;
 }
 
-// Rebuild prefix from `fixed`, then scan PL ordinals [range_begin, range_end).
+// Rebuild prefix from `prefix`, then scan PL ordinals [range_begin, range_end).
 #pragma gtap function
 __device__ void count_pivot_prefix_from_slot(
         int slot, int u, int v, int cand_count, int root_pivot, int depth,
-        SearchPrefix fixed, int range_begin, int range_end) {
+        SearchPrefix prefix, int range_begin, int range_end) {
 #ifdef GTAP_STATS
-    unsigned long long t0 = global_time();
+    unsigned long long start_time = global_time();
 #endif
     int need = vertices_needed_after_edge();
     if (cand_count < need || cand_count > g_max_candidates) return;
     if (depth < 0 || depth >= GTAP_MAX_PREFIX_DEPTH) return;
     if (range_begin < 0) range_begin = 0;
 
-    const unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
+    const unsigned long long* adjacency = candidate_adjacency_shared_buffer(slot);
     const int max_state_levels = pivot_state_levels();
     int parent_pl_count = 0;
     int parent_rsize = 0;
@@ -69,7 +69,7 @@ __device__ void count_pivot_prefix_from_slot(
             need,
             root_pivot,
             depth,
-            fixed,
+            prefix,
             &parent_pl_count,
             &parent_rsize,
             &parent_drop,
@@ -87,7 +87,7 @@ __device__ void count_pivot_prefix_from_slot(
     int words = words_for_len(cand_count);
     if (range_end > parent_pl_count) range_end = parent_pl_count;
     if (range_end <= range_begin) return;
-    unsigned long long local = 0ULL;
+    unsigned long long clique_count = 0ULL;
     bool spawned = false;
 #ifdef GTAP_STATS
     int spawned_count = 0;
@@ -109,7 +109,7 @@ __device__ void count_pivot_prefix_from_slot(
         scan_from = new_idx + 1;
         int child_level = depth + 1;
         if (child_level >= max_state_levels) {
-            g_scratch_overflow = 1;
+            mark_overflow();
             continue;
         }
 
@@ -119,7 +119,7 @@ __device__ void count_pivot_prefix_from_slot(
             new_idx, new_word, child_level, &child);
         if (kind == PivotChildKind::Dead) continue;
         if (kind == PivotChildKind::Terminal) {
-            local += child.terminal_count;
+            clique_count += child.terminal_count;
             continue;
         }
 
@@ -143,7 +143,7 @@ __device__ void count_pivot_prefix_from_slot(
             heavy_prefix &&
             work_estimate >= (unsigned long long)GTAP_PIVOT_PREFIX_WORK_THRESHOLD;
         if (should_spawn) {
-            SearchPrefix child_fixed = extend_search_prefix(fixed, depth, new_idx);
+            SearchPrefix child_prefix = extend_search_prefix(prefix, depth, new_idx);
             int chunk = (child.pl_count + GTAP_PIVOT_PREFIX_FANOUT - 1) / GTAP_PIVOT_PREFIX_FANOUT;
             if (chunk < 1) chunk = 1;
             for (int s = 0; s < child.pl_count; s += chunk) {
@@ -155,18 +155,18 @@ __device__ void count_pivot_prefix_from_slot(
 #endif
                 #pragma gtap task
                 count_pivot_prefix_from_slot(
-                    slot, u, v, cand_count, root_pivot, child_level, child_fixed, s, e);
+                    slot, u, v, cand_count, root_pivot, child_level, child_prefix, s, e);
             }
         } else {
-            local += count_pivot_encoded_from_state(
+            clique_count += count_cliques_from_pivot_state(
                 adjacency, cand_count, target, child_level,
                 child.rsize, child.drop, child.pivot);
         }
     }
 
-    if (local != 0ULL) atomicAdd(&g_answer, local);
+    if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
 #ifdef GTAP_STATS
-    record_task_profile(K_KIND_PIVOT_PREFIX_BODY, global_time() - t0, u, v, cand_count, depth, range_begin,
+    record_task_profile(K_KIND_PIVOT_PREFIX_BODY, global_time() - start_time, u, v, cand_count, depth, range_begin,
                         spawned_count, (int)(max_work_estimate > 2147483647ULL ? 2147483647ULL : max_work_estimate));
 #endif
     if (spawned) {
@@ -180,8 +180,8 @@ __device__ void count_pivot_prefix_from_slot(
 #endif
     }
 #ifdef GTAP_STATS
-    record_task_profile(K_KIND_PIVOT_SHARED_PREFIX, global_time() - t0,
-                        u, v, cand_count, depth, range_begin, spawned_count, (int)local);
+    record_task_profile(K_KIND_PIVOT_SHARED_PREFIX, global_time() - start_time,
+                        u, v, cand_count, depth, range_begin, spawned_count, (int)clique_count);
 #endif
 }
 
@@ -191,7 +191,7 @@ __device__ void count_from_edge(int ei) {
     int u = g_edge_src[ei];
     int v = g_col_idx[ei];
 #ifdef GTAP_STATS
-    unsigned long long t0 = global_time();
+    unsigned long long start_time = global_time();
 #endif
     int need = vertices_needed_after_edge();
     if (g_row_ptr[u + 1] - g_row_ptr[u] < need ||
@@ -204,29 +204,32 @@ __device__ void count_from_edge(int ei) {
     if (cand_count < need) return;
 
     if (need == 2) {
-        unsigned long long local = count_edges_in_candidates(cand, cand_count);
-        if (local != 0ULL) atomicAdd(&g_answer, local);
+        unsigned long long clique_count = count_edges_in_candidates(cand, cand_count);
+        if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
 #ifdef GTAP_STATS
-        record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, -1, 5, 0, (int)local);
+        record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time, u, v, cand_count, -1, 5, 0, (int)clique_count);
 #endif
         return;
     }
 
+    // 1) Heavy + slot: encode once, spawn count_pivot_prefix_from_slot.
     if (cand_count >= GTAP_PIVOT_SHARED_SPLIT_CANDIDATES) {
         int slot = acquire_candidate_adjacency_slot();
         if (slot >= 0) {
-            unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
+            unsigned long long* adjacency = candidate_adjacency_shared_buffer(slot);
             build_candidate_adjacency_symmetric(cand, cand_count, adjacency);
+
             int root_pivot = -1;
             unsigned long long* root_pl = pivot_pl_buffer(0);
             int root_count = init_pivot_root(adjacency, cand_count, -1, &root_pivot, root_pl);
             if (root_count <= 0) {
                 release_candidate_adjacency_slot(slot);
 #ifdef GTAP_STATS
-                record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, root_pivot, 10, root_count, 0);
+                record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time, u, v, cand_count, root_pivot, 10, root_count, 0);
 #endif
                 return;
             }
+
             bool spawned = false;
             int words = words_for_len(cand_count);
             for (int word = 0; word < words; ++word) {
@@ -236,18 +239,20 @@ __device__ void count_from_edge(int ei) {
                     int root_idx = (word << 6) + (__ffsll((long long)bit) - 1);
                     bits ^= bit;
                     if (root_idx >= cand_count) continue;
-                    SearchPrefix root_fixed;
-                    root_fixed.candidate_indices[0] = root_idx;
+
+                    SearchPrefix prefix{};
+                    prefix.candidate_indices[0] = root_idx;
                     for (int s = 0; s < cand_count; s += GTAP_PIVOT_PREFIX_CHUNK) {
                         int e = s + GTAP_PIVOT_PREFIX_CHUNK;
                         if (e > cand_count) e = cand_count;
                         spawned = true;
                         #pragma gtap task
                         count_pivot_prefix_from_slot(
-                            slot, u, v, cand_count, root_pivot, 1, root_fixed, s, e);
+                            slot, u, v, cand_count, root_pivot, 1, prefix, s, e);
                     }
                 }
             }
+
             if (spawned) {
 #ifdef GTAP_STATS
                 unsigned long long wait_start = global_time();
@@ -260,18 +265,19 @@ __device__ void count_from_edge(int ei) {
             }
             release_candidate_adjacency_slot(slot);
 #ifdef GTAP_STATS
-            record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, root_pivot, 10, root_count, 0);
+            record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time, u, v, cand_count, root_pivot, 10, root_count, 0);
 #endif
             return;
         }
     }
 
-    unsigned long long* adjacency = candidate_adjacency_buffer();
+    // 2) Light / no slot: count inline.
+    unsigned long long* adjacency = candidate_adjacency_private_buffer();
     build_candidate_adjacency_symmetric(cand, cand_count, adjacency);
-    unsigned long long local = count_pivot_encoded(adjacency, cand_count, need);
-    if (local != 0ULL) atomicAdd(&g_answer, local);
+    unsigned long long clique_count = count_cliques_in_pivot_bitset(adjacency, cand_count, need);
+    if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
 #ifdef GTAP_STATS
-    record_task_profile(K_KIND_EDGE_COUNT, global_time() - t0, u, v, cand_count, -1, 2, 0, (int)local);
+    record_task_profile(K_KIND_EDGE_COUNT, global_time() - start_time, u, v, cand_count, -1, 2, 0, (int)clique_count);
 #endif
 }
 

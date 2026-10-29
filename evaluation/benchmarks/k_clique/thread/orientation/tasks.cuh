@@ -85,7 +85,7 @@ __device__ void count_candidate_range_from_slot(
     if (range_end > candidate_count) range_end = candidate_count;
     if (range_end <= range_begin) return;
 
-    const unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
+    const unsigned long long* adjacency = candidate_adjacency_shared_buffer(slot);
 
     if (depth > 0) {
         int active_count = restore_candidates_from_prefix(
@@ -176,7 +176,7 @@ __device__ void count_candidate_range_from_edge(
     if (range_end > candidate_count) range_end = candidate_count;
     if (range_end <= range_begin) return;
 
-    unsigned long long* adjacency = candidate_adjacency_buffer();
+    unsigned long long* adjacency = candidate_adjacency_private_buffer();
     build_candidate_adjacency(cand, candidate_count, adjacency);
 
     if (depth > 0) {
@@ -264,7 +264,7 @@ __device__ void count_from_edge(int ei) {
     if (candidate_count >= GTAP_HEAVY_CANDIDATES) {
         int slot = acquire_candidate_adjacency_slot();
         if (slot >= 0) {
-            unsigned long long* adjacency = candidate_adjacency_slot_buffer(slot);
+            unsigned long long* adjacency = candidate_adjacency_shared_buffer(slot);
             build_candidate_adjacency(cand, candidate_count, adjacency);
 
             SearchPrefix prefix{};

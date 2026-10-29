@@ -110,7 +110,7 @@ __device__ __forceinline__ unsigned long long* candidate_bitset_buffer(
 }
 
 // This worker's private adjacency matrix (after the shared slot block).
-__device__ __forceinline__ unsigned long long* candidate_adjacency_buffer() {
+__device__ __forceinline__ unsigned long long* candidate_adjacency_private_buffer() {
     return g_candidate_adjacency_scratch +
            ((size_t)GTAP_ADJACENCY_SLOTS + (size_t)worker_id_global()) *
            (size_t)g_max_candidates *
@@ -118,7 +118,7 @@ __device__ __forceinline__ unsigned long long* candidate_adjacency_buffer() {
 }
 
 // Shared adjacency matrix at `slot`. Children of a heavy edge reuse this.
-__device__ __forceinline__ unsigned long long* candidate_adjacency_slot_buffer(int slot) {
+__device__ __forceinline__ unsigned long long* candidate_adjacency_shared_buffer(int slot) {
     return g_candidate_adjacency_scratch +
            (size_t)slot *
            (size_t)g_max_candidates *

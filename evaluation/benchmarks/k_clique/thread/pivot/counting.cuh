@@ -15,7 +15,7 @@ __device__ __forceinline__ unsigned long long* pivot_cl_buffer(int level) {
     return candidate_bitset_buffer((level << 1) + 1);
 }
 
-__device__ __forceinline__ int choose_kcgpu_pivot_from_cl(
+__device__ __forceinline__ int choose_pivot(
         const unsigned long long* adjacency, int cand_count, const unsigned long long* cl,
         int words, int* max_intersection) {
     int stride = max_words();
@@ -46,7 +46,7 @@ __device__ __forceinline__ int choose_kcgpu_pivot_from_cl(
     return best_idx;
 }
 
-__device__ __forceinline__ int make_kcgpu_pl(
+__device__ __forceinline__ int build_pivot_pl(
         const unsigned long long* adjacency, int cand_count, const unsigned long long* cl,
         int pivot, unsigned long long* pl) {
     int words = words_for_len(cand_count);
@@ -61,7 +61,7 @@ __device__ __forceinline__ int make_kcgpu_pl(
     return count;
 }
 
-__device__ __forceinline__ int make_kcgpu_child_cl(
+__device__ __forceinline__ int build_pivot_child_candidates(
         const unsigned long long* adjacency, int cand_count,
         const unsigned long long* parent_cl, const unsigned long long* parent_pl,
         int new_idx, int new_word, unsigned long long* child_cl) {
@@ -116,11 +116,11 @@ __device__ __forceinline__ int init_pivot_root(
             max_intersection += __popcll(root_cl[w] & row[w]);
         }
     } else {
-        pivot = choose_kcgpu_pivot_from_cl(adjacency, cand_count, root_cl, words, &max_intersection);
+        pivot = choose_pivot(adjacency, cand_count, root_cl, words, &max_intersection);
     }
     *pivot_out = pivot;
     if (pivot < 0 || max_intersection <= 0) return 0;
-    return make_kcgpu_pl(adjacency, cand_count, root_cl, pivot, root_pl);
+    return build_pivot_pl(adjacency, cand_count, root_cl, pivot, root_pl);
 }
 
 // After selecting `new_idx` from the parent PL, write child CL/PL at `child_level`.
@@ -138,11 +138,11 @@ __device__ __forceinline__ PivotChildKind make_pivot_child_state(
     unsigned long long* parent_pl = pivot_pl_buffer(child_level - 1);
     unsigned long long* parent_cl = pivot_cl_buffer(child_level - 1);
     unsigned long long* child_cl = pivot_cl_buffer(child_level);
-    child->cl_count = make_kcgpu_child_cl(
+    child->cl_count = build_pivot_child_candidates(
         adjacency, cand_count, parent_cl, parent_pl, new_idx, new_word, child_cl);
 
     child->max_intersection = 0;
-    child->pivot = choose_kcgpu_pivot_from_cl(
+    child->pivot = choose_pivot(
         adjacency, cand_count, child_cl, words, &child->max_intersection);
     if (child->pivot < 0) {
         if (child->rsize >= target) {
@@ -152,20 +152,20 @@ __device__ __forceinline__ PivotChildKind make_pivot_child_state(
         return PivotChildKind::Dead;
     }
 
-    child->pl_count = make_kcgpu_pl(
+    child->pl_count = build_pivot_pl(
         adjacency, cand_count, child_cl, child->pivot, pivot_pl_buffer(child_level));
     if (child->pl_count == 0) return PivotChildKind::Dead;
     return PivotChildKind::Ready;
 }
 
 // KCGPU-style pivot DFS over an encoded candidate bitset, starting from a ready state.
-__device__ unsigned long long count_pivot_encoded_from_state(
+__device__ unsigned long long count_cliques_from_pivot_state(
         const unsigned long long* adjacency, int cand_count, int target, int start_level,
         int start_rsize, int start_drop, int start_pivot) {
     int words = words_for_len(cand_count);
     const int max_state_levels = pivot_state_levels();
     if (start_level < 0 || start_level >= max_state_levels) {
-        g_scratch_overflow = 1;
+        mark_overflow();
         return 0ULL;
     }
 
@@ -176,7 +176,7 @@ __device__ unsigned long long count_pivot_encoded_from_state(
     pivot[start_level] = start_pivot;
     next_candidate[start_level] = 0;
 
-    unsigned long long local = 0ULL;
+    unsigned long long clique_count = 0ULL;
     int level = start_level;
     while (level >= start_level) {
         unsigned long long* parent_pl = pivot_pl_buffer(level);
@@ -191,7 +191,7 @@ __device__ unsigned long long count_pivot_encoded_from_state(
 
         int child_level = level + 1;
         if (child_level >= max_state_levels) {
-            g_scratch_overflow = 1;
+            mark_overflow();
             continue;
         }
 
@@ -203,7 +203,7 @@ __device__ unsigned long long count_pivot_encoded_from_state(
             new_idx, new_word, child_level, &child);
         if (kind == PivotChildKind::Dead) continue;
         if (kind == PivotChildKind::Terminal) {
-            local += child.terminal_count;
+            clique_count += child.terminal_count;
             continue;
         }
 
@@ -213,10 +213,10 @@ __device__ unsigned long long count_pivot_encoded_from_state(
         level = child_level;
     }
 
-    return local;
+    return clique_count;
 }
 
-__device__ unsigned long long count_pivot_encoded(
+__device__ unsigned long long count_cliques_in_pivot_bitset(
         const unsigned long long* adjacency, int cand_count, int need) {
     if (need == 0) return 1ULL;
     if (need == 1) return (unsigned long long)cand_count;
@@ -230,6 +230,6 @@ __device__ unsigned long long count_pivot_encoded(
     int pivot = -1;
     int pl_count = init_pivot_root(adjacency, cand_count, -1, &pivot, pivot_pl_buffer(0));
     if (pl_count <= 0) return 0ULL;
-    return count_pivot_encoded_from_state(
+    return count_cliques_from_pivot_state(
         adjacency, cand_count, target, 0, 1, 0, pivot);
 }

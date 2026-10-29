@@ -61,7 +61,7 @@ __device__ __forceinline__ unsigned long long count_cliques_in_candidates(
     if (need == 1) return (unsigned long long)cand_count;
     if (need == 2) return count_edges_in_candidates(cand, cand_count);
 
-    unsigned long long* adjacency = candidate_adjacency_buffer();
+    unsigned long long* adjacency = candidate_adjacency_private_buffer();
     build_candidate_adjacency(cand, cand_count, adjacency);
 
     // Depth 0: every candidate is still selectable.

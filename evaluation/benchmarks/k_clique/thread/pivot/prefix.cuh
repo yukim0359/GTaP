@@ -9,7 +9,7 @@
 
 __device__ int rebuild_pivot_prefix(
         const unsigned long long* adjacency, int cand_count, int need, int root_pivot, int depth,
-        const SearchPrefix& fixed, int* pl_count_out, int* rsize_out,
+        const SearchPrefix& prefix, int* pl_count_out, int* rsize_out,
         int* drop_out, int* pivot_out, unsigned long long* terminal_count) {
     *terminal_count = 0ULL;
     const int max_state_levels = pivot_state_levels();
@@ -25,14 +25,14 @@ __device__ int rebuild_pivot_prefix(
     int cur_drop = 0;
 
     for (int level = 0; level < depth; ++level) {
-        int new_idx = fixed.candidate_indices[level];
+        int new_idx = prefix.candidate_indices[level];
         if (new_idx < 0 || new_idx >= cand_count) return K_PREFIX_REBUILD_INVALID;
         unsigned long long* parent_pl = pivot_pl_buffer(level);
         if (!is_bit_set(parent_pl, new_idx)) return K_PREFIX_REBUILD_INVALID;
 
         int child_level = level + 1;
         if (child_level >= max_state_levels) {
-            g_scratch_overflow = 1;
+            mark_overflow();
             return K_PREFIX_REBUILD_INVALID;
         }
 
