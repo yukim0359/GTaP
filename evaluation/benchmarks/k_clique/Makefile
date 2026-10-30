@@ -1,4 +1,4 @@
-# GTaP k-clique benchmarks. See README.md for variants, data, and timing.
+# GTaP k-clique benchmarks.
 #
 # Two layers of knobs:
 #   1. Build defaults in this file / common/config_defaults.cuh
@@ -8,7 +8,7 @@
 #
 # Runtime (no rebuild): GTAP_ORIENT, GTAP_GRID_SIZE, GTAP_BLOCK_SIZE,
 # GTAP_MAX_TASKS_PER_WARP. Each binary has its own launch default.
-# The binaries are orientation vs pivot (see README.md).
+# The binaries are orientation vs pivot.
 
 BENCHMARK_NAME := k_clique
 
@@ -67,8 +67,6 @@ GTAP_THIRD_HEAVY_CANDIDATES ?= 32
 
 # SearchPrefix length. Orientation splits only at depth 0 and 1.
 GTAP_ORIENTATION_MAX_PREFIX_DEPTH ?= 2
-# Pivot goes deeper; also caps prefix spawn depth.
-GTAP_PIVOT_MAX_PREFIX_DEPTH ?= 24
 
 # --- pivot-only split thresholds ---
 # Lower values create more tasks inside heavy per-edge pivot searches,
@@ -83,6 +81,8 @@ GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES ?= 8
 GTAP_PIVOT_PREFIX_WORK_THRESHOLD ?= 1024
 # Max subtasks when splitting a child PL range (chunk = ceil(pl_count / fanout)).
 GTAP_PIVOT_PREFIX_FANOUT ?= 128
+# Words in stolen PivotTaskState CL/PL (4 words = 256 candidates).
+GTAP_PIVOT_PREFIX_MAX_WORDS ?= 4
 #
 # Runtime limits:
 GTAP_ORIENTATION_CUDA_STACK_SIZE ?= 4096
@@ -175,7 +175,7 @@ $(OUT_GTAP_PIVOT): $(SRC_GTAP_PIVOT) $(SRC_GPU_ORIENT) $(LIB_KCGPU_ORIENT) | $(O
 	  -DGTAP_PIVOT_PREFIX_HEAVY_CANDIDATES="$(GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES)" \
 	  -DGTAP_PIVOT_PREFIX_WORK_THRESHOLD="$(GTAP_PIVOT_PREFIX_WORK_THRESHOLD)" \
 	  -DGTAP_PIVOT_PREFIX_FANOUT="$(GTAP_PIVOT_PREFIX_FANOUT)" \
-	  -DGTAP_MAX_PREFIX_DEPTH="$(GTAP_PIVOT_MAX_PREFIX_DEPTH)" \
+	  -DGTAP_PIVOT_PREFIX_MAX_WORDS="$(GTAP_PIVOT_PREFIX_MAX_WORDS)" \
 	  -DGTAP_CUDA_STACK_SIZE="$(GTAP_PIVOT_CUDA_STACK_SIZE)" \
 	  $(GTAP_CFLAGS) $(GTAP_EXTRA_CFLAGS) \
 	  "$(SRC_GTAP_PIVOT)" "$(SRC_GPU_ORIENT)" -o "$(OUT_GTAP_PIVOT)" \

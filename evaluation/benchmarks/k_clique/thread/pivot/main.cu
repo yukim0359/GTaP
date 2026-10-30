@@ -50,7 +50,6 @@ static void print_pivot_tuning() {
     printf("GTAP_PIVOT_PREFIX_WORK_THRESHOLD: %d\n", GTAP_PIVOT_PREFIX_WORK_THRESHOLD);
     printf("GTAP_PIVOT_PREFIX_FANOUT: %d\n", GTAP_PIVOT_PREFIX_FANOUT);
     printf("GTAP_PIVOT_PREFIX_MAX_WORDS: %d\n", GTAP_PIVOT_PREFIX_MAX_WORDS);
-    printf("GTAP_MAX_PREFIX_DEPTH: %d\n", GTAP_MAX_PREFIX_DEPTH);
 }
 
 int main(int argc, char** argv) {

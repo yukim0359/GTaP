@@ -4,86 +4,96 @@
 //     count_edge_range[0, E)
 //       count_from_edge(ei)
 //         light / no slot        inline count_cliques_in_pivot_bitset
-//         heavy + encode slot    encode; spawn count_pivot_prefix_from_slot
-//         heavy prefix child     another count_pivot_prefix_from_slot at depth+1
+//         heavy + encode slot    encode; spawn count_pivot_range_from_slot
+//         heavy range child      another count_pivot_range_from_slot at depth+1
 //
 // slot  = shared encode-buffer index.
 // parent = PivotTaskState: parent CL/PL + rsize/drop/pivot/pl_count (stolen by value).
 // cl    = current candidate bitset (KCGPU CL).
 // pl    = pivot-restricted remaining set (KCGPU PL).
-// See README.md "Task split".
 
 #pragma once
 
 #include "gtap_thread.cuh"
 #include "counting.cuh"
-#include "prefix.cuh"
+#include "task_state.cuh"
 
-__device__ __forceinline__ unsigned long long pivot_prefix_work_estimate(
+// |PL| * C(|CL|, remaining-1) >= WORK_THRESHOLD, without multiplying.
+__device__ __forceinline__ bool pivot_work_meets_threshold(
         int child_pl_count, int child_cl_count, int remaining) {
-    const unsigned long long cap = (unsigned long long)GTAP_PIVOT_PREFIX_WORK_THRESHOLD * 1024ULL;
-    unsigned long long width = (unsigned long long)(child_pl_count > 0 ? child_pl_count : 1);
-    if (remaining <= 0) {
-        int tail_n = child_cl_count;
-        if (tail_n < 1) tail_n = 1;
-        if (width > cap / (unsigned long long)tail_n) return cap;
-        unsigned long long estimate = width * (unsigned long long)tail_n;
-        return estimate > cap ? cap : estimate;
-    }
-    if (remaining == 1) return width;
-
+    // Spawn already requires remaining > 0; this estimate is unused.
+    if (remaining <= 0) return false;
+    unsigned long long branch_count = (unsigned long long)child_pl_count;
+    unsigned long long threshold =
+        (unsigned long long)GTAP_PIVOT_PREFIX_WORK_THRESHOLD;
     unsigned long long tail = lookup_nCr(child_cl_count, remaining - 1);
-    if (tail != 0ULL && width > cap / tail) return cap;
-    unsigned long long estimate = width * tail;
-    return estimate > cap ? cap : estimate;
+    if (tail == 0ULL) return false;
+    return branch_count >= (threshold + tail - 1ULL) / tail;
 }
 
-// Copy stolen parent CL/PL into this worker, then scan PL ordinals [range_begin, range_end).
+// Next `chunk` set bits of `pl` as a candidate-index range [*start_idx, *end_idx).
+__device__ __forceinline__ bool next_pivot_pl_chunk(
+        const unsigned long long* pl, int words, int cand_count, int chunk,
+        int* scan_from, int* start_idx, int* end_idx) {
+    int word = 0;
+    int idx = next_set_bit_from(pl, words, *scan_from, &word);
+    if (idx < 0 || idx >= cand_count) return false;
+    *start_idx = idx;
+    int taken = 0;
+    while (taken < chunk && idx >= 0 && idx < cand_count) {
+        *scan_from = idx + 1;
+        ++taken;
+        idx = next_set_bit_from(pl, words, *scan_from, &word);
+    }
+    *end_idx = (idx < 0 || idx >= cand_count) ? cand_count : idx;
+    return true;
+}
+
+// Copy stolen parent CL/PL into this worker, then scan PL bits [start_idx, end_idx).
 #pragma gtap function
-__device__ void count_pivot_prefix_from_slot(
+__device__ void count_pivot_range_from_slot(
         int slot, int cand_count, int depth,
-        PivotTaskState parent, int range_begin, int range_end) {
+        PivotTaskState parent, int start_idx, int end_idx) {
 #ifdef GTAP_STATS
     unsigned long long start_time = global_time();
 #endif
     int need = vertices_needed_after_edge();
     int words = words_for_len(cand_count);
-    if (cand_count < need || cand_count > g_max_candidates) return;
+    if (cand_count < need) return;
+    if (cand_count > g_max_candidates) {
+        mark_overflow();
+        return;
+    }
     if (words > GTAP_PIVOT_PREFIX_MAX_WORDS) {
         mark_overflow();
         return;
     }
-    if (depth < 0 || depth >= GTAP_MAX_PREFIX_DEPTH) return;
-    if (range_begin < 0) range_begin = 0;
-
     const unsigned long long* adjacency = candidate_adjacency_shared_buffer(slot);
     const int max_state_levels = pivot_state_levels();
-    if (depth >= max_state_levels) return;
+    if (depth >= max_state_levels) {
+        mark_overflow();
+        return;
+    }
     restore_pivot_task_bitsets(depth, words, parent);
 
     int target = need + 1;
-    if (range_end > parent.pl_count) range_end = parent.pl_count;
-    if (range_end <= range_begin) return;
     unsigned long long clique_count = 0ULL;
     bool spawned = false;
 #ifdef GTAP_STATS
     int spawned_count = 0;
-    unsigned long long max_work_estimate = 0ULL;
 #endif
     unsigned long long* parent_pl = pivot_pl_buffer(depth);
 
-    int scan_from = 0;
-    int new_word = 0;
-    for (int skip = 0; skip < range_begin; ++skip) {
-        int idx = next_set_bit_from(parent_pl, words, scan_from, &new_word);
-        if (idx < 0 || idx >= cand_count) return;
-        scan_from = idx + 1;
-    }
-
-    for (int ordinal = range_begin; ordinal < range_end; ++ordinal) {
-        int new_idx = next_set_bit_from(parent_pl, words, scan_from, &new_word);
-        if (new_idx < 0 || new_idx >= cand_count) break;
+    int scan_from = start_idx;
+    while (true) {
+        int new_word = 0;
+        int new_idx =
+            next_set_bit_from(parent_pl, words, scan_from, &new_word);
+        if (new_idx < 0 || new_idx >= cand_count || new_idx >= end_idx) {
+            break;
+        }
         scan_from = new_idx + 1;
+
         int child_level = depth + 1;
         if (child_level >= max_state_levels) {
             mark_overflow();
@@ -100,33 +110,29 @@ __device__ void count_pivot_prefix_from_slot(
             continue;
         }
 
-        int effective_rsize = child.rsize - child.drop;
-        int remaining = target - effective_rsize;
-        unsigned long long work_estimate = pivot_prefix_work_estimate(
-            child.pl_count, child.cl_count, remaining);
-#ifdef GTAP_STATS
-        if (work_estimate > max_work_estimate) max_work_estimate = work_estimate;
-#endif
+        int remaining = target - (child.rsize - child.drop);
         bool should_spawn =
-            child_level < GTAP_MAX_PREFIX_DEPTH &&
-            effective_rsize < target &&
+            remaining > 0 &&
             child.cl_count >= GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES &&
-            work_estimate >= (unsigned long long)GTAP_PIVOT_PREFIX_WORK_THRESHOLD;
+            pivot_work_meets_threshold(
+                child.pl_count, child.cl_count, remaining);
         if (should_spawn) {
-            PivotTaskState child_parent;
-            capture_pivot_task_state(child_level, words, child, &child_parent);
+            PivotTaskState child_state;
+            capture_pivot_task_state(child_level, words, child, &child_state);
             int chunk = (child.pl_count + GTAP_PIVOT_PREFIX_FANOUT - 1) / GTAP_PIVOT_PREFIX_FANOUT;
-            if (chunk < 1) chunk = 1;
-            for (int s = 0; s < child.pl_count; s += chunk) {
-                int e = s + chunk;
-                if (e > child.pl_count) e = child.pl_count;
+            int pl_scan = 0;
+            int chunk_start, chunk_end;
+            while (next_pivot_pl_chunk(
+                    pivot_pl_buffer(child_level), words, cand_count, chunk,
+                    &pl_scan, &chunk_start, &chunk_end)) {
                 spawned = true;
 #ifdef GTAP_STATS
                 ++spawned_count;
 #endif
                 #pragma gtap task
-                count_pivot_prefix_from_slot(
-                    slot, cand_count, child_level, child_parent, s, e);
+                count_pivot_range_from_slot(
+                    slot, cand_count, child_level, child_state,
+                    chunk_start, chunk_end);
             }
         } else {
             clique_count += count_cliques_from_pivot_state(
@@ -137,8 +143,8 @@ __device__ void count_pivot_prefix_from_slot(
 
     if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
 #ifdef GTAP_STATS
-    record_task_profile(K_KIND_PIVOT_PREFIX_BODY, global_time() - start_time, -1, -1, cand_count, depth, range_begin,
-                        spawned_count, (int)(max_work_estimate > 2147483647ULL ? 2147483647ULL : max_work_estimate));
+    record_task_profile(K_KIND_PIVOT_PREFIX_BODY, global_time() - start_time, -1, -1, cand_count, depth, start_idx,
+                        spawned_count, 0);
 #endif
     if (spawned) {
 #ifdef GTAP_STATS
@@ -147,12 +153,12 @@ __device__ void count_pivot_prefix_from_slot(
         #pragma gtap taskwait
 #ifdef GTAP_STATS
         record_task_profile(K_KIND_PIVOT_PREFIX_WAIT, global_time() - wait_start,
-                            -1, -1, cand_count, depth, range_begin, spawned_count, 0);
+                            -1, -1, cand_count, depth, start_idx, spawned_count, 0);
 #endif
     }
 #ifdef GTAP_STATS
     record_task_profile(K_KIND_PIVOT_SHARED_PREFIX, global_time() - start_time,
-                        -1, -1, cand_count, depth, range_begin, spawned_count, (int)clique_count);
+                        -1, -1, cand_count, depth, start_idx, spawned_count, (int)clique_count);
 #endif
 }
 
@@ -174,6 +180,11 @@ __device__ void count_from_edge(int ei) {
     int cand_count = collect_common_neighbors(u, v, cand);
     if (cand_count < need) return;
 
+    // TODO(k=3): need==1 is not special-cased here. Inline
+    // count_cliques_in_pivot_bitset returns cand_count, but the shared-slot
+    // path runs init_pivot_root and returns 0 on an independent candidate
+    // set (e.g. 64 isolated common neighbors → slot 0 vs no-slot 64).
+    // 3-cliques are out of scope for now.
     if (need == 2) {
         unsigned long long clique_count = count_edges_in_candidates(cand, cand_count);
         if (clique_count != 0ULL) atomicAdd(&g_answer, clique_count);
@@ -183,7 +194,7 @@ __device__ void count_from_edge(int ei) {
         return;
     }
 
-    // 1) Heavy + slot: encode once, spawn count_pivot_prefix_from_slot.
+    // 1) Heavy + slot: encode once, spawn count_pivot_range_from_slot.
     int words = words_for_len(cand_count);
     if (cand_count >= GTAP_PIVOT_SHARED_SPLIT_CANDIDATES) {
         int slot = acquire_candidate_adjacency_slot();
@@ -193,7 +204,7 @@ __device__ void count_from_edge(int ei) {
 
             int root_pivot = -1;
             unsigned long long* root_pl = pivot_pl_buffer(0);
-            int root_count = init_pivot_root(adjacency, cand_count, -1, &root_pivot, root_pl);
+            int root_count = init_pivot_root(adjacency, cand_count, &root_pivot, root_pl);
             if (root_count <= 0) {
                 release_candidate_adjacency_slot(slot);
 #ifdef GTAP_STATS
@@ -205,7 +216,6 @@ __device__ void count_from_edge(int ei) {
             bool spawned = false;
             unsigned long long clique_count = 0ULL;
             int target = need + 1;
-            const int max_state_levels = pivot_state_levels();
             for (int word = 0; word < words; ++word) {
                 unsigned long long bits = root_pl[word];
                 while (bits) {
@@ -215,10 +225,6 @@ __device__ void count_from_edge(int ei) {
                     if (root_idx >= cand_count) continue;
 
                     int child_level = 1;
-                    if (child_level >= max_state_levels) {
-                        mark_overflow();
-                        continue;
-                    }
                     PivotChildState child;
                     PivotChildKind kind = make_pivot_child_state(
                         adjacency, cand_count, target, 1, 0, root_pivot,
@@ -231,13 +237,17 @@ __device__ void count_from_edge(int ei) {
 
                     PivotTaskState parent;
                     capture_pivot_task_state(child_level, words, child, &parent);
-                    for (int s = 0; s < child.pl_count; s += GTAP_PIVOT_PREFIX_CHUNK) {
-                        int e = s + GTAP_PIVOT_PREFIX_CHUNK;
-                        if (e > child.pl_count) e = child.pl_count;
+                    int pl_scan = 0;
+                    int chunk_start, chunk_end;
+                    while (next_pivot_pl_chunk(
+                            pivot_pl_buffer(child_level), words, cand_count,
+                            GTAP_PIVOT_PREFIX_CHUNK, &pl_scan, &chunk_start,
+                            &chunk_end)) {
                         spawned = true;
                         #pragma gtap task
-                        count_pivot_prefix_from_slot(
-                            slot, cand_count, child_level, parent, s, e);
+                        count_pivot_range_from_slot(
+                            slot, cand_count, child_level, parent,
+                            chunk_start, chunk_end);
                     }
                 }
             }

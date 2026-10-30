@@ -96,28 +96,19 @@ struct PivotChildState {
     int pivot;
     int pl_count;
     int cl_count;
-    int max_intersection;
     unsigned long long terminal_count;
 };
 
 // Level-0 CL = all candidates; PL = vertices outside the chosen pivot's neighborhood.
 __device__ __forceinline__ int init_pivot_root(
-        const unsigned long long* adjacency, int cand_count, int known_pivot,
+        const unsigned long long* adjacency, int cand_count,
         int* pivot_out, unsigned long long* root_pl) {
     int words = words_for_len(cand_count);
     unsigned long long* root_cl = pivot_cl_buffer(0);
     init_full_bitset(root_cl, cand_count);
 
     int max_intersection = 0;
-    int pivot = known_pivot;
-    if (pivot >= 0) {
-        const unsigned long long* row = adjacency + (size_t)pivot * (size_t)max_words();
-        for (int w = 0; w < words; ++w) {
-            max_intersection += __popcll(root_cl[w] & row[w]);
-        }
-    } else {
-        pivot = choose_pivot(adjacency, cand_count, root_cl, words, &max_intersection);
-    }
+    int pivot = choose_pivot(adjacency, cand_count, root_cl, words, &max_intersection);
     *pivot_out = pivot;
     if (pivot < 0 || max_intersection <= 0) return 0;
     return build_pivot_pl(adjacency, cand_count, root_cl, pivot, root_pl);
@@ -141,9 +132,9 @@ __device__ __forceinline__ PivotChildKind make_pivot_child_state(
     child->cl_count = build_pivot_child_candidates(
         adjacency, cand_count, parent_cl, parent_pl, new_idx, new_word, child_cl);
 
-    child->max_intersection = 0;
+    int max_intersection = 0;
     child->pivot = choose_pivot(
-        adjacency, cand_count, child_cl, words, &child->max_intersection);
+        adjacency, cand_count, child_cl, words, &max_intersection);
     if (child->pivot < 0) {
         if (child->rsize >= target) {
             child->terminal_count = lookup_nCr(child->drop, child->rsize - target);
@@ -223,12 +214,13 @@ __device__ unsigned long long count_cliques_in_pivot_bitset(
     if (need == 2) {
         unsigned long long* full = pivot_cl_buffer(0);
         init_full_bitset(full, cand_count);
-        return count_edges_in_bitset(adjacency, cand_count, full);
+        // Symmetric adjacency stores both directions of each undirected edge.
+        return count_edges_in_bitset(adjacency, cand_count, full) / 2ULL;
     }
 
     int target = need + 1;  // KCGPU edge pivot uses kcount = k - 1.
     int pivot = -1;
-    int pl_count = init_pivot_root(adjacency, cand_count, -1, &pivot, pivot_pl_buffer(0));
+    int pl_count = init_pivot_root(adjacency, cand_count, &pivot, pivot_pl_buffer(0));
     if (pl_count <= 0) return 0ULL;
     return count_cliques_from_pivot_state(
         adjacency, cand_count, target, 0, 1, 0, pivot);

@@ -13,7 +13,7 @@ __device__ __forceinline__ SearchPrefix extend_search_prefix(
         int depth,
         int idx) {
     SearchPrefix next = prefix;
-    if (depth >= 0 && depth < GTAP_MAX_PREFIX_DEPTH) {
+    if (depth < GTAP_MAX_PREFIX_DEPTH) {
         next.candidate_indices[depth] = idx;
     }
     return next;

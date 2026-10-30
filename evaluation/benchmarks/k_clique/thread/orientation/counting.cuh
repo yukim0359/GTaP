@@ -57,7 +57,11 @@ __device__ unsigned long long count_cliques_in_bitset(
 __device__ __forceinline__ unsigned long long count_cliques_in_candidates(
         const int* cand, int cand_count, int need) {
     if (need == 0) return 1ULL;
-    if (cand_count < need || cand_count > g_max_candidates) return 0ULL;
+    if (cand_count < need) return 0ULL;
+    if (cand_count > g_max_candidates) {
+        mark_overflow();
+        return 0ULL;
+    }
     if (need == 1) return (unsigned long long)cand_count;
     if (need == 2) return count_edges_in_candidates(cand, cand_count);
 

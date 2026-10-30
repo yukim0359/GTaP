@@ -11,7 +11,6 @@
 // slot   = shared adjacency-buffer index.
 // prefix = SearchPrefix: candidate index chosen at each search depth.
 // cand / bitset / adjacency: see thread/device_state.cuh.
-// See README.md "Task split".
 
 #pragma once
 
@@ -47,15 +46,21 @@ __device__ __forceinline__ int shared_range_wait_profile_kind(int depth) {
 __device__ int restore_candidates_from_prefix(
         const unsigned long long* adjacency, int candidate_count, int depth,
         const SearchPrefix& prefix) {
-    if (depth <= 0) return 0;
-    if (depth + 1 >= g_bit_buffer_count) return -1;
-    if (depth > GTAP_MAX_PREFIX_DEPTH) return -1;
+    if (depth + 1 >= g_bit_buffer_count) {
+        mark_overflow();
+        return -1;
+    }
+    if (depth > GTAP_MAX_PREFIX_DEPTH) {
+        mark_overflow();
+        return -1;
+    }
 
     init_full_bitset(candidate_bitset_buffer(0), candidate_count);
     int child_count = 0;
     for (int i = 0; i < depth; ++i) {
         int candidate_index = prefix.candidate_indices[i];
         if (candidate_index < 0 || candidate_index >= candidate_count) {
+            mark_overflow();
             return -1;
         }
         child_count = build_child_candidates(
@@ -76,14 +81,15 @@ __device__ void count_candidate_range_from_slot(
 #endif
     const int target_size = vertices_needed_after_edge();
     const int child_vertices_needed = target_size - depth - 1;
-    if (candidate_count < target_size || candidate_count > g_max_candidates) {
+    if (candidate_count < target_size) return;
+    if (candidate_count > g_max_candidates) {
+        mark_overflow();
         return;
     }
-    if (depth < 0 || depth + 1 >= g_bit_buffer_count) return;
-
-    if (range_begin < 0) range_begin = 0;
-    if (range_end > candidate_count) range_end = candidate_count;
-    if (range_end <= range_begin) return;
+    if (depth + 1 >= g_bit_buffer_count) {
+        mark_overflow();
+        return;
+    }
 
     const unsigned long long* adjacency = candidate_adjacency_shared_buffer(slot);
 
@@ -165,14 +171,15 @@ __device__ void count_candidate_range_from_edge(
     int candidate_count = collect_common_neighbors(u, v, cand);
     const int target_size = vertices_needed_after_edge();
     const int child_vertices_needed = target_size - depth - 1;
-    if (candidate_count < target_size || candidate_count > g_max_candidates) {
+    if (candidate_count < target_size) return;
+    if (candidate_count > g_max_candidates) {
+        mark_overflow();
         return;
     }
-    if (depth < 0 || depth + 1 >= g_bit_buffer_count) return;
-
-    if (range_begin < 0) range_begin = 0;
-    if (range_end > candidate_count) range_end = candidate_count;
-    if (range_end <= range_begin) return;
+    if (depth + 1 >= g_bit_buffer_count) {
+        mark_overflow();
+        return;
+    }
 
     unsigned long long* adjacency = candidate_adjacency_private_buffer();
     build_candidate_adjacency(cand, candidate_count, adjacency);
