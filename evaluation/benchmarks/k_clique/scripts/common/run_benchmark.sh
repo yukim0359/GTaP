@@ -146,8 +146,8 @@ build_gtap_for_case() {
     done < <(python3 "$GTAP_CONFIG_LOADER" -c "$GTAP_CONFIG" --make-args "$GTAP_VARIANT" "$graph_name" "$k")
 
     if [ ${#make_args[@]} -eq 0 ]; then
-        echo "Building $GTAP_TARGET if needed: GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING"
-        make -C "$K_CLIQUE_DIR" "$GTAP_TARGET" GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" >/dev/null
+        echo "Rebuilding $GTAP_TARGET: GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING"
+        make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" >/dev/null
         return
     fi
 
