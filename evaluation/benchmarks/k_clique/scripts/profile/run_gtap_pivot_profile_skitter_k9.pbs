@@ -1,0 +1,41 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=00:30:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#PBS -N pivot_prof_sk9
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+K_CLIQUE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+GTAP_ROOT="$(cd "$K_CLIQUE_DIR/../../.." && pwd)"
+KCGPU_DIR="${KCGPU_DIR:-$GTAP_ROOT/../KCGPU}"
+GRAPH="${GRAPH:-$KCGPU_DIR/graphs/as-Skitter/as-Skitter.mtx}"
+cd "$K_CLIQUE_DIR"
+PROF=profile
+
+read -r HEAVY SECOND THIRD _ORIENT_MTP PIVOT_MTP < <(python3 scripts/common/load_gtap_graph_k_config.py --values as-Skitter 9)
+make -B gtap_pivot GTAP_ENABLE_PROFILING=1 \
+  GTAP_HEAVY_CANDIDATES="$HEAVY" \
+  GTAP_SECOND_HEAVY_CANDIDATES="$SECOND" \
+  GTAP_THIRD_HEAVY_CANDIDATES="$THIRD"
+
+mkdir -p "$PROF"
+# The binary writes ./profile/pivot/<graph>-<k>.
+GTAP_MAX_TASKS_PER_WARP="$PIVOT_MTP" ./bin/gtap_pivot "$GRAPH" 9
+
+# Regenerate paper figure
+python3 "$GTAP_ROOT/evaluation/scripts/plot_k_clique_pivot_timeline_paper.py" \
+  --profile-dir "$PROF/pivot" \
+  --app-name as-Skitter-9
+
+python3 - <<'PY'
+import json
+from pathlib import Path
+p = Path("profile/pivot/as-Skitter-9/profile.json")
+with p.open(encoding="utf-8") as stream:
+    profile = json.load(stream)
+summary = profile["task_execution"]
+print(f"as-Skitter k9 intervals={summary['intervals']['recorded_count']}")
+PY

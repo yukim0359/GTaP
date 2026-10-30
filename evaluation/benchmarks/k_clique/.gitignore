@@ -4,11 +4,14 @@ logs/
 # Regenerated plots
 img/
 
-# Binomial table. Regenerable: make ncr (scripts/gen_ncr.py).
+# Binomial table. Regenerable: make ncr (scripts/common/gen_ncr.py).
 data/nCr.txt
 
 # Local-only legacy sources
 legacy/
 
+# Block-mode implementation
+block/
+
 # Benchmark run outputs (regenerate via scripts/)
-k579/
+/k579/

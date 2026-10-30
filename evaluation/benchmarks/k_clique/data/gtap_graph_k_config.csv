@@ -1,17 +1,18 @@
-# Per graph×k GTAP build tuning (used by run_benchmark.sh).
-# Empty cells fall back to Makefile defaults (see load_gtap_graph_k_config.py).
+# Paper graph×k overrides (used by scripts/common/run_benchmark.sh).
+# Empty cells fall back to BUILD_DEFAULTS in load_gtap_graph_k_config.py
+# (those match Makefile smoke defaults, not this table).
 #
 # Columns:
 #   heavy, second_heavy, third_heavy
-#     -> GTAP_K_HEAVY_CANDIDATES / SECOND / THIRD (orientation only)
-#   orientation_max_tasks_per_warp -> GTAP_ORIENTATION_MAX_TASKS_PER_WARP
-#   pivot_max_tasks_per_warp       -> GTAP_PIVOT_MAX_TASKS_PER_WARP
+#     -> GTAP_HEAVY_CANDIDATES / SECOND / THIRD (orientation only)
+#   orientation_max_tasks_per_warp / pivot_max_tasks_per_warp
+#     -> runtime GTAP_MAX_TASKS_PER_WARP
 #
 graph,k,heavy,second_heavy,third_heavy,orientation_max_tasks_per_warp,pivot_max_tasks_per_warp
-DBLP,5,100000000,16,32,8192,10000
+DBLP,5,100000000,100000000,100000000,8192,10000
 DBLP,7,16,16,32,50000,10000
 DBLP,9,16,16,32,50000,10000
-as-Skitter,5,100000000,32,32,8192,50000
+as-Skitter,5,100000000,100000000,100000000,8192,50000
 as-Skitter,7,32,32,32,100000,50000
 as-Skitter,9,32,32,32,100000,50000
 Orkut,5,64,64,100000000,100000,150000

@@ -1,0 +1,102 @@
+#pragma once
+
+#include <cstdio>
+#include <time.h>
+#include <vector>
+
+#include "config_defaults.cuh"
+#include "../common/gpu_orient.cuh"
+#include "../common/host_graph.hpp"
+#include "../common/measure_max_degree.cuh"
+#include "../common/timing.hpp"
+#include "host_run.cuh"
+
+static void orient_graph(
+        const HostGraph& graph, GtapOrientMode orient_mode,
+        GtapKCliqueDeviceBuffers& buffers, GtapKCliqueRunResult& result) {
+    CUDA_CHECK(gtap_gpu_orient_csr(
+        graph.row_ptr.data(),
+        graph.col_idx.data(),
+        graph.n,
+        orient_mode,
+        &buffers.d_row_ptr,
+        &buffers.d_col_idx,
+        &buffers.d_edge_src,
+        &buffers.num_oriented_edges,
+        &result.transfer_ms,
+        &result.orient_ms));
+}
+
+static void alloc_scratch(
+        const gtap_thread_config& config,
+        GtapKCliqueDeviceBuffers& buffers, GtapKCliqueRunResult& result,
+        int clique_k, BitScratchKind bit_kind) {
+    timespec workspace_start, workspace_stop, measure_start, measure_stop;
+    clock_gettime(CLOCK_MONOTONIC, &workspace_start);
+    clock_gettime(CLOCK_MONOTONIC, &measure_start);
+    int measured = 0;
+    CUDA_CHECK(measure_max_endpoint_degree(
+            buffers.d_row_ptr, buffers.d_col_idx, buffers.d_edge_src,
+            (int)buffers.num_oriented_edges, &measured));
+    clock_gettime(CLOCK_MONOTONIC, &measure_stop);
+    result.measure_ms = elapsed_ms(measure_start, measure_stop);
+    buffers.max_candidates = measured < 1 ? 1 : measured;
+    // Slot counts: see thread/device_state.cuh.
+    if (bit_kind == BitScratchKind::ByMaxCandidates) {
+        buffers.bit_buffer_count = buffers.max_candidates * 2;
+    } else {
+        buffers.bit_buffer_count = clique_k < 2 ? 2 : clique_k;
+    }
+
+    buffers.num_workers = config.grid_size * config.block_size;
+    const int max_cand = buffers.max_candidates;
+    const int words_per_bitset = (max_cand + 63) >> 6;
+    // cand: one int list per worker.
+    buffers.cand_scratch_ints = (size_t)buffers.num_workers * (size_t)max_cand;
+    // bitset: workers × (k or 2*measured) × words.
+    buffers.bit_scratch_words =
+        (size_t)buffers.num_workers * (size_t)buffers.bit_buffer_count * (size_t)words_per_bitset;
+    // adjacency: shared slots + one private matrix per worker.
+    buffers.candidate_adjacency_scratch_words =
+        ((size_t)GTAP_ADJACENCY_SLOTS + (size_t)buffers.num_workers) *
+        (size_t)max_cand *
+        (size_t)words_per_bitset;
+    buffers.pivot_stack_ints = 0;
+
+    std::vector<int> candidate_adjacency_slot_stack((size_t)GTAP_ADJACENCY_SLOTS);
+    for (int i = 0; i < GTAP_ADJACENCY_SLOTS; ++i) {
+        candidate_adjacency_slot_stack[(size_t)i] = i;
+    }
+
+    CUDA_CHECK(cudaMalloc(&buffers.d_cand_scratch, buffers.cand_scratch_ints * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(
+        &buffers.d_bit_scratch, buffers.bit_scratch_words * sizeof(unsigned long long)));
+    CUDA_CHECK(cudaMalloc(
+        &buffers.d_candidate_adjacency_scratch, buffers.candidate_adjacency_scratch_words * sizeof(unsigned long long)));
+    CUDA_CHECK(cudaMalloc(
+        &buffers.d_candidate_adjacency_slot_stack, candidate_adjacency_slot_stack.size() * sizeof(int)));
+    if (bit_kind == BitScratchKind::ByMaxCandidates) {
+        int pivot_levels = buffers.bit_buffer_count >> 1;
+        if (pivot_levels < 1) pivot_levels = 1;
+        // Next / Drop / Pivot. See pivot/pivot_stack.cuh.
+        buffers.pivot_stack_ints =
+            (size_t)buffers.num_workers * 3ull * (size_t)pivot_levels;
+        CUDA_CHECK(cudaMalloc(
+            &buffers.d_pivot_stack, buffers.pivot_stack_ints * sizeof(int)));
+    }
+    CUDA_CHECK(cudaMemcpy(
+        buffers.d_candidate_adjacency_slot_stack,
+        candidate_adjacency_slot_stack.data(),
+        candidate_adjacency_slot_stack.size() * sizeof(int),
+        cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, GTAP_CUDA_STACK_SIZE));
+    size_t actual_stack_size = 0;
+    CUDA_CHECK(cudaDeviceGetLimit(&actual_stack_size, cudaLimitStackSize));
+    printf(
+        "CUDA stack limit: requested=%d actual=%zu bytes\n",
+        GTAP_CUDA_STACK_SIZE, actual_stack_size);
+
+    clock_gettime(CLOCK_MONOTONIC, &workspace_stop);
+    result.workspace_ms = elapsed_ms(workspace_start, workspace_stop);
+    result.preprocess_ms = result.orient_ms + result.workspace_ms;
+}

@@ -1,0 +1,20 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=02:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#
+# GTAP pivot: render the paper timeline from a current-format profile
+# (run gtap_pivot with GTAP_ENABLE_PROFILING=1 first).
+#
+# Usage:
+#   qsub run_gtap_pivot_profile_figures.pbs
+
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+
+python3 ../../scripts/plot_k_clique_pivot_timeline_paper.py \
+  --profile-dir ./profile/pivot \
+  --app-name "${PROFILE_APP:-as-Skitter-9}" \
+  --profile-tag "${PROFILE_TAG:-}" \
+  --max-warps "${MAX_WARPS:-0}"
