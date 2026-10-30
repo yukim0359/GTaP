@@ -49,6 +49,7 @@ static void print_pivot_tuning() {
     printf("GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES: %d\n", GTAP_PIVOT_PREFIX_HEAVY_CANDIDATES);
     printf("GTAP_PIVOT_PREFIX_WORK_THRESHOLD: %d\n", GTAP_PIVOT_PREFIX_WORK_THRESHOLD);
     printf("GTAP_PIVOT_PREFIX_FANOUT: %d\n", GTAP_PIVOT_PREFIX_FANOUT);
+    printf("GTAP_PIVOT_PREFIX_MAX_WORDS: %d\n", GTAP_PIVOT_PREFIX_MAX_WORDS);
     printf("GTAP_MAX_PREFIX_DEPTH: %d\n", GTAP_MAX_PREFIX_DEPTH);
 }
 
@@ -77,6 +78,19 @@ int main(int argc, char** argv) {
 
     orient_graph(graph, orient_mode, buffers, result);
     alloc_scratch(config, buffers, result, options.k, BitScratchKind::ByMaxCandidates);
+    {
+        const int prefix_cap = GTAP_PIVOT_PREFIX_MAX_WORDS * 64;
+        if (buffers.max_candidates > prefix_cap) {
+            fprintf(stderr,
+                    "candidate capacity %d exceeds pivot task CL/PL (%d bits, "
+                    "GTAP_PIVOT_PREFIX_MAX_WORDS=%d); rebuild with a larger "
+                    "GTAP_PIVOT_PREFIX_MAX_WORDS\n",
+                    buffers.max_candidates, prefix_cap,
+                    GTAP_PIVOT_PREFIX_MAX_WORDS);
+            release_run(buffers, false);
+            return 1;
+        }
+    }
 
     timespec count_phase_start, count_phase_stop;
     timespec count_setup_start, count_setup_stop;

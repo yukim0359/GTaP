@@ -1,59 +1,38 @@
 #pragma once
 
 #include "counting.cuh"
-#include "../../common/search_prefix.cuh"
 
-#define K_PREFIX_REBUILD_INVALID 0
-#define K_PREFIX_REBUILD_READY 1
-#define K_PREFIX_REBUILD_TERMINAL 2
+// Parent CL/PL plus scalars, stolen by value. Starting state for a pivot task,
+// not a search-path prefix. W=4 covers 256 candidates (Orkut max core 253).
+struct PivotTaskState {
+    unsigned long long cl[GTAP_PIVOT_PREFIX_MAX_WORDS];
+    unsigned long long pl[GTAP_PIVOT_PREFIX_MAX_WORDS];
+    int rsize;
+    int drop;
+    int pivot;
+    int pl_count;
+};
 
-__device__ int rebuild_pivot_prefix(
-        const unsigned long long* adjacency, int cand_count, int need, int root_pivot, int depth,
-        const SearchPrefix& prefix, int* pl_count_out, int* rsize_out,
-        int* drop_out, int* pivot_out, unsigned long long* terminal_count) {
-    *terminal_count = 0ULL;
-    const int max_state_levels = pivot_state_levels();
-    if (depth < 0 || depth >= max_state_levels || depth > GTAP_MAX_PREFIX_DEPTH) {
-        return K_PREFIX_REBUILD_INVALID;
+__device__ __forceinline__ void restore_pivot_task_bitsets(
+        int level, int words, const PivotTaskState& src) {
+    unsigned long long* cl = pivot_cl_buffer(level);
+    unsigned long long* pl = pivot_pl_buffer(level);
+    for (int w = 0; w < words; ++w) {
+        cl[w] = src.cl[w];
+        pl[w] = src.pl[w];
     }
-    int target = need + 1;
+}
 
-    int cur_pivot = -1;
-    int cur_pl_count = init_pivot_root(adjacency, cand_count, root_pivot, &cur_pivot, pivot_pl_buffer(0));
-    if (cur_pl_count <= 0) return K_PREFIX_REBUILD_INVALID;
-    int cur_rsize = 1;
-    int cur_drop = 0;
-
-    for (int level = 0; level < depth; ++level) {
-        int new_idx = prefix.candidate_indices[level];
-        if (new_idx < 0 || new_idx >= cand_count) return K_PREFIX_REBUILD_INVALID;
-        unsigned long long* parent_pl = pivot_pl_buffer(level);
-        if (!is_bit_set(parent_pl, new_idx)) return K_PREFIX_REBUILD_INVALID;
-
-        int child_level = level + 1;
-        if (child_level >= max_state_levels) {
-            mark_overflow();
-            return K_PREFIX_REBUILD_INVALID;
-        }
-
-        PivotChildState child;
-        PivotChildKind kind = make_pivot_child_state(
-            adjacency, cand_count, target, cur_rsize, cur_drop, cur_pivot,
-            new_idx, new_idx >> 6, child_level, &child);
-        if (kind == PivotChildKind::Terminal) {
-            *terminal_count = child.terminal_count;
-            return K_PREFIX_REBUILD_TERMINAL;
-        }
-        if (kind != PivotChildKind::Ready) return K_PREFIX_REBUILD_INVALID;
-        cur_rsize = child.rsize;
-        cur_drop = child.drop;
-        cur_pivot = child.pivot;
-        cur_pl_count = child.pl_count;
+__device__ __forceinline__ void capture_pivot_task_state(
+        int level, int words, const PivotChildState& child, PivotTaskState* out) {
+    const unsigned long long* cl = pivot_cl_buffer(level);
+    const unsigned long long* pl = pivot_pl_buffer(level);
+    for (int w = 0; w < GTAP_PIVOT_PREFIX_MAX_WORDS; ++w) {
+        out->cl[w] = (w < words) ? cl[w] : 0ULL;
+        out->pl[w] = (w < words) ? pl[w] : 0ULL;
     }
-
-    *pl_count_out = cur_pl_count;
-    *rsize_out = cur_rsize;
-    *drop_out = cur_drop;
-    *pivot_out = cur_pivot;
-    return K_PREFIX_REBUILD_READY;
+    out->rsize = child.rsize;
+    out->drop = child.drop;
+    out->pivot = child.pivot;
+    out->pl_count = child.pl_count;
 }

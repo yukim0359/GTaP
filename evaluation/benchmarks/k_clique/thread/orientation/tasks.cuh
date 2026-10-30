@@ -69,8 +69,8 @@ __device__ int restore_candidates_from_prefix(
 // Walk candidate indices [range_begin, range_end) using the adjacency in `slot`.
 #pragma gtap function
 __device__ void count_candidate_range_from_slot(
-        int slot, int u, int v, int candidate_count, int depth,
-        SearchPrefix prefix, int range_begin, int range_end) {
+        int slot, int candidate_count, int depth, SearchPrefix prefix,
+        int range_begin, int range_end) {
 #ifdef GTAP_STATS
     unsigned long long start_time = global_time();
 #endif
@@ -126,9 +126,7 @@ __device__ void count_candidate_range_from_slot(
                 spawned = true;
                 #pragma gtap task
                 count_candidate_range_from_slot(
-                    slot, u, v, candidate_count, depth + 1,
-                    child_prefix,
-                    s, e);
+                    slot, candidate_count, depth + 1, child_prefix, s, e);
             }
         } else {
             clique_count += count_cliques_in_bitset(
@@ -145,13 +143,13 @@ __device__ void count_candidate_range_from_slot(
         #pragma gtap taskwait
 #ifdef GTAP_STATS
         record_task_profile(shared_range_wait_profile_kind(depth), global_time() - wait_start,
-                            u, v, candidate_count, range_begin, range_end, spawned ? 1 : 0,
+                            -1, -1, candidate_count, range_begin, range_end, spawned ? 1 : 0,
                             (int)clique_count);
 #endif
     }
 #ifdef GTAP_STATS
     record_task_profile(shared_range_profile_kind(depth), global_time() - start_time,
-                        u, v, candidate_count, range_begin, range_end, spawned ? 1 : 0,
+                        -1, -1, candidate_count, range_begin, range_end, spawned ? 1 : 0,
                         (int)clique_count);
 #endif
 }
@@ -267,16 +265,14 @@ __device__ void count_from_edge(int ei) {
             unsigned long long* adjacency = candidate_adjacency_shared_buffer(slot);
             build_candidate_adjacency(cand, candidate_count, adjacency);
 
-            SearchPrefix prefix{};
+            SearchPrefix prefix;
             int chunk = chunk_size(candidate_count, GTAP_WAIT_FANOUT);
             for (int s = 0; s < candidate_count; s += chunk) {
                 int e = s + chunk;
                 if (e > candidate_count) e = candidate_count;
                 #pragma gtap task
                 count_candidate_range_from_slot(
-                    slot, u, v, candidate_count, 0,
-                    prefix,
-                    s, e);
+                    slot, candidate_count, 0, prefix, s, e);
             }
 
 #ifdef GTAP_STATS
@@ -297,7 +293,7 @@ __device__ void count_from_edge(int ei) {
         }
 
         // 2) Heavy, no slot: spawn count_candidate_range_from_edge.
-        SearchPrefix prefix{};
+        SearchPrefix prefix;
         int chunk = chunk_size(candidate_count, GTAP_TASK_FANOUT);
         for (int s = 0; s < candidate_count; s += chunk) {
             int e = s + chunk;

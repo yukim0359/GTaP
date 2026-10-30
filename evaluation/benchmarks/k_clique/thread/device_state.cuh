@@ -2,8 +2,9 @@
 
 #include "config_defaults.cuh"
 
-// Worker scratch. Steal copies task args (slot, prefix, range), not these
-// buffers. A stolen task rebuilds bitsets from adjacency + prefix.
+// Worker scratch. Steal copies task args, not these buffers.
+// Orientation: stolen slot-tasks rebuild bitsets from adjacency + SearchPrefix.
+// Pivot prefix tasks steal parent CL/PL (PivotTaskState) and copy them here.
 //
 // cand (g_cand_scratch)
 //   Per worker: int[g_max_candidates]. Sorted vertex IDs N+(u)∩N+(v).
