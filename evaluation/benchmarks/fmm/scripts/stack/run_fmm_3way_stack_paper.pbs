@@ -9,15 +9,13 @@
 # Rebuild + measure the paper FMM e2e 3-way stack (N=5e7, theta=0.2), then
 # regenerate the paper PDF under evaluation/img.
 #
-#   qsub run_fmm_3way_stack_paper.pbs
+#   qsub scripts/stack/run_fmm_3way_stack_paper.pbs
 # Optional overrides:
-#   qsub -v N=50000000,THETA=0.2,NUM_RUNS=20 run_fmm_3way_stack_paper.pbs
+#   qsub -v N=50000000,THETA=0.2,NUM_RUNS=20 scripts/stack/run_fmm_3way_stack_paper.pbs
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EVAL_SCRIPTS="$(cd "$SCRIPT_DIR/../../scripts" && pwd)"
-cd "$SCRIPT_DIR"
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 N="${N:-50000000}"
 THETA="${THETA:-0.2}"
@@ -31,9 +29,9 @@ date
 hostname
 nvidia-smi -L || true
 
-./plot_fmm_dtt_stack.sh --rebuild "n=${N}" "theta=${THETA}"
+./scripts/stack/plot_fmm_dtt_stack.sh --rebuild "n=${N}" "theta=${THETA}"
 
-python3 "$EVAL_SCRIPTS/plot_fmm_3way_stack_paper.py" \
+python3 ../../scripts/plot_fmm_3way_stack_paper.py \
   --n "$N" \
   --theta "$THETA"
 

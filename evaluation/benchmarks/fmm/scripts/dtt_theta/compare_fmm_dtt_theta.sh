@@ -1,9 +1,4 @@
 #!/bin/bash
-#PBS -q debug-g
-#PBS -l select=1
-#PBS -l walltime=00:30:00
-#PBS -W group_list=gc64
-#PBS -j oe
 #
 # Compare DTT core traversal time vs theta (fixed N) across three FMM pipelines.
 # Uses "DTT core traversal" (GTaP/worklist kernel; Host OMP parallel h_dtt_fixed only).
@@ -13,23 +8,24 @@
 #   - Host OpenMP traversal    (bin/N<N>/theta<THETA>/omp_dtt_fmm)
 #
 # Build staged bins first (same layout as plot_fmm_dtt_stack.sh):
-#   ./build_fmm_dtt_theta_bins.sh 0.3 10000000
-#   # or for all thetas: ./plot_fmm_dtt_stack.sh --rebuild
+#   ./scripts/dtt_theta/build_fmm_dtt_theta_bins.sh 0.3 10000000
+#   # or for all thetas: ./scripts/stack/plot_fmm_dtt_stack.sh --rebuild
 # Falls back to bin/theta<THETA>/ then bin/ if staged dirs are missing.
 #
-# Local run:
-#   ./compare_fmm_dtt_theta.sh
-#   ./compare_fmm_dtt_theta.sh --plot-only   # skip measurement if CSV exists
+#   ./scripts/dtt_theta/compare_fmm_dtt_theta.sh
+#   ./scripts/dtt_theta/compare_fmm_dtt_theta.sh --plot-only
+# PBS (rebuild + measure + paper figure):
+#   qsub scripts/dtt_theta/run_compare_fmm_dtt_theta_rebuild.pbs
 #
-# Plot (combined absolute + GTaP-normalized per N):
-#   python3 plot_performance_fmm_dtt_theta.py
-#   -> img/fmm_dtt_theta_combined_N{N}.pdf
+# Paper figure:
+#   python3 ../../scripts/plot_fmm_dtt_theta_row_paper.py
+#   -> evaluation/img/fmm_dtt_theta_combined_row.pdf
 #
 # Useful env overrides:
 #   N_VALUES="10000000,50000000"
 #   THETA_VALUES="0.2,0.25,0.3,0.35,0.4,0.5"
 #   NUM_RUNS=20  OMP_NUM_THREADS=48  TIMEOUT_SEC=900
-# Host OMP defaults: source omp_host_dtt_env.sh (72 threads, bind=close, places=cores)
+# Host OMP defaults: source scripts/omp_host_dtt_env.sh (72 threads, bind=close, places=cores)
 #
 # Note: GTaP DTT at N=50M and small theta needs gtap_dtt_fmm rebuilt with
 # FMM3D_DTT_TASK_MIN_N=32 (see Makefile). If it still fails, try 50M only for
@@ -37,13 +33,9 @@
 
 set -euo pipefail
 
-# Under PBS, BASH_SOURCE points at the spool copy of this script, so prefer
-# PBS_O_WORKDIR (the directory from which qsub was run).
-if [ -n "${PBS_O_WORKDIR:-}" ]; then
-  COMPARE_DIR="$PBS_O_WORKDIR"
-else
-  COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FMM_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+COMPARE_DIR="$FMM_ROOT"
 cd "$COMPARE_DIR"
 
 plot_only=0
@@ -58,7 +50,7 @@ Usage: $0 [--plot-only]
 
 Compare DTT core traversal time vs theta (GTaP / worklist / Host OpenMP).
 Writes: fmm_dtt_theta_results.csv
-Plots:  python3 plot_performance_fmm_dtt_theta.py
+Plots:  python3 ../../scripts/plot_fmm_dtt_theta_row_paper.py
 
   $0              Run measurement sweep (default)
   $0 --plot-only  Replot from existing fmm_dtt_theta_results.csv only
@@ -73,15 +65,15 @@ done
 if [ "$plot_only" -eq 1 ]; then
   RESULTS_FILE="${RESULTS_FILE:-$COMPARE_DIR/fmm_dtt_theta_results.csv}"
   if [ ! -f "$RESULTS_FILE" ]; then
-    echo "Error: missing $RESULTS_FILE (run ./compare_fmm_dtt_theta.sh first)" >&2
+    echo "Error: missing $RESULTS_FILE (run scripts/dtt_theta/compare_fmm_dtt_theta.sh first)" >&2
     exit 1
   fi
   echo "Plot only from: $RESULTS_FILE"
-  exec python3 "$COMPARE_DIR/plot_performance_fmm_dtt_theta.py"
+  exec python3 "$COMPARE_DIR/../../scripts/plot_fmm_dtt_theta_row_paper.py"
 fi
 
-# shellcheck source=omp_host_dtt_env.sh
-source "$COMPARE_DIR/omp_host_dtt_env.sh"
+# shellcheck source=../omp_host_dtt_env.sh
+source "$COMPARE_DIR/scripts/omp_host_dtt_env.sh"
 
 BIN_GTAP=""
 BIN_WORKLIST=""
@@ -125,7 +117,7 @@ require_bins() {
     fi
   done
   if [ "$missing" -ne 0 ]; then
-    echo "Build with: $COMPARE_DIR/build_fmm_dtt_theta_bins.sh ${theta} ${n}" >&2
+    echo "Build with: $COMPARE_DIR/scripts/dtt_theta/build_fmm_dtt_theta_bins.sh ${theta} ${n}" >&2
     exit 1
   fi
 }
@@ -567,4 +559,4 @@ for n in "${N_SIZES[@]}"; do
 done
 
 echo "Wrote: $RESULTS_FILE"
-echo "Plot with: python3 $COMPARE_DIR/plot_performance_fmm_dtt_theta.py"
+echo "Plot with: python3 $COMPARE_DIR/../../scripts/plot_fmm_dtt_theta_row_paper.py"

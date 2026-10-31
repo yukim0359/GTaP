@@ -2,7 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$script_dir"
+FMM_ROOT="$(cd "$script_dir/../.." && pwd)"
+cd "$FMM_ROOT"
 
 # shellcheck source=fmm_dtt_theta_build_defs.sh
 source "$script_dir/fmm_dtt_theta_build_defs.sh"
@@ -34,7 +35,7 @@ theta=$1
 n=${2:-50000000}
 theta_lbl="$(theta_label "$theta")"
 dest="bin/N${n}/theta${theta_lbl}"
-dest_abs="$script_dir/$dest"
+dest_abs="$FMM_ROOT/$dest"
 
 fmm_dtt_apply_build_defs "$theta" "$n"
 
