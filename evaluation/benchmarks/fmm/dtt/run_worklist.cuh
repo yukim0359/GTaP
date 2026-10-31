@@ -13,11 +13,42 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <limits>
 
-static int run_dtt_worklist(FmmRun &run) {
+static bool prepare_dtt_worklist(FmmRun &run) {
+  FmmDeviceBuffers &d = run.device;
+  const int ncells = run.host.ncells;
+  d.pair_cap_size =
+      static_cast<size_t>(std::max(1, ncells)) *
+      static_cast<size_t>(std::max(1, WORKLIST_PAIR_CAP_FACTOR));
+  if (d.pair_cap_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    std::printf("GPU worklist DTT pair cap too large for int counter: ncells=%d factor=%d cap=%zu\n",
+                ncells, WORKLIST_PAIR_CAP_FACTOR, d.pair_cap_size);
+    return false;
+  }
+  d.worklist_pair_cap = static_cast<int>(d.pair_cap_size);
+  return true;
+}
+
+static bool init_dtt_worklist(FmmRun &run) {
+  FmmDeviceBuffers &d = run.device;
+  const std::chrono::high_resolution_clock::time_point t_wl_alloc_start =
+      std::chrono::high_resolution_clock::now();
+  CUDA_CHECK(cudaMalloc(&d.d_pairs_a, sizeof(DttPair) * d.pair_cap_size));
+  CUDA_CHECK(cudaMalloc(&d.d_pairs_b, sizeof(DttPair) * d.pair_cap_size));
+  CUDA_CHECK(cudaMalloc(&d.d_worklist_out_count, sizeof(int)));
+  CUDA_CHECK(cudaMalloc(&d.d_worklist_overflow, sizeof(int)));
+  const std::chrono::high_resolution_clock::time_point t_wl_alloc_end =
+      std::chrono::high_resolution_clock::now();
+  run.timings.ms_worklist_pair_buffer_alloc =
+      h_elapsed_ms(t_wl_alloc_start, t_wl_alloc_end);
+  return true;
+}
+
+static bool run_dtt_worklist(FmmRun &run) {
   const int ncells = run.host.ncells;
   FmmDeviceBuffers &d = run.device;
-  FmmDttStats &dtt = run.dtt;
+  FmmDttState &dtt = run.dtt;
   FmmTimings &t = run.timings;
 
   const std::chrono::high_resolution_clock::time_point t_dtt_total_start =
@@ -40,9 +71,9 @@ static int run_dtt_worklist(FmmRun &run) {
   while (in_count > 0) {
     CUDA_CHECK(cudaMemset(d.d_worklist_out_count, 0, sizeof(int)));
     int blocks = std::max(
-        1, (in_count + GTAP_BENCH_BLOCK_SIZE - 1) /
-               GTAP_BENCH_BLOCK_SIZE);
-    fmm3d_worklist_expand_kernel<<<blocks, GTAP_BENCH_BLOCK_SIZE>>>(
+        1, (in_count + GTAP_BLOCK_SIZE - 1) /
+               GTAP_BLOCK_SIZE);
+    fmm3d_worklist_expand_kernel<<<blocks, GTAP_BLOCK_SIZE>>>(
         d_in_pairs, in_count, d_out_pairs, d.d_worklist_out_count,
         d.worklist_pair_cap, d.d_worklist_overflow);
     CUDA_CHECK(cudaGetLastError());
@@ -57,7 +88,7 @@ static int run_dtt_worklist(FmmRun &run) {
     if (dtt.worklist_overflow || next_count > d.worklist_pair_cap) {
       std::printf("GPU worklist DTT pair overflow: pair_cap=%d next_frontier=%d iter=%d\n",
                   d.worklist_pair_cap, next_count, dtt.worklist_iterations);
-      return 1;
+      return false;
     }
     DttPair *tmp = d_in_pairs;
     d_in_pairs = d_out_pairs;
@@ -70,13 +101,13 @@ static int run_dtt_worklist(FmmRun &run) {
   CUDA_CHECK(h_copy_dtt_counts_from_device(
       d.d_m2l_count, d.d_p2p_count, d.d_dtt_overflow, ncells,
       dtt.overflow, dtt.max_m2l_count, dtt.max_p2p_count,
-      dtt.m2l_total_ll, dtt.p2p_total_ll, dtt.h_m2l_targets, dtt.m2l_target_count));
+      dtt.m2l_total_ll, dtt.p2p_total_ll));
   if (dtt.overflow) {
     std::printf("3D worklist DTT fixed-cap overflow: m2l_cap=%d max_m2l=%d  p2p_cap=%d max_p2p=%d\n",
                 DTT_M2L_CAP, dtt.max_m2l_count, DTT_P2P_CAP, dtt.max_p2p_count);
     std::printf("DTT worklist metrics (until overflow): pair_cap=%d  iterations=%d  max_frontier=%d  overflow=%d\n",
                 d.worklist_pair_cap, dtt.worklist_iterations, dtt.worklist_max_frontier, dtt.worklist_overflow);
-    return 1;
+    return false;
   }
   const std::chrono::high_resolution_clock::time_point t_dtt_total_end =
       std::chrono::high_resolution_clock::now();
@@ -96,5 +127,5 @@ static int run_dtt_worklist(FmmRun &run) {
   d.d_worklist_out_count = nullptr;
   d.d_worklist_overflow = nullptr;
 
-  return 0;
+  return true;
 }

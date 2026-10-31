@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fmm_types.cuh"
+#include "../fmm_types.cuh"
 
 #include <cmath>
 

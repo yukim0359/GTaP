@@ -1,7 +1,7 @@
 #pragma once
 
 #include "device_symbols.cuh"
-#include "host_sph.hpp"
+#include "numerics/host_sph.hpp"
 
 #include <cmath>
 #include <vector>

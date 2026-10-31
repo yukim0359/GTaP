@@ -43,7 +43,6 @@ struct FmmDeviceBuffers {
   int *d_p2p_count = nullptr;
   int *d_m2l_src = nullptr;
   int *d_p2p_src = nullptr;
-  int *d_m2l_targets = nullptr;
   int *d_dtt_overflow = nullptr;
   int *d_child_lo = nullptr;
   int *d_child_hi = nullptr;
@@ -57,14 +56,12 @@ struct FmmDeviceBuffers {
   cudaEvent_t ev_gpu_end = nullptr;
 };
 
-struct FmmDttStats {
+struct FmmDttState {
   int overflow = 0;
   int max_m2l_count = 0;
   int max_p2p_count = 0;
   long long m2l_total_ll = 0;
   long long p2p_total_ll = 0;
-  int m2l_target_count = 0;
-  std::vector<int> h_m2l_targets;
   int worklist_iterations = 0;
   int worklist_max_frontier = 0;
   int worklist_overflow = 0;
@@ -91,8 +88,6 @@ struct FmmTimings {
   double ms_h2d_bind = 0.0;
   double ms_m2l = 0.0;
   double ms_l2l = 0.0;
-  [[maybe_unused]] double ms_l2l_tree_d2h = 0.0;
-  [[maybe_unused]] double ms_l2l_tree_h2d = 0.0;
   double ms_eval = 0.0;
   double ms_d2h = 0.0;
   double ms_execution = 0.0;
@@ -127,7 +122,7 @@ struct FmmRun {
   FmmOptions options;
   FmmHostState host;
   FmmDeviceBuffers device;
-  FmmDttStats dtt;
+  FmmDttState dtt;
   FmmTimings timings;
   FmmValidation validation;
 };

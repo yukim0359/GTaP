@@ -9,6 +9,6 @@
     if (_e != cudaSuccess) {                                                    \
       std::printf("CUDA error at %s:%d: %s\n", __FILE__, __LINE__,              \
                   cudaGetErrorString(_e));                                      \
-      return 1;                                                                 \
+      return false;                                                             \
     }                                                                           \
   } while (0)

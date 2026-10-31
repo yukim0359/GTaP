@@ -9,10 +9,23 @@
 #include <chrono>
 #include <cstdio>
 
-static int run_dtt_host(FmmRun &run) {
+static bool init_dtt_host(FmmRun &run) {
+  const int ncells = run.host.ncells;
+  const std::chrono::high_resolution_clock::time_point t_buffer_alloc_start =
+      std::chrono::high_resolution_clock::now();
+  h_prepare_fixed_lists(run.dtt.host_fixed_lists, ncells);
+  const std::chrono::high_resolution_clock::time_point t_buffer_alloc_end =
+      std::chrono::high_resolution_clock::now();
+  run.dtt.host_dtt_breakdown.ms_buffer_alloc =
+      h_elapsed_ms(t_buffer_alloc_start, t_buffer_alloc_end);
+  run.timings.ms_host_list_buffer_alloc = run.dtt.host_dtt_breakdown.ms_buffer_alloc;
+  return true;
+}
+
+static bool run_dtt_host(FmmRun &run) {
   const int ncells = run.host.ncells;
   FmmDeviceBuffers &d = run.device;
-  FmmDttStats &dtt = run.dtt;
+  FmmDttState &dtt = run.dtt;
   FmmTimings &t = run.timings;
 
   const std::chrono::high_resolution_clock::time_point t_dtt_total_start =
@@ -24,21 +37,10 @@ static int run_dtt_host(FmmRun &run) {
   dtt.max_p2p_count = dtt.host_fixed_lists.max_p2p;
   dtt.m2l_total_ll = dtt.host_fixed_lists.total_m2l;
   dtt.p2p_total_ll = dtt.host_fixed_lists.total_p2p;
-  dtt.h_m2l_targets.reserve(ncells);
-  for (int ci = 0; ci < ncells; ++ci) {
-#if FMM3D_M2L_COMPACT_TARGETS
-    if (dtt.host_fixed_lists.m2l_count[ci] > 0) dtt.h_m2l_targets.push_back(ci);
-#endif
-  }
-#if FMM3D_M2L_COMPACT_TARGETS
-  dtt.m2l_target_count = static_cast<int>(dtt.h_m2l_targets.size());
-#else
-  dtt.m2l_target_count = ncells;
-#endif
   if (dtt.overflow) {
     std::printf("Host 3D DTT fixed-cap overflow: m2l_cap=%d max_m2l=%d  p2p_cap=%d max_p2p=%d\n",
                 DTT_M2L_CAP, dtt.max_m2l_count, DTT_P2P_CAP, dtt.max_p2p_count);
-    return 1;
+    return false;
   }
   const std::chrono::high_resolution_clock::time_point t_h2d_counts_start =
       std::chrono::high_resolution_clock::now();
@@ -72,5 +74,5 @@ static int run_dtt_host(FmmRun &run) {
                      dtt.host_dtt_breakdown.ms_stats;
   t.ms_dtt_construct_handoff = t.ms_dtt;
 
-  return 0;
+  return true;
 }

@@ -6,10 +6,8 @@
 
 // ---------- Device FMM kernels ----------
 
-__global__ void fmm3d_m2l_kernel(const int *target_cells, int ntarget) {
-  const int bi = blockIdx.x;
-  if (bi >= ntarget) return;
-  const int ci = target_cells ? target_cells[bi] : bi;
+__global__ void fmm3d_m2l_kernel() {
+  const int ci = blockIdx.x;
   if (ci >= g_ncells) return;
   TreeNode &Ci = g_tree[ci];
   const size_t base =

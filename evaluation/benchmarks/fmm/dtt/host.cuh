@@ -50,42 +50,26 @@ static void h_build_child_ranges(const std::vector<TreeNode> &tree,
 // ---------- Host dual-tree traversal (fixed-cap lists) ----------
 
 static inline void h_fixed_append_m2l(HostFixedLists &lists, int ci, int cj) {
-#if FMM3D_SERIAL_HOST_DTT
-  const int pos = lists.m2l_count[ci]++;
-#else
   int pos;
   #pragma omp atomic capture
   pos = lists.m2l_count[ci]++;
-#endif
   if (pos < DTT_M2L_CAP) {
     lists.m2l_src[static_cast<size_t>(ci) * DTT_M2L_CAP + pos] = cj;
   } else {
-#if FMM3D_SERIAL_HOST_DTT
-    lists.overflow = 1;
-#else
     #pragma omp atomic write
     lists.overflow = 1;
-#endif
   }
 }
 
 static inline void h_fixed_append_p2p(HostFixedLists &lists, int ci, int cj) {
-#if FMM3D_SERIAL_HOST_DTT
-  const int pos = lists.p2p_count[ci]++;
-#else
   int pos;
   #pragma omp atomic capture
   pos = lists.p2p_count[ci]++;
-#endif
   if (pos < DTT_P2P_CAP) {
     lists.p2p_src[static_cast<size_t>(ci) * DTT_P2P_CAP + pos] = cj;
   } else {
-#if FMM3D_SERIAL_HOST_DTT
-    lists.overflow = 1;
-#else
     #pragma omp atomic write
     lists.overflow = 1;
-#endif
   }
 }
 
@@ -100,16 +84,11 @@ static void h_dtt_fixed(int ci, int cj,
       for (int oi = 0; oi < 8; ++oi) {
         const int child_i = Ci.child[oi];
         if (child_i == -1) continue;
-#if !FMM3D_SERIAL_HOST_DTT
         const bool spawn = (depth < HOST_DTT_TASK_DEPTH) &&
                            (tree[child_i].nbody >= HOST_DTT_TASK_MIN_N);
-#endif
         for (int oj = 0; oj < 8; ++oj) {
           const int child_j = Ci.child[oj];
           if (child_j == -1) continue;
-#if FMM3D_SERIAL_HOST_DTT
-          h_dtt_fixed(child_i, child_j, tree, lists, theta, depth + 1);
-#else
           if (spawn) {
             #pragma omp task default(none) firstprivate(child_i, child_j, theta, depth) \
                                shared(tree, lists)
@@ -119,7 +98,6 @@ static void h_dtt_fixed(int ci, int cj,
           } else {
             h_dtt_fixed(child_i, child_j, tree, lists, theta, depth + 1);
           }
-#endif
         }
       }
     }
@@ -144,9 +122,6 @@ static void h_dtt_fixed(int ci, int cj,
       if (split_ci ? (child_i == -1) : (child_j == -1)) continue;
       const int nb_lhs = split_ci ? tree[child_i].nbody : Ci.nbody;
       const int nb_rhs = split_ci ? Cj.nbody : tree[child_j].nbody;
-#if FMM3D_SERIAL_HOST_DTT
-      h_dtt_fixed(child_i, child_j, tree, lists, theta, depth + 1);
-#else
       if (depth < HOST_DTT_TASK_DEPTH &&
           nb_lhs + nb_rhs >= HOST_DTT_TASK_MIN_N) {
         #pragma omp task default(none) firstprivate(child_i, child_j, theta, depth) \
@@ -157,7 +132,6 @@ static void h_dtt_fixed(int ci, int cj,
       } else {
         h_dtt_fixed(child_i, child_j, tree, lists, theta, depth + 1);
       }
-#endif
     }
   }
 }
@@ -203,15 +177,11 @@ static void h_dtt_fixed(int ci, int cj,
   h_reset_fixed_lists(lists, ncells);
   const auto t_reset_end = std::chrono::high_resolution_clock::now();
   const auto t_traverse_start = std::chrono::high_resolution_clock::now();
-#if FMM3D_SERIAL_HOST_DTT
-  h_dtt_fixed(0, 0, tree, lists, theta, 0);
-#else
   #pragma omp parallel
   {
     #pragma omp single nowait
     h_dtt_fixed(0, 0, tree, lists, theta, 0);
   }
-#endif
   const auto t_traverse_end = std::chrono::high_resolution_clock::now();
   const auto t_stats_start = std::chrono::high_resolution_clock::now();
   h_aggregate_fixed_list_stats(lists, ncells);
@@ -232,9 +202,7 @@ static cudaError_t h_copy_dtt_counts_from_device(
     int ncells,
     int &out_overflow,
     int &max_m2l_count, int &max_p2p_count,
-    long long &m2l_total_ll, long long &p2p_total_ll,
-    std::vector<int> &m2l_targets,
-    int &m2l_target_count) {
+    long long &m2l_total_ll, long long &p2p_total_ll) {
   cudaError_t err = cudaMemcpy(&out_overflow, d_dtt_overflow, sizeof(int), cudaMemcpyDeviceToHost);
   if (err != cudaSuccess) return err;
   std::vector<int> h_m2l_count(ncells), h_p2p_count(ncells);
@@ -247,20 +215,11 @@ static cudaError_t h_copy_dtt_counts_from_device(
   p2p_total_ll = 0;
   max_m2l_count = 0;
   max_p2p_count = 0;
-  m2l_targets.clear();
   for (int ci = 0; ci < ncells; ++ci) {
     m2l_total_ll += h_m2l_count[ci];
     p2p_total_ll += h_p2p_count[ci];
     max_m2l_count = std::max(max_m2l_count, h_m2l_count[ci]);
     max_p2p_count = std::max(max_p2p_count, h_p2p_count[ci]);
-#if FMM3D_M2L_COMPACT_TARGETS
-    if (h_m2l_count[ci] > 0) m2l_targets.push_back(ci);
-#endif
   }
-#if FMM3D_M2L_COMPACT_TARGETS
-  m2l_target_count = static_cast<int>(m2l_targets.size());
-#else
-  m2l_target_count = ncells;
-#endif
   return cudaSuccess;
 }

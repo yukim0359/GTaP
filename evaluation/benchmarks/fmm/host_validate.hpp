@@ -10,7 +10,7 @@
 #include <random>
 #include <vector>
 
-static int validate_results(FmmRun &run) {
+static bool validate_results(FmmRun &run) {
   const int n = run.options.n;
   const int direct_sample_n = run.options.direct_sample_n;
   FmmValidation &v = run.validation;
@@ -158,5 +158,5 @@ static int validate_results(FmmRun &run) {
     v.acc_rel_l2 = std::sqrt(acc_diff2 / std::max(acc_norm2, 1.0e-300));
     v.direct_validated = true;
   }
-  return 0;
+  return true;
 }

@@ -14,13 +14,17 @@ OMP_INC          := $(OMP_RESOURCE_DIR)/include
 OMP_LIB_DIR      ?= $(PROJ_DIR)/clang-gtap/build/runtimes/runtimes-bins/openmp/runtime/src
 
 SRC_FMM := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
+FMM_HEADERS := \
+  $(wildcard $(SCRIPT_DIR)/*.cuh $(SCRIPT_DIR)/*.hpp) \
+  $(wildcard $(SCRIPT_DIR)/dtt/*.cuh $(SCRIPT_DIR)/dtt/*.hpp) \
+  $(wildcard $(SCRIPT_DIR)/numerics/*.cuh $(SCRIPT_DIR)/numerics/*.hpp) \
+  $(wildcard $(SCRIPT_DIR)/tree/*.cuh $(SCRIPT_DIR)/tree/*.hpp)
 
 OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_GTAP_DTT := $(OUT_DIR)/gtap_dtt_fmm
 OUT_GTAP_FUSED_DTT := $(OUT_DIR)/gtap_fused_dtt_fmm
 OUT_GTAP_PARTITIONED_FUSED_DTT := $(OUT_DIR)/gtap_partitioned_fused_dtt_fmm
 OUT_OMP_DTT := $(OUT_DIR)/omp_dtt_fmm
-OUT_SERIAL_DTT := $(OUT_DIR)/serial_dtt_fmm
 OUT_WORKLIST_DTT := $(OUT_DIR)/worklist_dtt_fmm
 OUT_FMM_PROFILE := $(OUT_DIR)/fmm_profile
 
@@ -41,10 +45,6 @@ FMM3D_PARTITIONED_FUSED_DTT ?= 0
 FMM3D_DTT_NSPAWN        ?= 128
 FMM3D_WORKLIST_PAIR_CAP_FACTOR ?= 1024
 FMM3D_M2L_BLOCK_SIZE    ?= 64
-FMM3D_GPU_L2L           ?= 1
-FMM3D_GPU_UPWARD        ?= 1
-FMM3D_GPU_TREE_BUILD    ?= 1
-FMM3D_M2L_COMPACT_TARGETS ?= 0
 # Max 21: Morton key packs 3 bits/level into uint64 (not 24).
 FMM3D_MORTON_BITS       ?= 21
 FMM3D_DIRECT_VALIDATE_N ?= 4096
@@ -75,10 +75,6 @@ FMM_DEFS := \
   -DFMM3D_PARTITIONED_FUSED_DTT="$(FMM3D_PARTITIONED_FUSED_DTT)" \
   -DFMM3D_DTT_NSPAWN="$(FMM3D_DTT_NSPAWN)" \
   -DFMM3D_M2L_BLOCK_SIZE="$(FMM3D_M2L_BLOCK_SIZE)" \
-  -DFMM3D_GPU_L2L="$(FMM3D_GPU_L2L)" \
-  -DFMM3D_GPU_UPWARD="$(FMM3D_GPU_UPWARD)" \
-  -DFMM3D_GPU_TREE_BUILD="$(FMM3D_GPU_TREE_BUILD)" \
-  -DFMM3D_M2L_COMPACT_TARGETS="$(FMM3D_M2L_COMPACT_TARGETS)" \
   -DFMM3D_MORTON_BITS="$(FMM3D_MORTON_BITS)" \
   -DFMM3D_DIRECT_VALIDATE_N="$(FMM3D_DIRECT_VALIDATE_N)" \
   -DFMM3D_DIRECT_SAMPLE_N="$(FMM3D_DIRECT_SAMPLE_N)" \
@@ -86,11 +82,10 @@ FMM_DEFS := \
   -DFMM3D_DIRECT_SAMPLE_BLOCK_SIZE="$(FMM3D_DIRECT_SAMPLE_BLOCK_SIZE)" \
   -DFMM3D_BODY_SEED="$(FMM3D_BODY_SEED)" \
   -DFMM3D_BODY_SEED_PER_N="$(FMM3D_BODY_SEED_PER_N)" \
-  -DGTAP_BENCH_GRID_SIZE="$(GTAP_GRID_SIZE)" \
-  -DGTAP_BENCH_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-  -DGTAP_BENCH_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
-  -DGTAP_BENCH_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
-  -DGTAP_BENCH_PROFILE_CAPACITY_PER_WARP="$(GTAP_PROFILE_CAPACITY)"
+  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
+  -DGTAP_PROFILE_CAPACITY="$(GTAP_PROFILE_CAPACITY)"
 
 FMM_CXXFLAGS := -O3 -x cuda \
   --cuda-path="$(CUDA_PATH)" \
@@ -116,27 +111,9 @@ define FMM_LINK_PARTITIONED
 	  "$(SRC_FMM)" -o "$(2)" $(FMM_LDFLAGS)
 endef
 
-# Host DTT serial baseline: no OpenMP link (DTT traverse is single-threaded).
-FMM_SERIAL_CXXFLAGS := -O3 -x cuda \
-  --cuda-path="$(CUDA_PATH)" \
-  --cuda-gpu-arch="$(CUDA_ARCH)" \
-  -Wall -Wextra \
-  -I"$(GT_INC)" \
-  $(FMM_DEFS) \
-  $(GTAP_CFLAGS)
+.PHONY: all gtap_dtt_fmm gtap_fused_dtt_fmm gtap_partitioned_fused_dtt_fmm omp_dtt_fmm worklist_dtt_fmm fmm_profile clean print-vars
 
-FMM_SERIAL_LDFLAGS := \
-  -L"$(CUDA_PATH)/lib64" -lcudart \
-  -Wl,-rpath,"$(CUDA_PATH)/lib64"
-
-define FMM_LINK_SERIAL
-	"$(CXX_BIN)" $(FMM_SERIAL_CXXFLAGS) $(1) \
-	  "$(SRC_FMM)" -o "$(2)" $(FMM_SERIAL_LDFLAGS)
-endef
-
-.PHONY: all gtap_dtt_fmm gtap_fused_dtt_fmm gtap_partitioned_fused_dtt_fmm omp_dtt_fmm serial_dtt_fmm worklist_dtt_fmm fmm_profile clean print-vars
-
-all: gtap_dtt_fmm gtap_fused_dtt_fmm gtap_partitioned_fused_dtt_fmm omp_dtt_fmm serial_dtt_fmm worklist_dtt_fmm
+all: gtap_dtt_fmm gtap_fused_dtt_fmm gtap_partitioned_fused_dtt_fmm omp_dtt_fmm worklist_dtt_fmm
 
 print-vars:
 	@echo "SCRIPT_DIR=$(SCRIPT_DIR)"
@@ -162,10 +139,6 @@ print-vars:
 	@echo "FMM3D_DTT_NSPAWN=$(FMM3D_DTT_NSPAWN)"
 	@echo "FMM3D_WORKLIST_PAIR_CAP_FACTOR=$(FMM3D_WORKLIST_PAIR_CAP_FACTOR)"
 	@echo "FMM3D_M2L_BLOCK_SIZE=$(FMM3D_M2L_BLOCK_SIZE)"
-	@echo "FMM3D_GPU_L2L=$(FMM3D_GPU_L2L)"
-	@echo "FMM3D_GPU_UPWARD=$(FMM3D_GPU_UPWARD)"
-	@echo "FMM3D_GPU_TREE_BUILD=$(FMM3D_GPU_TREE_BUILD)"
-	@echo "FMM3D_M2L_COMPACT_TARGETS=$(FMM3D_M2L_COMPACT_TARGETS)"
 	@echo "FMM3D_MORTON_BITS=$(FMM3D_MORTON_BITS)"
 	@echo "FMM3D_DIRECT_VALIDATE_N=$(FMM3D_DIRECT_VALIDATE_N)"
 	@echo "FMM3D_DIRECT_SAMPLE_N=$(FMM3D_DIRECT_SAMPLE_N)"
@@ -184,36 +157,31 @@ $(OUT_DIR):
 
 gtap_dtt_fmm: $(OUT_GTAP_DTT)
 
-$(OUT_GTAP_DTT): $(SRC_FMM) | $(OUT_DIR)
+$(OUT_GTAP_DTT): $(SRC_FMM) $(FMM_HEADERS) | $(OUT_DIR)
 	$(call FMM_LINK,-DFMM3D_FUSED_DTT=0,$(OUT_GTAP_DTT))
 
 # GTaP DTT with M2L/P2P applied during traversal (separate M2L kernel skipped).
 gtap_fused_dtt_fmm: $(OUT_GTAP_FUSED_DTT)
 
-$(OUT_GTAP_FUSED_DTT): $(SRC_FMM) | $(OUT_DIR)
+$(OUT_GTAP_FUSED_DTT): $(SRC_FMM) $(FMM_HEADERS) | $(OUT_DIR)
 	$(call FMM_LINK,-DFMM3D_FUSED_DTT=1,$(OUT_GTAP_FUSED_DTT))
 
 # GTaP fused DTT with exafmm-style Ci/Cj range split (taskwait; no atomics on L/phi).
 gtap_partitioned_fused_dtt_fmm: $(OUT_GTAP_PARTITIONED_FUSED_DTT)
 
-$(OUT_GTAP_PARTITIONED_FUSED_DTT): $(SRC_FMM) | $(OUT_DIR)
+$(OUT_GTAP_PARTITIONED_FUSED_DTT): $(SRC_FMM) $(FMM_HEADERS) | $(OUT_DIR)
 	$(call FMM_LINK_PARTITIONED,-UFMM3D_FUSED_DTT -UFMM3D_PARTITIONED_FUSED_DTT -DFMM3D_FUSED_DTT=1 -DFMM3D_PARTITIONED_FUSED_DTT=1,$(OUT_GTAP_PARTITIONED_FUSED_DTT))
 
 omp_dtt_fmm: $(OUT_OMP_DTT)
 
-$(OUT_OMP_DTT): $(SRC_FMM) | $(OUT_DIR)
+$(OUT_OMP_DTT): $(SRC_FMM) $(FMM_HEADERS) | $(OUT_DIR)
 	$(call FMM_LINK,-DFMM3D_ENABLE_GTAP_DTT=0 \
 	  -DFMM3D_HOST_DTT_TASK_DEPTH="$(FMM3D_HOST_DTT_TASK_DEPTH)" \
 	  -DFMM3D_HOST_DTT_TASK_MIN_N="$(FMM3D_HOST_DTT_TASK_MIN_N)",$(OUT_OMP_DTT))
 
-serial_dtt_fmm: $(OUT_SERIAL_DTT)
-
-$(OUT_SERIAL_DTT): $(SRC_FMM) | $(OUT_DIR)
-	$(call FMM_LINK_SERIAL,-DFMM3D_ENABLE_GTAP_DTT=0 -DFMM3D_SERIAL_HOST_DTT=1,$(OUT_SERIAL_DTT))
-
 worklist_dtt_fmm: $(OUT_WORKLIST_DTT)
 
-$(OUT_WORKLIST_DTT): $(SRC_FMM) | $(OUT_DIR)
+$(OUT_WORKLIST_DTT): $(SRC_FMM) $(FMM_HEADERS) | $(OUT_DIR)
 	$(call FMM_LINK,-DFMM3D_ENABLE_GTAP_DTT=0 \
 	  -DFMM3D_WORKLIST_DTT=1 \
 	  -DFMM3D_FUSED_DTT=0 \
@@ -221,8 +189,8 @@ $(OUT_WORKLIST_DTT): $(SRC_FMM) | $(OUT_DIR)
 
 fmm_profile: $(OUT_FMM_PROFILE)
 
-$(OUT_FMM_PROFILE): $(SRC_FMM) | $(OUT_DIR)
+$(OUT_FMM_PROFILE): $(SRC_FMM) $(FMM_HEADERS) | $(OUT_DIR)
 	$(call FMM_LINK,-DGTAP_ENABLE_PROFILING,$(OUT_FMM_PROFILE))
 
 clean:
-	rm -f $(OUT_GTAP_DTT) $(OUT_GTAP_FUSED_DTT) $(OUT_GTAP_PARTITIONED_FUSED_DTT) $(OUT_OMP_DTT) $(OUT_SERIAL_DTT) $(OUT_WORKLIST_DTT) $(OUT_FMM_PROFILE)
+	rm -f $(OUT_GTAP_DTT) $(OUT_GTAP_FUSED_DTT) $(OUT_GTAP_PARTITIONED_FUSED_DTT) $(OUT_OMP_DTT) $(OUT_WORKLIST_DTT) $(OUT_FMM_PROFILE)

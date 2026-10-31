@@ -11,7 +11,7 @@
 #include <cstdio>
 #include <exception>
 
-static int init_cuda() {
+static bool init_cuda() {
   CUDA_CHECK(cudaFree(0));
   CUDA_CHECK(h_upload_fmm_constant_tables());
 
@@ -45,33 +45,35 @@ static int init_cuda() {
     }
   }
 #endif
-  return 0;
+  return true;
 }
 
-static int build_tree(FmmRun &run) {
+static bool build_tree(FmmRun &run) {
+  const std::chrono::high_resolution_clock::time_point t_tree_build_start =
+      std::chrono::high_resolution_clock::now();
   const int n = run.options.n;
   run.host.hb = HostBodies(n);
   run.host.body_seed = h_body_rng_seed(n);
   h_generate_bodies(run.host.hb, run.host.body_seed);
   try {
-#if FMM3D_GPU_TREE_BUILD
     const bool need_host_sorted_bodies =
-        (!FMM3D_GPU_UPWARD) || (DIRECT_VALIDATE_N > 0 && n <= DIRECT_VALIDATE_N);
+        (DIRECT_VALIDATE_N > 0 && n <= DIRECT_VALIDATE_N);
     GpuTreeBuildResult build_result =
         h_build_tree_gpu_morton(run.host.hb, need_host_sorted_bodies);
     run.host.htree = std::move(build_result.tree);
     run.host.sorted_device_bodies = build_result.sorted_bodies;
-#else
-    run.host.htree = h_build_tree(run.host.hb);
-#endif
   } catch (const std::exception &e) {
     std::printf("Tree build error: %s\n", e.what());
-    return 1;
+    return false;
   }
-  return 0;
+  run.timings.ms_tree_build = h_elapsed_ms(
+      t_tree_build_start, std::chrono::high_resolution_clock::now());
+  return true;
 }
 
-static int build_metadata(FmmRun &run) {
+static bool build_metadata(FmmRun &run) {
+  const std::chrono::high_resolution_clock::time_point t_metadata_start =
+      std::chrono::high_resolution_clock::now();
   const int n = run.options.n;
   const Real theta = run.options.theta;
   std::vector<TreeNode> &htree = run.host.htree;
@@ -132,10 +134,14 @@ static int build_metadata(FmmRun &run) {
               static_cast<unsigned long long>(run.host.body_seed),
               FMM3D_BODY_SEED_PER_N);
   h_print_leaf_depth_stats(htree, run.host.cell_depth, run.host.leaf_idx, n);
-  return 0;
+  run.timings.ms_metadata = h_elapsed_ms(
+      t_metadata_start, std::chrono::high_resolution_clock::now());
+  return true;
 }
 
-static int alloc_and_bind(FmmRun &run) {
+static bool alloc_and_bind(FmmRun &run) {
+  const std::chrono::high_resolution_clock::time_point t_h2d_bind_start =
+      std::chrono::high_resolution_clock::now();
   const int n = run.options.n;
   const int ncells = run.host.ncells;
   const int nleaf = run.host.nleaf;
@@ -159,7 +165,6 @@ static int alloc_and_bind(FmmRun &run) {
   CUDA_CHECK(cudaMalloc(&d.d_body_cell, sizeof(int) * n));
   CUDA_CHECK(cudaMalloc(&d.d_l2l_cells, sizeof(int) * std::max(1, ncells - 1)));
   CUDA_CHECK(cudaMalloc(&d.d_upward_cells, sizeof(int) * std::max(1, ncells)));
-  CUDA_CHECK(cudaMalloc(&d.d_m2l_targets, sizeof(int) * std::max(1, ncells)));
 
   CUDA_CHECK(cudaMemcpy(d.d_tree, run.host.htree.data(), sizeof(TreeNode) * ncells, cudaMemcpyHostToDevice));
   if (!run.host.sorted_device_bodies.x) {
@@ -182,5 +187,7 @@ static int alloc_and_bind(FmmRun &run) {
   CUDA_CHECK(bind_params(n, ncells, nleaf));
   CUDA_CHECK(bind_ptrs(d.d_tree, d.d_bx, d.d_by, d.d_bz, d.d_bq, d.d_phi, d.d_ax, d.d_ay, d.d_az,
                        d.d_leaf_idx, d.d_body_cell));
-  return 0;
+  run.timings.ms_h2d_bind = h_elapsed_ms(
+      t_h2d_bind_start, std::chrono::high_resolution_clock::now());
+  return true;
 }

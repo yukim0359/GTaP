@@ -34,7 +34,7 @@ STACK_PLOT_RC = {
     "savefig.dpi": 220,
 }
 
-# Bottom-to-top stack order (matches gtap_fmm.cu pipeline timeline with FMM3D_GPU_UPWARD=1).
+# Bottom-to-top stack order (matches gtap_fmm.cu pipeline timeline).
 PHASES = [
     "Tree",
     "Metadata",
