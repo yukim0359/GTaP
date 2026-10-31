@@ -306,7 +306,7 @@ run_stats() {
   done
 
   local m=${#times[@]}
-  if [ "$m" -lt 5 ]; then
+  if [ "$m" -lt 1 ]; then
     echo "0 0 0 0 0"
     return
   fi
@@ -354,7 +354,7 @@ extract_host_breakdown() {
 median_from_array() {
   local -a values=("$@")
   local m=${#values[@]}
-  if [ "$m" -lt 5 ]; then
+  if [ "$m" -lt 1 ]; then
     echo "0"
     return
   fi
@@ -410,7 +410,7 @@ run_stats_omp_details() {
   done
 
   local m=${#times[@]}
-  if [ "$m" -lt 5 ]; then
+  if [ "$m" -lt 1 ]; then
     echo "0 0 0 0 0 0 0 0 0 0"
     return
   fi
