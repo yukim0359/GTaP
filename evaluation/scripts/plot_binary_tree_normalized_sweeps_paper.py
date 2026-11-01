@@ -5,8 +5,7 @@ Two side-by-side panels (shared y, one legend):
   left  — compute sweep (binary_tree_compute_results.csv)
   right — depth sweep   (binary_tree_performance_results.csv)
 
-Matches binary_tree/plot_performance_tree.py normalized series:
-  Thread, Block, Block (cutoff).
+Normalized series: Thread, Block, Block (cutoff).
 """
 
 from __future__ import annotations
