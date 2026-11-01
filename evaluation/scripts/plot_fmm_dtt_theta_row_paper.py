@@ -18,10 +18,9 @@ from matplotlib.ticker import MultipleLocator
 EVAL_DIR = Path(__file__).resolve().parents[1]
 IMG_DIR = EVAL_DIR / "img"
 FMM_DIR = EVAL_DIR / "applications" / "fmm"
-WORKSPACE_ROOT = EVAL_DIR.parents[1]
-sys.path.insert(0, str(WORKSPACE_ROOT))
+sys.path.insert(0, str(EVAL_DIR))
 
-from plot_style.gtap_colors import (  # noqa: E402
+from common.plotting.gtap_colors import (  # noqa: E402
     COL_GPU_THRUST,
     COL_GTAP_THREAD,
     COL_OMP,

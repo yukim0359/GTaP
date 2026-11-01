@@ -1,5 +1,5 @@
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(SCRIPT_DIR)/../../microbenchmarks/common.mk
+include $(SCRIPT_DIR)/../../common.mk
 
 SRC_THREAD     := $(SCRIPT_DIR)/gtap_thread_hetero_tree.cu
 SRC_THREAD_DAQ := $(SCRIPT_DIR)/gtap_thread_hetero_tree_daq.cu

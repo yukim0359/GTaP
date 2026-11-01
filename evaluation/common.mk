@@ -2,7 +2,7 @@
 # The including Makefile must set SCRIPT_DIR (its own directory) first.
 
 COMMON_MK_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR      ?= $(abspath $(COMMON_MK_DIR)/../..)
+PROJ_DIR      ?= $(abspath $(COMMON_MK_DIR)/..)
 
 CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90

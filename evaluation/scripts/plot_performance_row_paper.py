@@ -19,12 +19,11 @@ import pandas as pd
 EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
-WORKSPACE_ROOT = EVAL_DIR.parents[1]
-sys.path.insert(0, str(WORKSPACE_ROOT))
+sys.path.insert(0, str(EVAL_DIR))
 
-from plot_style.gtap_colors import (  # noqa: E402
+from common.plotting.gtap_colors import (  # noqa: E402
     COL_CILK,
-    COL_DYNASOAR,
+    COL_KIUCHI,
     COL_GTAP_THREAD,
     COL_OMP,
     COL_SEQ,
@@ -158,7 +157,7 @@ def plot_absolute_panel(
     if not dynasoar_df.empty:
         plot_with_iqr(
             ax, dynasoar_df, _legend_label(LABEL_KIUCHI, use_legend=use_legend),
-            "v", "DYNASOAR", color=COL_DYNASOAR, marker_every_offset=1,
+            "v", "DYNASOAR", color=COL_KIUCHI, marker_every_offset=1,
         )
     if not omp_df.empty:
         plot_with_iqr(

@@ -268,7 +268,7 @@ def plot_stack_timelines(
     save_dpi: int,
     shared_xlim: bool,
 ) -> None:
-    """4-row stack (sort_timelines style) with optional shared x max."""
+    """4-row stack with optional shared x max."""
     plt.rcParams.update(PAPER_RC)
 
     n_panels = len(panels)

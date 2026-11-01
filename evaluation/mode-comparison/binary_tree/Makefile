@@ -1,7 +1,7 @@
 BENCHMARK_NAME := binary_tree
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(SCRIPT_DIR)/../../microbenchmarks/common.mk
+include $(SCRIPT_DIR)/../../common.mk
 
 SRC_GTAP_THREAD := $(SCRIPT_DIR)/gtap_thread_$(BENCHMARK_NAME).cu
 SRC_GTAP_BLOCK  := $(SCRIPT_DIR)/gtap_block_$(BENCHMARK_NAME).cu

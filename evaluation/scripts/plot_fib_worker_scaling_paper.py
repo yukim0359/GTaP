@@ -19,10 +19,9 @@ EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
 SCALING_DIR = EVAL_DIR / "scheduler-comparison" / "fib"
-WORKSPACE_ROOT = EVAL_DIR.parents[1]
-sys.path.insert(0, str(WORKSPACE_ROOT))
+sys.path.insert(0, str(EVAL_DIR))
 
-from plot_style.gtap_colors import COL_GTAP_THREAD  # noqa: E402
+from common.plotting.gtap_colors import COL_GTAP_THREAD  # noqa: E402
 
 # Full single-column; LaTeX includes at width=\linewidth (no extra 0.8).
 # Axes are 0.8× the old full-bleed span, centered so left/right outer

@@ -22,10 +22,9 @@ EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
 DAQ_DIR = EVAL_DIR / "daq"
-WORKSPACE_ROOT = EVAL_DIR.parents[1]
-sys.path.insert(0, str(WORKSPACE_ROOT))
+sys.path.insert(0, str(EVAL_DIR))
 
-from plot_style.gtap_colors import COL_GTAP_THREAD  # noqa: E402
+from common.plotting.gtap_colors import COL_GTAP_THREAD  # noqa: E402
 
 FIG_WIDTH_IN = 239.75 / 72.0  # ≈ 3.33 in (ACM single column)
 _COMBINED_HEIGHT_RATIO = 1.0

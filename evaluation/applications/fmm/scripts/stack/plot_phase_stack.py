@@ -14,9 +14,7 @@ from matplotlib.colors import to_rgb
 from matplotlib.patches import Patch
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
-THESIS_STYLE = ["~/plot_style/thesis_plt.mplstyle"]
-
-# Stack bar chart (fmm_3way_stack_*.png): avoid thesis_plt global sizes (title 20pt, bbox tight, …).
+# Stack bar chart (fmm_3way_stack_*.png).
 STACK_PLOT_RC = {
     "font.size": 10,
     "font.weight": "normal",
@@ -931,11 +929,10 @@ def plot_paper_panels(
     runs_csv_by_summary: Dict[str, str],
     caption_out: str = "",
 ) -> None:
-    with plt.style.context(THESIS_STYLE):
-        _plot_paper_panels_impl(
-            panels, out, controlled=controlled,
-            runs_csv_by_summary=runs_csv_by_summary, caption_out=caption_out,
-        )
+    _plot_paper_panels_impl(
+        panels, out, controlled=controlled,
+        runs_csv_by_summary=runs_csv_by_summary, caption_out=caption_out,
+    )
 
 
 def _plot_paper_panels_impl(
@@ -1035,8 +1032,7 @@ def plot_paper_single(
     title: str,
     controlled: bool,
 ) -> None:
-    with plt.style.context(THESIS_STYLE):
-        _plot_paper_single_impl(runs, out, title=title, controlled=controlled)
+    _plot_paper_single_impl(runs, out, title=title, controlled=controlled)
 
 
 def _plot_paper_single_impl(

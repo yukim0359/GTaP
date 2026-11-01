@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Paper figure: k-clique pivoting warp timeline heatmap (GTaP thread workers).
 
-Same layout as plot_sort_timelines_paper.py. Reads a current-format GTaP
-result directory under k_clique/profile/.
+Reads a current-format GTaP result directory under k_clique/profile/.
 
 X-axis modes (--xscale):
   native       GTaP's own duration (default output: gtap_k_clique_pivot_timeline.pdf)
