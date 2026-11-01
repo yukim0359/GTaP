@@ -7,7 +7,7 @@
 #PBS -N omp_dtt_cutoff
 #
 #   qsub scripts/cutoff/run_omp_dtt_cutoff_sweep.pbs
-# qsub from evaluation/benchmarks/fmm so PBS_O_WORKDIR has the Makefile.
+# qsub from evaluation/applications/fmm so PBS_O_WORKDIR has the Makefile.
 
 cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 

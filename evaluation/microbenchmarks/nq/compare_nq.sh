@@ -13,7 +13,7 @@ COMPARE_DIR=$(pwd)
 BIN_DIR="$COMPARE_DIR/bin"
 
 if [ ! -d "$COMPARE_DIR" ]; then
-    echo "Error: Please submit this script from gtap/evaluation/benchmarks/$BENCHMARK_NAME"
+    echo "Error: Please submit this script from gtap/evaluation/microbenchmarks/$BENCHMARK_NAME"
     exit 1
 fi
 

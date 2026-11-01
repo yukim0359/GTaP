@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "benchmarks"
+COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
 DAQ_DIR = EVAL_DIR / "daq"
 WORKSPACE_ROOT = EVAL_DIR.parents[1]

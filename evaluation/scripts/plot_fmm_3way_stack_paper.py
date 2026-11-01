@@ -17,9 +17,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
-FMM_DIR = COMPARE_DIR / "fmm"
+FMM_DIR = EVAL_DIR / "applications" / "fmm"
 sys.path.insert(0, str(FMM_DIR / "scripts" / "stack"))
 
 from plot_phase_stack import (  # noqa: E402

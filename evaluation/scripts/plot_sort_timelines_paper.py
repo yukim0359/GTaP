@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "benchmarks"
+COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
 
 from gtap_profile_visualization import (  # noqa: E402

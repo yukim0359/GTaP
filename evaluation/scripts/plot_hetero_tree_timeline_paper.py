@@ -22,9 +22,8 @@ from matplotlib import transforms
 from matplotlib.gridspec import GridSpec
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
-HETERO_DIR = COMPARE_DIR / "hetero_tree"
+HETERO_DIR = EVAL_DIR / "mode-comparison" / "hetero_tree"
 from gtap_profile_visualization import (  # noqa: E402
     DEFAULT_TIME_BINS,
     TIMELINE_HEATMAP_CMAP,

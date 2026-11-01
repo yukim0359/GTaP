@@ -159,7 +159,7 @@ COLORS = {
     },
 }
 
-# Binaries built by gtap/evaluation/benchmarks/fmm/Makefile
+# Binaries built by gtap/evaluation/applications/fmm/Makefile
 DEFAULT_BIN_GTAP = "./bin/gtap_dtt_fmm"
 DEFAULT_BIN_WORKLIST = "./bin/worklist_dtt_fmm"
 DEFAULT_BIN_OMP = "./bin/omp_dtt_fmm"

@@ -21,9 +21,8 @@ import numpy as np
 import pandas as pd
 
 EVAL_DIR = Path(__file__).resolve().parents[1]
-COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
-HETERO_TREE_DIR = COMPARE_DIR / "hetero_tree"
+HETERO_TREE_DIR = EVAL_DIR / "mode-comparison" / "hetero_tree"
 WORKSPACE_ROOT = EVAL_DIR.parents[1]
 sys.path.insert(0, str(WORKSPACE_ROOT))
 
