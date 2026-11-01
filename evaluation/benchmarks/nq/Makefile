@@ -1,41 +1,17 @@
 BENCHMARK_NAME := nq
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
+include $(SCRIPT_DIR)/../common.mk
 
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
-
-CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang
-CXX_BIN    ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
-GT_INC     ?= $(PROJ_DIR)/runtime
-
-# ---- Inputs / Outputs ----
 SRC_GTAP   := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
 SRC_OMP    := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).c
 SRC_CILK   := $(SCRIPT_DIR)/cilk_$(BENCHMARK_NAME).c
 
-OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_GTAP   := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
 OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_CILK   := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
 
 GTAP_CFLAGS ?= -fgtap-no-taskwait
-
-# ---- OpenMP build settings ----
-CC_OMP           ?= $(CLANG_BIN)
-OMP_RESOURCE_DIR ?= $(PROJ_DIR)/clang-gtap/build/lib/clang/21
-OMP_INC          := $(OMP_RESOURCE_DIR)/include
-OMP_LIB_DIR      ?= $(PROJ_DIR)/clang-gtap/build/lib
-CFLAGS_OMP       ?= -O3 -Wall -Wextra -fopenmp -I"$(OMP_INC)"
-LDFLAGS_OMP      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -lomp
-
-# ---- OpenCilk build settings ----
-OPENCILK_ROOT    ?= $(HOME)/opencilk
-OPENCILK_PREFIX  ?= $(OPENCILK_ROOT)/install
-CC_CILK          ?= $(OPENCILK_PREFIX)/bin/clang
-CFLAGS_CILK      ?= -O3 -Wall -Wextra -fopencilk
-LDFLAGS_CILK     ?= -fopencilk
 
 .PHONY: all gtap omp cilk clean print-vars
 
@@ -55,7 +31,6 @@ print-vars:
 $(OUT_DIR):
 	mkdir -p "$(OUT_DIR)"
 
-# ---- Build: gtap_$(BENCHMARK_NAME).cu ----
 gtap: $(OUT_GTAP)
 
 $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
@@ -65,21 +40,19 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_GTAP)" -o "$(OUT_GTAP)"
+	  "$(SRC_GTAP)" -o "$(OUT_GTAP)" \
+	  $(GTAP_CUDA_LIBS)
 
-# ---- Build: omp_$(BENCHMARK_NAME).c ----
 omp: $(OUT_OMP)
 
 $(OUT_OMP): $(SRC_OMP) | $(OUT_DIR)
-	"$(CC_OMP)" $(CFLAGS_OMP) $(LDFLAGS_OMP) "$(SRC_OMP)" -o "$(OUT_OMP)"
+	"$(CC_OMP)" $(CFLAGS_OMP) "$(SRC_OMP)" -o "$(OUT_OMP)" $(LDFLAGS_OMP)
 
-# ---- Build: cilk_$(BENCHMARK_NAME).c ----
 cilk: $(OUT_CILK)
 
 $(OUT_CILK): $(SRC_CILK) | $(OUT_DIR)
 	@test -x "$(CC_CILK)" || (echo "Error: OpenCilk not found at $(CC_CILK). Run: $(PROJ_DIR)/evaluation/scripts/build_opencilk.sh" && false)
-	"$(CC_CILK)" $(CFLAGS_CILK) $(LDFLAGS_CILK) "$(SRC_CILK)" -o "$(OUT_CILK)"
+	"$(CC_CILK)" $(CFLAGS_CILK) "$(SRC_CILK)" -o "$(OUT_CILK)" $(LDFLAGS_CILK)
 
 clean:
 	rm -f $(OUT_GTAP) $(OUT_OMP) $(OUT_CILK)

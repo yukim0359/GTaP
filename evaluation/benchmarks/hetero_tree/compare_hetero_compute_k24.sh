@@ -5,7 +5,7 @@
 #PBS -W group_list=gc64
 #PBS -j oe
 
-# Run compute_iters sweeps for K=2 and K=4, then generate plots.
+# Run compute_iters sweeps for K=2 and K=4.
 # Usage: qsub compare_hetero_compute_k24.sh
 #        or: bash compare_hetero_compute_k24.sh
 
@@ -25,10 +25,5 @@ for k in "${K_VALUES[@]}"; do
     HETERO_TREE_K="$k" DEPTH="$DEPTH" NUM_RUNS="$NUM_RUNS" \
         bash "$COMPARE_DIR/compare_hetero_compute.sh"
 done
-
-echo
-echo "=== Plotting ==="
-cd "$COMPARE_DIR"
-python3 plot_performance_hetero_tree.py
 
 echo "Done."
