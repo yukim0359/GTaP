@@ -1,0 +1,208 @@
+#pragma once
+
+#include "device_bind.cuh"
+#if FMM3D_ENABLE_GTAP_DTT
+#include "dtt/gtap.cuh"
+#elif FMM3D_WORKLIST_DTT
+#include "dtt/worklist.cuh"
+#else
+#include "dtt/openmp.cuh"
+#endif
+#include "host_cuda.hpp"
+#include "host_types.hpp"
+#include "numerics/kernels.cuh"
+
+#include <algorithm>
+#include <cstdio>
+
+static bool run_upward(FmmRun &run) {
+  const std::chrono::high_resolution_clock::time_point t_upward_start =
+      std::chrono::high_resolution_clock::now();
+  constexpr int UPWARD_BLOCK_SIZE = 128;
+  const int nleaf = run.host.nleaf;
+  if (nleaf > 0) {
+    int blocks = std::max(1, (nleaf + UPWARD_BLOCK_SIZE - 1) / UPWARD_BLOCK_SIZE);
+    fmm3d_p2m_leaf_kernel<<<blocks, UPWARD_BLOCK_SIZE>>>(run.device.d_leaf_idx, nleaf);
+    CUDA_CHECK(cudaGetLastError());
+  }
+  for (int depth = run.host.max_cell_depth; depth >= 0; --depth) {
+    const int begin = run.host.upward_level_offsets[depth];
+    const int end = run.host.upward_level_offsets[depth + 1];
+    const int count = end - begin;
+    if (count == 0) continue;
+    int blocks = (count + UPWARD_BLOCK_SIZE - 1) / UPWARD_BLOCK_SIZE;
+    blocks = std::max(1, blocks);
+    fmm3d_m2m_level_kernel<<<blocks, UPWARD_BLOCK_SIZE>>>(run.device.d_upward_cells + begin, count);
+    CUDA_CHECK(cudaGetLastError());
+  }
+  CUDA_CHECK(cudaDeviceSynchronize());
+  const std::chrono::high_resolution_clock::time_point t_upward_end =
+      std::chrono::high_resolution_clock::now();
+  run.timings.ms_upward = h_elapsed_ms(t_upward_start, t_upward_end);
+  return true;
+}
+
+static bool init_dtt(FmmRun &run) {
+  const int ncells = run.host.ncells;
+  const Real theta = run.options.theta;
+  FmmDeviceBuffers &d = run.device;
+
+#if FMM3D_WORKLIST_DTT
+  if (!prepare_dtt_worklist(run)) return false;
+#endif
+
+  const std::chrono::high_resolution_clock::time_point t_dtt_init_start =
+      std::chrono::high_resolution_clock::now();
+  CUDA_CHECK(cudaMalloc(&d.d_m2l_count, sizeof(int) * ncells));
+  CUDA_CHECK(cudaMalloc(&d.d_p2p_count, sizeof(int) * ncells));
+#if !FMM3D_GTAP_FUSED
+  CUDA_CHECK(cudaMalloc(&d.d_m2l_src, sizeof(int) * static_cast<size_t>(ncells) * DTT_M2L_CAP));
+  CUDA_CHECK(cudaMalloc(&d.d_p2p_src, sizeof(int) * static_cast<size_t>(ncells) * DTT_P2P_CAP));
+#endif
+  CUDA_CHECK(cudaMalloc(&d.d_dtt_overflow, sizeof(int)));
+  CUDA_CHECK(bind_dtt_ptrs(d.d_m2l_count, d.d_p2p_count, d.d_m2l_src, d.d_p2p_src,
+                           d.d_dtt_overflow, theta));
+#if FMM3D_ENABLE_GTAP_DTT
+  if (!init_dtt_gtap(run)) return false;
+#elif FMM3D_WORKLIST_DTT
+  if (!init_dtt_worklist(run)) return false;
+#else
+  if (!init_dtt_openmp(run)) return false;
+#endif
+  const std::chrono::high_resolution_clock::time_point t_dtt_init_end =
+      std::chrono::high_resolution_clock::now();
+  run.timings.ms_dtt_init = h_elapsed_ms(t_dtt_init_start, t_dtt_init_end);
+  return true;
+}
+
+static bool run_dtt(FmmRun &run) {
+#if FMM3D_ENABLE_GTAP_DTT
+  if (!run_dtt_gtap(run)) return false;
+#elif FMM3D_WORKLIST_DTT
+  if (!run_dtt_worklist(run)) return false;
+#else
+  if (!run_dtt_openmp(run)) return false;
+#endif
+
+#ifdef GTAP_ENABLE_PROFILING
+  gtap_export_profile({
+      .output_directory = "./profile",
+      .overwrite = true,
+  });
+#endif
+  return true;
+}
+
+static bool run_m2l_l2l_eval(FmmRun &run) {
+  FmmDeviceBuffers &d = run.device;
+  FmmTimings &t = run.timings;
+
+#if !FMM3D_GTAP_FUSED
+  CUDA_CHECK(cudaMemset(d.d_phi, 0, sizeof(Real) * run.options.n));
+  CUDA_CHECK(cudaMemset(d.d_ax, 0, sizeof(Real) * run.options.n));
+  CUDA_CHECK(cudaMemset(d.d_ay, 0, sizeof(Real) * run.options.n));
+  CUDA_CHECK(cudaMemset(d.d_az, 0, sizeof(Real) * run.options.n));
+#endif
+  CUDA_CHECK(cudaEventCreate(&d.ev_gpu_start));
+  CUDA_CHECK(cudaEventCreate(&d.ev_gpu_end));
+
+#if !FMM3D_GTAP_FUSED
+  CUDA_CHECK(cudaEventRecord(d.ev_gpu_start));
+  fmm3d_m2l_kernel<<<std::max(1, run.host.ncells), M2L_BLOCK_SIZE,
+                      sizeof(Real) * 2 * EXA_NTERM * M2L_BLOCK_SIZE>>>();
+  CUDA_CHECK(cudaGetLastError());
+  CUDA_CHECK(cudaDeviceSynchronize());
+  CUDA_CHECK(cudaEventRecord(d.ev_gpu_end));
+  CUDA_CHECK(cudaEventSynchronize(d.ev_gpu_end));
+  {
+    float ms = 0.0f;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, d.ev_gpu_start, d.ev_gpu_end));
+    t.ms_m2l = static_cast<double>(ms);
+  }
+#endif
+
+  {
+    const std::chrono::high_resolution_clock::time_point t_l2l_start =
+        std::chrono::high_resolution_clock::now();
+    for (int depth = 1; depth <= run.host.max_cell_depth; ++depth) {
+      const int begin = run.host.l2l_level_offsets[depth];
+      const int end = run.host.l2l_level_offsets[depth + 1];
+      const int count = end - begin;
+      if (count == 0) continue;
+      constexpr int L2L_BLOCK_SIZE = 128;
+      int blocks = std::max(1, (count + L2L_BLOCK_SIZE - 1) / L2L_BLOCK_SIZE);
+      fmm3d_l2l_level_kernel<<<blocks, L2L_BLOCK_SIZE>>>(d.d_l2l_cells + begin, count);
+      CUDA_CHECK(cudaGetLastError());
+    }
+    CUDA_CHECK(cudaDeviceSynchronize());
+    const std::chrono::high_resolution_clock::time_point t_l2l_end =
+        std::chrono::high_resolution_clock::now();
+    t.ms_l2l = h_elapsed_ms(t_l2l_start, t_l2l_end);
+  }
+
+  CUDA_CHECK(cudaEventRecord(d.ev_gpu_start));
+  fmm3d_eval_kernel<<<GTAP_GRID_SIZE, GTAP_BLOCK_SIZE>>>();
+  CUDA_CHECK(cudaGetLastError());
+  CUDA_CHECK(cudaDeviceSynchronize());
+  CUDA_CHECK(cudaEventRecord(d.ev_gpu_end));
+  CUDA_CHECK(cudaEventSynchronize(d.ev_gpu_end));
+  {
+    float ms = 0.0f;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, d.ev_gpu_start, d.ev_gpu_end));
+    t.ms_eval = static_cast<double>(ms);
+  }
+  return true;
+}
+
+static bool copy_results(FmmRun &run) {
+  const int n = run.options.n;
+  FmmValidation &v = run.validation;
+  v.hphi.resize(n);
+  v.hax.resize(n);
+  v.hay.resize(n);
+  v.haz.resize(n);
+  const std::chrono::high_resolution_clock::time_point t_d2h_start = std::chrono::high_resolution_clock::now();
+  CUDA_CHECK(cudaMemcpy(v.hphi.data(), run.device.d_phi, sizeof(Real) * n, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(v.hax.data(), run.device.d_ax, sizeof(Real) * n, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(v.hay.data(), run.device.d_ay, sizeof(Real) * n, cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(v.haz.data(), run.device.d_az, sizeof(Real) * n, cudaMemcpyDeviceToHost));
+  const std::chrono::high_resolution_clock::time_point t_d2h_end = std::chrono::high_resolution_clock::now();
+  run.timings.ms_d2h = h_elapsed_ms(t_d2h_start, t_d2h_end);
+  run.timings.ms_execution = h_elapsed_ms(run.timings.run_start, t_d2h_end);
+  return true;
+}
+
+static void release_run(FmmRun &run) {
+  FmmDeviceBuffers &d = run.device;
+  cudaFree(d.d_tree);
+  cudaFree(d.d_bx);
+  cudaFree(d.d_by);
+  cudaFree(d.d_bz);
+  cudaFree(d.d_bq);
+  cudaFree(d.d_phi);
+  cudaFree(d.d_ax);
+  cudaFree(d.d_ay);
+  cudaFree(d.d_az);
+  cudaFree(d.d_leaf_idx);
+  cudaFree(d.d_body_cell);
+  cudaFree(d.d_l2l_cells);
+  cudaFree(d.d_upward_cells);
+  cudaFree(d.d_m2l_count);
+  cudaFree(d.d_p2p_count);
+#if !FMM3D_GTAP_FUSED
+  cudaFree(d.d_m2l_src);
+  cudaFree(d.d_p2p_src);
+#endif
+  cudaFree(d.d_dtt_overflow);
+#if FMM3D_WORKLIST_DTT
+  cudaFree(d.d_pairs_a);
+  cudaFree(d.d_pairs_b);
+  cudaFree(d.d_worklist_out_count);
+  cudaFree(d.d_worklist_overflow);
+#endif
+  if (d.ev_gpu_start) cudaEventDestroy(d.ev_gpu_start);
+  if (d.ev_gpu_end) cudaEventDestroy(d.ev_gpu_end);
+#if FMM3D_ENABLE_GTAP_DTT
+  gtap_finalize();
+#endif
+}

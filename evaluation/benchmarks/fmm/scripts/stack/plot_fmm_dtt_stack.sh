@@ -2,9 +2,10 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$script_dir"
-# shellcheck source=omp_host_dtt_env.sh
-source "$script_dir/omp_host_dtt_env.sh"
+FMM_ROOT="$(cd "$script_dir/../.." && pwd)"
+cd "$FMM_ROOT"
+# shellcheck source=../omp_host_dtt_env.sh
+source "$script_dir/../omp_host_dtt_env.sh"
 
 theta_label() {
   python3 -c "t=format(float('${1}'), 'f').rstrip('0'); t=t[:-1] if t.endswith('.') else t; print(t.replace('.', ''))"
@@ -40,7 +41,7 @@ run_one() {
   local csv_out="csv/fmm_3way_stack_N${n}_theta$(theta_label "$theta")"
   local title
   title="$(stack_paper_title "$n" "$theta")"
-  python3 plot_phase_stack.py \
+  python3 "$script_dir/plot_phase_stack.py" \
     --n "$n" \
     --theta "$theta" \
     --runs "$num_runs" \
@@ -68,7 +69,7 @@ replot_one() {
     exit 1
   fi
   title="$(stack_paper_title "$n" "$theta")"
-  python3 plot_phase_stack.py \
+  python3 "$script_dir/plot_phase_stack.py" \
     --csv-in "$csv_in" \
     --no-run \
     --include-init \
@@ -110,7 +111,7 @@ plot_paper_figure() {
   for tag in "${panel_tag[@]}"; do
     panel_tag_args+=(--panel-tag "$tag")
   done
-  python3 plot_phase_stack.py \
+  python3 "$script_dir/plot_phase_stack.py" \
     --paper \
     --no-run \
     "${panel_csv_args[@]}" \
@@ -153,7 +154,7 @@ plot_paper_controlled() {
   for tag in "${panel_tag[@]}"; do
     panel_tag_args+=(--panel-tag "$tag")
   done
-  python3 plot_phase_stack.py \
+  python3 "$script_dir/plot_phase_stack.py" \
     --paper \
     --controlled \
     --no-run \
@@ -348,13 +349,13 @@ for n in "${n_values[@]}"; do
 
     if [[ "$rebuild" -eq 1 ]]; then
       echo "=== Rebuilding theta=${theta} (N=${n}) ==="
-      ./build_fmm_dtt_theta_bins.sh "$theta" "$n"
+      "$script_dir/../dtt_theta/build_fmm_dtt_theta_bins.sh" "$theta" "$n"
     fi
 
     bindir="$(bindir_for_theta "$n" "$theta")"
     if [[ ! -x "$bindir/gtap_dtt_fmm" || ! -x "$bindir/worklist_dtt_fmm" || ! -x "$bindir/omp_dtt_fmm" ]]; then
       echo "Error: missing binaries under $bindir for N=${n} theta=${theta}" >&2
-      echo "Run: ./build_fmm_dtt_theta_bins.sh ${theta} ${n}" >&2
+      echo "Run: ./scripts/dtt_theta/build_fmm_dtt_theta_bins.sh ${theta} ${n}" >&2
       echo "  or: $0 ${n} --rebuild ${theta}" >&2
       exit 1
     fi

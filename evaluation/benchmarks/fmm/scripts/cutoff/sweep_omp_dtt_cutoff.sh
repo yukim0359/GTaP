@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FMM_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$FMM_ROOT"
 
 CUTOFF_VALUES="${CUTOFF_VALUES:-512,1024,2048,4096,8192,16384,32768}"
 DEPTH_VALUES="${DEPTH_VALUES:-5}"
@@ -11,12 +12,12 @@ THETA="${THETA:-0.3}"
 NUM_RUNS="${NUM_RUNS:-3}"
 TIMEOUT_SEC="${TIMEOUT_SEC:-0}"
 BUILD_TIMEOUT_SEC="${BUILD_TIMEOUT_SEC:-0}"
-RESULTS_CSV="${RESULTS_CSV:-$SCRIPT_DIR/fmm_omp_dtt_openmp_cutoff_sweep.csv}"
+RESULTS_CSV="${RESULTS_CSV:-$FMM_ROOT/fmm_omp_dtt_cutoff_sweep.csv}"
 RAW_CSV="${RAW_CSV:-${RESULTS_CSV%.csv}_raw.csv}"
 KEEP_LOGS="${KEEP_LOGS:-0}"
-LOG_DIR="${LOG_DIR:-$SCRIPT_DIR/sweep_logs}"
+LOG_DIR="${LOG_DIR:-$FMM_ROOT/sweep_logs}"
 MAKE_TARGET="${MAKE_TARGET:-omp_dtt_fmm}"
-BIN_PATH="${BIN_PATH:-$SCRIPT_DIR/bin/omp_dtt_fmm}"
+BIN_PATH="${BIN_PATH:-$FMM_ROOT/bin/omp_dtt_fmm}"
 
 usage() {
   cat <<EOF
