@@ -10,6 +10,7 @@ BENCHMARK_NAME=fib
 cd "$PBS_O_WORKDIR"
 
 COMPARE_DIR=$(pwd)
+source "$COMPARE_DIR/../../common/benchmark.sh"
 PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
 BIN_DIR="$PROJECT_ROOT/bin"
 
@@ -76,146 +77,41 @@ fi
 printf "%6s | %25s | %25s | %25s | %25s | %10s\n" "n" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "OMP/GTAP"
 printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" "------" "-------------------------" "-------------------------" "-------------------------" "-------------------------" "----------"
 
-run_stats() {
-    local program=$1
-    local n=$2
-    local grep_pattern=$3
-    local times=()
-
-    for i in $(seq 1 $NUM_RUNS); do
-        local output
-        output=$($program $n 2>&1)
-
-        local time
-        time=$(echo "$output" | grep "$grep_pattern" | sed -n 's/.*: \([0-9.]*\) ms.*/\1/p' | head -n 1)
-
-        if [ -n "$time" ]; then
-            times+=("$time")
-        fi
-    done
-
-    local m=${#times[@]}
-    if [ "$m" -lt 5 ]; then
-        echo "0 0 0 0 0"
-        return
-    fi
-
-    # Sort ascending
-    IFS=$'\n' sorted=($(printf "%s\n" "${times[@]}" | sort -n))
-    unset IFS
-    m=${#sorted[@]}
-
-    # Median
-    local median
-    if (( m % 2 == 1 )); then
-        median=${sorted[$((m/2))]}
-    else
-        median=$(echo "scale=6; (${sorted[$((m/2-1))]} + ${sorted[$((m/2))]}) / 2" | bc -l)
-    fi
-
-    # Quantile indices (nearest-rank)
-    local q1_idx=$(( (m*25 + 99) / 100 - 1 ))
-    local q3_idx=$(( (m*75 + 99) / 100 - 1 ))
-    (( q1_idx < 0 )) && q1_idx=0
-    (( q3_idx < 0 )) && q3_idx=0
-    (( q1_idx >= m )) && q1_idx=$((m-1))
-    (( q3_idx >= m )) && q3_idx=$((m-1))
-
-    local q1=${sorted[$q1_idx]}
-    local q3=${sorted[$q3_idx]}
-
-    local err_low err_high
-    err_low=$(echo "scale=6; $median - $q1" | bc -l)
-    err_high=$(echo "scale=6; $q3 - $median" | bc -l)
-
-    echo "$median $q1 $q3 $err_low $err_high"
-}
-
-run_stats_dynasoar() {
-    local program=$1
-    local n=$2
-    local times=()
-
-    for i in $(seq 1 $NUM_RUNS); do
-        local output
-        output=$("$program" "$n" 2>&1)
-
-        local time
-        time=$(echo "$output" | grep '^\[TIME\]' | sed -n 's/.*time = \([0-9.]*\).*/\1/p' | head -n 1)
-
-        if [ -n "$time" ]; then
-            times+=("$time")
-        fi
-    done
-
-    local m=${#times[@]}
-    if [ "$m" -lt 5 ]; then
-        echo "0 0 0 0 0"
-        return
-    fi
-
-    IFS=$'\n' sorted=($(printf "%s\n" "${times[@]}" | sort -n))
-    unset IFS
-    m=${#sorted[@]}
-
-    local median
-    if (( m % 2 == 1 )); then
-        median=${sorted[$((m/2))]}
-    else
-        median=$(echo "scale=6; (${sorted[$((m/2-1))]} + ${sorted[$((m/2))]}) / 2" | bc -l)
-    fi
-
-    local q1_idx=$(( (m*25 + 99) / 100 - 1 ))
-    local q3_idx=$(( (m*75 + 99) / 100 - 1 ))
-    (( q1_idx < 0 )) && q1_idx=0
-    (( q3_idx < 0 )) && q3_idx=0
-    (( q1_idx >= m )) && q1_idx=$((m-1))
-    (( q3_idx >= m )) && q3_idx=$((m-1))
-
-    local q1=${sorted[$q1_idx]}
-    local q3=${sorted[$q3_idx]}
-
-    local err_low err_high
-    err_low=$(echo "scale=6; $median - $q1" | bc -l)
-    err_high=$(echo "scale=6; $q3 - $median" | bc -l)
-
-    echo "$median $q1 $q3 $err_low $err_high"
-}
-
-fmt_med_iqr() {
-    local med=$1 elo=$2 ehi=$3
-    local s
-    if [ "$med" = "0" ]; then
-        s="N/A"
-    else
-        s=$(printf "%.3f(+%.3f/%.3f)" "$med" "$ehi" "$elo")
-    fi
-    printf "%25s" "$s"
-}
-
 for n in "${N_VALUES[@]}"; do
     # --- GTAP ---
     GTAP_MED=0 GTAP_ELO=0 GTAP_EHI=0
     if [ -x "$BIN_DIR/gtap_$BENCHMARK_NAME" ]; then
-        read GTAP_MED _ _ GTAP_ELO GTAP_EHI < <(run_stats "$BIN_DIR/gtap_$BENCHMARK_NAME" "$n" "Execution time")
+        read GTAP_MED _ _ GTAP_ELO GTAP_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                "$BIN_DIR/gtap_$BENCHMARK_NAME" "$n"
+        )
     fi
 
     # --- OpenMP ---
     OMP_MED=0 OMP_ELO=0 OMP_EHI=0
     if [ -x "$BIN_DIR/omp_$BENCHMARK_NAME" ]; then
-        read OMP_MED _ _ OMP_ELO OMP_EHI < <(run_stats "$BIN_DIR/omp_$BENCHMARK_NAME" "$n" "Execution time")
+        read OMP_MED _ _ OMP_ELO OMP_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                "$BIN_DIR/omp_$BENCHMARK_NAME" "$n"
+        )
     fi
 
     # --- Cilk ---
     CILK_MED=0 CILK_ELO=0 CILK_EHI=0
     if [ -x "$BIN_DIR/cilk_$BENCHMARK_NAME" ]; then
-        read CILK_MED _ _ CILK_ELO CILK_EHI < <(run_stats "$BIN_DIR/cilk_$BENCHMARK_NAME" "$n" "Execution time")
+        read CILK_MED _ _ CILK_ELO CILK_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                "$BIN_DIR/cilk_$BENCHMARK_NAME" "$n"
+        )
     fi
 
     # --- Dynasoar ---
     DYNASOAR_MED=0 DYNASOAR_ELO=0 DYNASOAR_EHI=0
     if [ "$DYNASOAR_ENABLED" = "1" ]; then
-        read DYNASOAR_MED _ _ DYNASOAR_ELO DYNASOAR_EHI < <(run_stats_dynasoar "$DYNASOAR_FIB_BIN" "$n")
+        read DYNASOAR_MED _ _ DYNASOAR_ELO DYNASOAR_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_dynasoar_ms \
+                "$DYNASOAR_FIB_BIN" "$n"
+        )
     fi
 
     SEQ_MED=0 SEQ_ELO=0 SEQ_EHI=0
@@ -236,10 +132,10 @@ for n in "${N_VALUES[@]}"; do
 
     # Print aligned row
     printf "%6d | " "$n"
-    fmt_med_iqr "$GTAP_MED" "$GTAP_ELO" "$GTAP_EHI"; printf " | "
-    fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
-    fmt_med_iqr "$CILK_MED" "$CILK_ELO" "$CILK_EHI"; printf " | "
-    fmt_med_iqr "$DYNASOAR_MED" "$DYNASOAR_ELO" "$DYNASOAR_EHI"; printf " | "
+    benchmark_fmt_med_iqr "$GTAP_MED" "$GTAP_ELO" "$GTAP_EHI"; printf " | "
+    benchmark_fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
+    benchmark_fmt_med_iqr "$CILK_MED" "$CILK_ELO" "$CILK_EHI"; printf " | "
+    benchmark_fmt_med_iqr "$DYNASOAR_MED" "$DYNASOAR_ELO" "$DYNASOAR_EHI"; printf " | "
     if [ "$SPEEDUP" = "0" ]; then
         printf "%10s\n" "N/A"
     else

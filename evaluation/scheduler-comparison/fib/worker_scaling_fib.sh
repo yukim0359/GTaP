@@ -11,6 +11,7 @@ cd "$PBS_O_WORKDIR"
 
 # When submitted from gtap/evaluation/scheduler-comparison/$BENCHMARK_NAME
 SCALING_DIR=$(pwd)
+source "$SCALING_DIR/../../common/benchmark.sh"
 PROJECT_ROOT=$(cd "$SCALING_DIR/../../.." && pwd)
 RUNTIME_DIR="$PROJECT_ROOT/runtime"
 TMP_BIN_DIR="$SCALING_DIR/tmp_bin_${BENCHMARK_NAME}"
@@ -63,48 +64,6 @@ GTAP_CFLAGS="${GTAP_CFLAGS:-}"
 
 # Constant: total_threads * MAX_TASKS_PER_WARP = 1024 * 96 * 150000
 CONSTANT_TOTAL_THREADS_MAX_TASKS=$((4000 * 32 * 200000))
-
-# Function to compute median and IQR (matching compare_fib.sh)
-# Returns: median q1 q3 err_low err_high
-compute_stats() {
-    local times=("$@")
-    local m=${#times[@]}
-    
-    if [ "$m" -lt 5 ]; then
-        echo "0 0 0 0 0"
-        return
-    fi
-
-    # Sort ascending
-    IFS=$'\n' sorted=($(printf "%s\n" "${times[@]}" | sort -n))
-    unset IFS
-    m=${#sorted[@]}
-
-    # Median
-    local median
-    if (( m % 2 == 1 )); then
-        median=${sorted[$((m/2))]}
-    else
-        median=$(echo "scale=6; (${sorted[$((m/2-1))]} + ${sorted[$((m/2))]}) / 2" | bc -l)
-    fi
-
-    # Quantile indices (nearest-rank)
-    local q1_idx=$(( (m*25 + 99) / 100 - 1 ))
-    local q3_idx=$(( (m*75 + 99) / 100 - 1 ))
-    (( q1_idx < 0 )) && q1_idx=0
-    (( q3_idx < 0 )) && q3_idx=0
-    (( q1_idx >= m )) && q1_idx=$((m-1))
-    (( q3_idx >= m )) && q3_idx=$((m-1))
-
-    local q1=${sorted[$q1_idx]}
-    local q3=${sorted[$q3_idx]}
-
-    local err_low err_high
-    err_low=$(echo "scale=6; $median - $q1" | bc -l)
-    err_high=$(echo "scale=6; $q3 - $median" | bc -l)
-
-    echo "$median $q1 $q3 $err_low $err_high"
-}
 
 for block_size in "${BLOCK_SIZES[@]}"; do
     echo ""
@@ -180,52 +139,35 @@ for block_size in "${BLOCK_SIZES[@]}"; do
             continue
         fi
         
-        # Run WS variant
         echo "    Running WS variant $NUM_RUNS times..."
-        TIMES_WS=()
-        for i in $(seq 1 $NUM_RUNS); do
-            output=$(GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
-                "$BINARY_WS_PATH" "$INPUT_N" 2>&1 || true)
-            time=$(echo "$output" | grep "Execution time" | sed 's/.*: \([0-9.]*\) ms.*/\1/')
-            if [ -n "$time" ]; then
-                TIMES_WS+=("$time")
-            fi
-        done
-        
-        # Run GQ variant
+        read WS_MED _ _ WS_ELO WS_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                env GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" \
+                    GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
+                "$BINARY_WS_PATH" "$INPUT_N"
+        )
+
         echo "    Running GQ variant $NUM_RUNS times..."
-        TIMES_GQ=()
-        for i in $(seq 1 $NUM_RUNS); do
-            output=$(GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
-                "$BINARY_GQ_PATH" "$INPUT_N" 2>&1 || true)
-            time=$(echo "$output" | grep "Execution time" | sed 's/.*: \([0-9.]*\) ms.*/\1/')
-            if [ -n "$time" ]; then
-                TIMES_GQ+=("$time")
-            fi
-        done
-        
-        # Run CHASELEV variant
+        read GQ_MED _ _ GQ_ELO GQ_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                env GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" \
+                    GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
+                "$BINARY_GQ_PATH" "$INPUT_N"
+        )
+
         echo "    Running CHASELEV variant $NUM_RUNS times..."
-        TIMES_CL=()
-        for i in $(seq 1 $NUM_RUNS); do
-            output=$(GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
-                "$BINARY_CL_PATH" "$INPUT_N" 2>&1 || true)
-            time=$(echo "$output" | grep "Execution time" | sed 's/.*: \([0-9.]*\) ms.*/\1/')
-            if [ -n "$time" ]; then
-                TIMES_CL+=("$time")
-            fi
-        done
-        
-        if [ ${#TIMES_WS[@]} -lt 5 ] || [ ${#TIMES_GQ[@]} -lt 5 ] || [ ${#TIMES_CL[@]} -lt 5 ]; then
+        read CL_MED _ _ CL_ELO CL_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                env GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" \
+                    GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
+                "$BINARY_CL_PATH" "$INPUT_N"
+        )
+
+        if [ "$WS_MED" = "0" ] || [ "$GQ_MED" = "0" ] || [ "$CL_MED" = "0" ]; then
             echo "    ERROR: Not enough timing results (need at least 5)"
             rm -f "$BINARY_WS_PATH" "$BINARY_GQ_PATH" "$BINARY_CL_PATH"
             continue
         fi
-        
-        # Calculate statistics (median + IQR)
-        read WS_MED _ _ WS_ELO WS_EHI < <(compute_stats "${TIMES_WS[@]}")
-        read GQ_MED _ _ GQ_ELO GQ_EHI < <(compute_stats "${TIMES_GQ[@]}")
-        read CL_MED _ _ CL_ELO CL_EHI < <(compute_stats "${TIMES_CL[@]}")
         
         printf "    WS Result: %.3f (+%.3f/-%.3f) ms\n" "$WS_MED" "$WS_EHI" "$WS_ELO"
         printf "    GQ Result: %.3f (+%.3f/-%.3f) ms\n" "$GQ_MED" "$GQ_EHI" "$GQ_ELO"
