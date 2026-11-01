@@ -8,7 +8,6 @@
 #else
 #include "dtt/openmp.cuh"
 #endif
-#include "gtap_thread.cuh"
 #include "host_cuda.hpp"
 #include "host_types.hpp"
 #include "numerics/kernels.cuh"
@@ -56,8 +55,10 @@ static bool init_dtt(FmmRun &run) {
       std::chrono::high_resolution_clock::now();
   CUDA_CHECK(cudaMalloc(&d.d_m2l_count, sizeof(int) * ncells));
   CUDA_CHECK(cudaMalloc(&d.d_p2p_count, sizeof(int) * ncells));
+#if !FMM3D_GTAP_FUSED
   CUDA_CHECK(cudaMalloc(&d.d_m2l_src, sizeof(int) * static_cast<size_t>(ncells) * DTT_M2L_CAP));
   CUDA_CHECK(cudaMalloc(&d.d_p2p_src, sizeof(int) * static_cast<size_t>(ncells) * DTT_P2P_CAP));
+#endif
   CUDA_CHECK(cudaMalloc(&d.d_dtt_overflow, sizeof(int)));
   CUDA_CHECK(bind_dtt_ptrs(d.d_m2l_count, d.d_p2p_count, d.d_m2l_src, d.d_p2p_src,
                            d.d_dtt_overflow, theta));
@@ -66,7 +67,7 @@ static bool init_dtt(FmmRun &run) {
 #elif FMM3D_WORKLIST_DTT
   if (!init_dtt_worklist(run)) return false;
 #else
-  if (!init_dtt_host(run)) return false;
+  if (!init_dtt_openmp(run)) return false;
 #endif
   const std::chrono::high_resolution_clock::time_point t_dtt_init_end =
       std::chrono::high_resolution_clock::now();
@@ -80,7 +81,7 @@ static bool run_dtt(FmmRun &run) {
 #elif FMM3D_WORKLIST_DTT
   if (!run_dtt_worklist(run)) return false;
 #else
-  if (!run_dtt_host(run)) return false;
+  if (!run_dtt_openmp(run)) return false;
 #endif
 
 #ifdef GTAP_ENABLE_PROFILING
@@ -188,8 +189,10 @@ static void release_run(FmmRun &run) {
   cudaFree(d.d_upward_cells);
   cudaFree(d.d_m2l_count);
   cudaFree(d.d_p2p_count);
+#if !FMM3D_GTAP_FUSED
   cudaFree(d.d_m2l_src);
   cudaFree(d.d_p2p_src);
+#endif
   cudaFree(d.d_dtt_overflow);
 #if FMM3D_WORKLIST_DTT
   cudaFree(d.d_pairs_a);

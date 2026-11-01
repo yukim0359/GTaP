@@ -49,7 +49,6 @@ struct FmmDeviceBuffers {
   int *d_worklist_out_count = nullptr;
   int *d_worklist_overflow = nullptr;
   int worklist_pair_cap = 0;
-  size_t pair_cap_size = 0;
   cudaEvent_t ev_gpu_start = nullptr;
   cudaEvent_t ev_gpu_end = nullptr;
 };
@@ -78,7 +77,6 @@ struct FmmTimings {
   double ms_upward = 0.0;
   double ms_gtap_init = 0.0;
   [[maybe_unused]] double ms_dtt_fill_setup = 0.0;
-  [[maybe_unused]] double ms_dtt_fill_kernel = 0.0;
   [[maybe_unused]] double ms_dtt_fill_post = 0.0;
   [[maybe_unused]] double ms_dtt_core = 0.0;
   [[maybe_unused]] double ms_dtt_construct = 0.0;

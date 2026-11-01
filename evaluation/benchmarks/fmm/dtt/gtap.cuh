@@ -3,7 +3,6 @@
 #include "../host_cuda.hpp"
 #include "../host_options.hpp"
 #include "../host_types.hpp"
-#include "../numerics/device_sph.cuh"
 #include "common.cuh"
 #include "gtap_thread.cuh"
 
@@ -17,10 +16,10 @@ __device__ void d_dtt_fill_seq(int ci, int cj) {
       d_append_p2p(ci, cj);
     } else {
       for (int oi = 0; oi < 8; ++oi) {
-        const int child_i = d_child(Ci, oi);
+        const int child_i = Ci.child[oi];
         if (child_i == -1) continue;
         for (int oj = 0; oj < 8; ++oj) {
-          const int child_j = d_child(Ci, oj);
+          const int child_j = Ci.child[oj];
           if (child_j != -1) d_dtt_fill_seq(child_i, child_j);
         }
       }
@@ -29,7 +28,7 @@ __device__ void d_dtt_fill_seq(int ci, int cj) {
   }
 
   const TreeNode &Cj = g_tree[cj];
-  if (d_dtt_well_separated(Ci, Cj)) {
+  if (dtt_well_separated(Ci, Cj, g_dtt_theta)) {
     d_append_m2l(ci, cj);
     return;
   }
@@ -39,10 +38,10 @@ __device__ void d_dtt_fill_seq(int ci, int cj) {
   }
 
   {
-    const bool split_ci = d_dtt_split_ci(Ci, Cj);
+    const bool split_ci = dtt_split_ci(Ci, Cj);
     for (int oct = 0; oct < 8; ++oct) {
-      const int child_i = split_ci ? d_child(Ci, oct) : ci;
-      const int child_j = split_ci ? cj : d_child(Cj, oct);
+      const int child_i = split_ci ? Ci.child[oct] : ci;
+      const int child_j = split_ci ? cj : Cj.child[oct];
       if (split_ci ? (child_i == -1) : (child_j == -1)) continue;
       d_dtt_fill_seq(child_i, child_j);
     }
@@ -57,12 +56,12 @@ __device__ void d_dtt_fill(int ci, int cj, int depth) {
       d_append_p2p(ci, cj);
     } else {
       for (int oi = 0; oi < 8; ++oi) {
-        const int child_i = d_child(Ci, oi);
+        const int child_i = Ci.child[oi];
         if (child_i == -1) continue;
         const bool spawn = (depth < DTT_TASK_DEPTH) &&
                            (g_tree[child_i].nbody >= DTT_TASK_MIN_N);
         for (int oj = 0; oj < 8; ++oj) {
-          const int child_j = d_child(Ci, oj);
+          const int child_j = Ci.child[oj];
           if (child_j == -1) continue;
           if (spawn) {
             #pragma gtap task
@@ -78,7 +77,7 @@ __device__ void d_dtt_fill(int ci, int cj, int depth) {
   }
 
   const TreeNode &Cj = g_tree[cj];
-  if (d_dtt_well_separated(Ci, Cj)) {
+  if (dtt_well_separated(Ci, Cj, g_dtt_theta)) {
     d_append_m2l(ci, cj);
     return;
   }
@@ -88,10 +87,10 @@ __device__ void d_dtt_fill(int ci, int cj, int depth) {
   }
 
   {
-    const bool split_ci = d_dtt_split_ci(Ci, Cj);
+    const bool split_ci = dtt_split_ci(Ci, Cj);
     for (int oct = 0; oct < 8; ++oct) {
-      const int child_i = split_ci ? d_child(Ci, oct) : ci;
-      const int child_j = split_ci ? cj : d_child(Cj, oct);
+      const int child_i = split_ci ? Ci.child[oct] : ci;
+      const int child_j = split_ci ? cj : Cj.child[oct];
       if (split_ci ? (child_i == -1) : (child_j == -1)) continue;
       const int nb_lhs = split_ci ? g_tree[child_i].nbody : Ci.nbody;
       const int nb_rhs = split_ci ? Cj.nbody : g_tree[child_j].nbody;
@@ -178,10 +177,9 @@ static bool run_dtt_gtap(FmmRun &run) {
   const std::chrono::high_resolution_clock::time_point t_dtt_total_end =
       std::chrono::high_resolution_clock::now();
   t.ms_dtt_fill_setup = h_elapsed_ms(t_dtt_total_start, t_dtt_kernel_start);
-  t.ms_dtt_fill_kernel = h_elapsed_ms(t_dtt_kernel_start, t_dtt_kernel_end);
+  t.ms_dtt_core = h_elapsed_ms(t_dtt_kernel_start, t_dtt_kernel_end);
   t.ms_dtt_fill_post = h_elapsed_ms(t_dtt_kernel_end, t_dtt_total_end);
-  t.ms_dtt_core = t.ms_dtt_fill_kernel;
-  t.ms_dtt_construct = t.ms_dtt_fill_setup + t.ms_dtt_fill_kernel;
+  t.ms_dtt_construct = t.ms_dtt_fill_setup + t.ms_dtt_core;
   t.ms_dtt_construct_handoff = t.ms_dtt_construct;
 
   return true;

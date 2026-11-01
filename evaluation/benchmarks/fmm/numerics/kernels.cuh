@@ -111,7 +111,7 @@ __global__ void fmm3d_m2m_level_kernel(const int *cells, int count) {
     for (int s = 0; s < EXA_NTERM; ++s) c.M[s] = cx_make(Real(0));
     Cx Ynm[EXA_P * EXA_P];
     for (int oct = 0; oct < 8; ++oct) {
-      const int ch = d_child(c, oct);
+      const int ch = c.child[oct];
       if (ch == -1) continue;
       const TreeNode &cc = g_tree[ch];
       const Real dx = c.cx - cc.cx;

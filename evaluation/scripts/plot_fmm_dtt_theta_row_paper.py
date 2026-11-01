@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Paper figure: FMM DTT vs theta for N=10^7 and N=5×10^7 side by side.
 
-Each column is the combined absolute + normalized layout from
-fmm/plot_performance_fmm_dtt_theta.py (top: absolute, bottom: normalized).
+Each column is absolute time (top) and GTaP-normalized time (bottom).
 """
 
 from __future__ import annotations

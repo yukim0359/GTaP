@@ -91,17 +91,23 @@
 #error "FMM3D_DIRECT_SAMPLE_BLOCK_SIZE must be a power of two and at least 32"
 #endif
 #define FMM3D_NTERM (FMM3D_P * (FMM3D_P + 1) / 2)
+#if FMM3D_SINGLE
+#define FMM3D_REAL_BYTES 4
+#else
+#define FMM3D_REAL_BYTES 8
+#endif
+#define FMM3D_NSPH (4 * FMM3D_P * FMM3D_P)
+#define FMM3D_M2L_CNM_SIZE (FMM3D_P * FMM3D_P * FMM3D_P * FMM3D_P)
+#define FMM_CONST_BYTES \
+    (FMM3D_M2L_CNM_SIZE * 2 * FMM3D_REAL_BYTES + FMM3D_NSPH * FMM3D_REAL_BYTES)
+#define FMM_CONST_IN_CONSTANT (FMM_CONST_BYTES <= 65536)
 
 static constexpr int NCRIT = FMM3D_NCRIT;
 static constexpr int MAX_DEPTH = 24;
 static constexpr int EXA_P = FMM3D_P;
 static constexpr int EXA_NTERM = FMM3D_NTERM;
-static constexpr int EXA_NSPH = 4 * EXA_P * EXA_P;
-static constexpr int M2L_CNM_SIZE = EXA_P * EXA_P * EXA_P * EXA_P;
-static constexpr int FMM_CONST_BYTES =
-    M2L_CNM_SIZE * 2 * static_cast<int>(sizeof(Real)) +
-    EXA_NSPH * static_cast<int>(sizeof(Real));
-static constexpr bool FMM_CONST_IN_CONSTANT = FMM_CONST_BYTES <= 65536;
+static constexpr int EXA_NSPH = FMM3D_NSPH;
+static constexpr int M2L_CNM_SIZE = FMM3D_M2L_CNM_SIZE;
 static constexpr int DTT_TASK_DEPTH = FMM3D_DTT_TASK_DEPTH;
 static constexpr int DTT_TASK_MIN_N = FMM3D_DTT_TASK_MIN_N;
 static constexpr int HOST_DTT_TASK_DEPTH = FMM3D_HOST_DTT_TASK_DEPTH;

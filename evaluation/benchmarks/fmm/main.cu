@@ -9,7 +9,6 @@
 #include <chrono>
 
 // #define GTAP_ENABLE_PROFILING
-#include "gtap_thread.cuh"
 #include "config_defaults.cuh"
 
 #include "host_options.hpp"

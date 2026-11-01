@@ -20,7 +20,7 @@ EVAL_DIR = Path(__file__).resolve().parents[1]
 COMPARE_DIR = EVAL_DIR / "benchmarks"
 IMG_DIR = EVAL_DIR / "img"
 FMM_DIR = COMPARE_DIR / "fmm"
-sys.path.insert(0, str(FMM_DIR))
+sys.path.insert(0, str(FMM_DIR / "scripts" / "stack"))
 
 from plot_phase_stack import (  # noqa: E402
     PAPER_DTT_PHASES,

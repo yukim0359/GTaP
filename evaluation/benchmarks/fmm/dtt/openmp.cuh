@@ -65,7 +65,7 @@ static void h_dtt_fixed(int ci, int cj,
   }
 
   const TreeNode &Cj = tree[cj];
-  if (h_dtt_well_separated(Ci, Cj, theta)) {
+  if (dtt_well_separated(Ci, Cj, theta)) {
     h_fixed_append_m2l(lists, ci, cj);
     return;
   }
@@ -75,7 +75,7 @@ static void h_dtt_fixed(int ci, int cj,
   }
 
   {
-    const bool split_ci = h_dtt_split_ci(Ci, Cj);
+    const bool split_ci = dtt_split_ci(Ci, Cj);
     for (int oct = 0; oct < 8; ++oct) {
       const int child_i = split_ci ? Ci.child[oct] : ci;
       const int child_j = split_ci ? cj : Cj.child[oct];
@@ -104,34 +104,31 @@ static void h_prepare_fixed_lists(HostFixedLists &lists, int ncells) {
   lists.m2l_src.reset(new int[m2l_size]);
   lists.p2p_src.reset(new int[p2p_size]);
   lists.overflow = 0;
-  lists.max_m2l = 0;
-  lists.max_p2p = 0;
-  lists.total_m2l = 0;
-  lists.total_p2p = 0;
 }
 
 static void h_reset_fixed_lists(HostFixedLists &lists) {
   std::fill(lists.m2l_count.begin(), lists.m2l_count.end(), 0);
   std::fill(lists.p2p_count.begin(), lists.p2p_count.end(), 0);
   lists.overflow = 0;
-  lists.max_m2l = 0;
-  lists.max_p2p = 0;
-  lists.total_m2l = 0;
-  lists.total_p2p = 0;
 }
 
-static void h_aggregate_fixed_list_stats(HostFixedLists &lists, int ncells) {
+static void h_aggregate_fixed_list_stats(const HostFixedLists &lists, int ncells,
+                                        FmmDttState &dtt) {
+  dtt.m2l_total_ll = 0;
+  dtt.p2p_total_ll = 0;
+  dtt.max_m2l_count = 0;
+  dtt.max_p2p_count = 0;
   for (int ci = 0; ci < ncells; ++ci) {
-    lists.total_m2l += lists.m2l_count[ci];
-    lists.total_p2p += lists.p2p_count[ci];
-    lists.max_m2l = std::max(lists.max_m2l, lists.m2l_count[ci]);
-    lists.max_p2p = std::max(lists.max_p2p, lists.p2p_count[ci]);
+    dtt.m2l_total_ll += lists.m2l_count[ci];
+    dtt.p2p_total_ll += lists.p2p_count[ci];
+    dtt.max_m2l_count = std::max(dtt.max_m2l_count, lists.m2l_count[ci]);
+    dtt.max_p2p_count = std::max(dtt.max_p2p_count, lists.p2p_count[ci]);
   }
 }
 
 static void h_run_host_dtt_traversal(
     const std::vector<TreeNode> &tree, Real theta,
-    HostFixedLists &lists, HostDttBreakdown *breakdown = nullptr) {
+    HostFixedLists &lists, FmmDttState &dtt, HostDttBreakdown &breakdown) {
   const int ncells = static_cast<int>(tree.size());
   const auto t_reset_start = std::chrono::high_resolution_clock::now();
   h_reset_fixed_lists(lists);
@@ -144,19 +141,17 @@ static void h_run_host_dtt_traversal(
   }
   const auto t_traverse_end = std::chrono::high_resolution_clock::now();
   const auto t_stats_start = std::chrono::high_resolution_clock::now();
-  h_aggregate_fixed_list_stats(lists, ncells);
+  h_aggregate_fixed_list_stats(lists, ncells, dtt);
   const auto t_stats_end = std::chrono::high_resolution_clock::now();
-  if (breakdown) {
-    breakdown->ms_reset_counts =
-        std::chrono::duration<double, std::milli>(t_reset_end - t_reset_start).count();
-    breakdown->ms_traverse =
-        std::chrono::duration<double, std::milli>(t_traverse_end - t_traverse_start).count();
-    breakdown->ms_stats =
-        std::chrono::duration<double, std::milli>(t_stats_end - t_stats_start).count();
-  }
+  breakdown.ms_reset_counts =
+      std::chrono::duration<double, std::milli>(t_reset_end - t_reset_start).count();
+  breakdown.ms_traverse =
+      std::chrono::duration<double, std::milli>(t_traverse_end - t_traverse_start).count();
+  breakdown.ms_stats =
+      std::chrono::duration<double, std::milli>(t_stats_end - t_stats_start).count();
 }
 
-static bool init_dtt_host(FmmRun &run) {
+static bool init_dtt_openmp(FmmRun &run) {
   const int ncells = run.host.ncells;
   const std::chrono::high_resolution_clock::time_point t_buffer_alloc_start =
       std::chrono::high_resolution_clock::now();
@@ -169,7 +164,7 @@ static bool init_dtt_host(FmmRun &run) {
   return true;
 }
 
-static bool run_dtt_host(FmmRun &run) {
+static bool run_dtt_openmp(FmmRun &run) {
   const int ncells = run.host.ncells;
   FmmDeviceBuffers &d = run.device;
   FmmDttState &dtt = run.dtt;
@@ -177,13 +172,9 @@ static bool run_dtt_host(FmmRun &run) {
 
   const std::chrono::high_resolution_clock::time_point t_dtt_total_start =
       std::chrono::high_resolution_clock::now();
-  h_run_host_dtt_traversal(run.host.htree, run.options.theta, dtt.host_fixed_lists, &dtt.host_dtt_breakdown);
-
+  h_run_host_dtt_traversal(run.host.htree, run.options.theta, dtt.host_fixed_lists, dtt,
+                          dtt.host_dtt_breakdown);
   dtt.overflow = dtt.host_fixed_lists.overflow;
-  dtt.max_m2l_count = dtt.host_fixed_lists.max_m2l;
-  dtt.max_p2p_count = dtt.host_fixed_lists.max_p2p;
-  dtt.m2l_total_ll = dtt.host_fixed_lists.total_m2l;
-  dtt.p2p_total_ll = dtt.host_fixed_lists.total_p2p;
   if (dtt.overflow) {
     std::printf("Host 3D DTT fixed-cap overflow: m2l_cap=%d max_m2l=%d  p2p_cap=%d max_p2p=%d\n",
                 DTT_M2L_CAP, dtt.max_m2l_count, DTT_P2P_CAP, dtt.max_p2p_count);
@@ -212,7 +203,6 @@ static bool run_dtt_host(FmmRun &run) {
   const std::chrono::high_resolution_clock::time_point t_dtt_total_end =
       std::chrono::high_resolution_clock::now();
   t.ms_dtt_fill_setup = dtt.host_dtt_breakdown.ms_reset_counts;
-  t.ms_dtt_fill_kernel = dtt.host_dtt_breakdown.ms_traverse;
   t.ms_dtt_fill_post = dtt.host_dtt_breakdown.ms_stats + dtt.host_dtt_breakdown.ms_h2d_counts +
                      dtt.host_dtt_breakdown.ms_h2d_lists;
   t.ms_dtt_core = dtt.host_dtt_breakdown.ms_traverse;

@@ -6,7 +6,6 @@
 
 #include "../host_cuda.hpp"
 #include "../host_types.hpp"
-#include "../numerics/device_sph.cuh"
 #include "common.cuh"
 
 #include <algorithm>
@@ -34,10 +33,10 @@ __device__ __forceinline__ void d_worklist_expand_one(int ci, int cj, DttPair *o
       d_append_p2p(ci, cj);
     } else {
       for (int oi = 0; oi < 8; ++oi) {
-        const int child_i = d_child(Ci, oi);
+        const int child_i = Ci.child[oi];
         if (child_i == -1) continue;
         for (int oj = 0; oj < 8; ++oj) {
-          const int child_j = d_child(Ci, oj);
+          const int child_j = Ci.child[oj];
           if (child_j != -1) {
             d_worklist_push(out, out_count, pair_cap, overflow, child_i, child_j);
           }
@@ -48,7 +47,7 @@ __device__ __forceinline__ void d_worklist_expand_one(int ci, int cj, DttPair *o
   }
 
   const TreeNode &Cj = g_tree[cj];
-  if (d_dtt_well_separated(Ci, Cj)) {
+  if (dtt_well_separated(Ci, Cj, g_dtt_theta)) {
     d_append_m2l(ci, cj);
     return;
   }
@@ -57,16 +56,16 @@ __device__ __forceinline__ void d_worklist_expand_one(int ci, int cj, DttPair *o
     return;
   }
 
-  if (d_dtt_split_ci(Ci, Cj)) {
+  if (dtt_split_ci(Ci, Cj)) {
     for (int oct = 0; oct < 8; ++oct) {
-      const int child_i = d_child(Ci, oct);
+      const int child_i = Ci.child[oct];
       if (child_i != -1) {
         d_worklist_push(out, out_count, pair_cap, overflow, child_i, cj);
       }
     }
   } else {
     for (int oct = 0; oct < 8; ++oct) {
-      const int child_j = d_child(Cj, oct);
+      const int child_j = Cj.child[oct];
       if (child_j != -1) {
         d_worklist_push(out, out_count, pair_cap, overflow, ci, child_j);
       }
@@ -87,15 +86,15 @@ __global__ void fmm3d_worklist_expand_kernel(const DttPair *in, int in_count,
 static bool prepare_dtt_worklist(FmmRun &run) {
   FmmDeviceBuffers &d = run.device;
   const int ncells = run.host.ncells;
-  d.pair_cap_size =
+  const size_t pair_cap_size =
       static_cast<size_t>(std::max(1, ncells)) *
       static_cast<size_t>(std::max(1, WORKLIST_PAIR_CAP_FACTOR));
-  if (d.pair_cap_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+  if (pair_cap_size > static_cast<size_t>(std::numeric_limits<int>::max())) {
     std::printf("GPU worklist DTT pair cap too large for int counter: ncells=%d factor=%d cap=%zu\n",
-                ncells, WORKLIST_PAIR_CAP_FACTOR, d.pair_cap_size);
+                ncells, WORKLIST_PAIR_CAP_FACTOR, pair_cap_size);
     return false;
   }
-  d.worklist_pair_cap = static_cast<int>(d.pair_cap_size);
+  d.worklist_pair_cap = static_cast<int>(pair_cap_size);
   return true;
 }
 
@@ -103,8 +102,8 @@ static bool init_dtt_worklist(FmmRun &run) {
   FmmDeviceBuffers &d = run.device;
   const std::chrono::high_resolution_clock::time_point t_wl_alloc_start =
       std::chrono::high_resolution_clock::now();
-  CUDA_CHECK(cudaMalloc(&d.d_pairs_a, sizeof(DttPair) * d.pair_cap_size));
-  CUDA_CHECK(cudaMalloc(&d.d_pairs_b, sizeof(DttPair) * d.pair_cap_size));
+  CUDA_CHECK(cudaMalloc(&d.d_pairs_a, sizeof(DttPair) * static_cast<size_t>(d.worklist_pair_cap)));
+  CUDA_CHECK(cudaMalloc(&d.d_pairs_b, sizeof(DttPair) * static_cast<size_t>(d.worklist_pair_cap)));
   CUDA_CHECK(cudaMalloc(&d.d_worklist_out_count, sizeof(int)));
   CUDA_CHECK(cudaMalloc(&d.d_worklist_overflow, sizeof(int)));
   const std::chrono::high_resolution_clock::time_point t_wl_alloc_end =
@@ -181,10 +180,9 @@ static bool run_dtt_worklist(FmmRun &run) {
   const std::chrono::high_resolution_clock::time_point t_dtt_total_end =
       std::chrono::high_resolution_clock::now();
   t.ms_dtt_fill_setup = h_elapsed_ms(t_dtt_total_start, t_dtt_kernel_start);
-  t.ms_dtt_fill_kernel = h_elapsed_ms(t_dtt_kernel_start, t_dtt_kernel_end);
+  t.ms_dtt_core = h_elapsed_ms(t_dtt_kernel_start, t_dtt_kernel_end);
   t.ms_dtt_fill_post = h_elapsed_ms(t_dtt_kernel_end, t_dtt_total_end);
-  t.ms_dtt_core = t.ms_dtt_fill_kernel;
-  t.ms_dtt_construct = t.ms_dtt_fill_setup + t.ms_dtt_fill_kernel;
+  t.ms_dtt_construct = t.ms_dtt_fill_setup + t.ms_dtt_core;
   t.ms_dtt_construct_handoff = t.ms_dtt_construct;
   cudaFree(d.d_pairs_a);
   cudaFree(d.d_pairs_b);

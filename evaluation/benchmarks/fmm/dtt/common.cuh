@@ -20,22 +20,8 @@ __device__ __forceinline__ size_t d_dtt_p2p_slot(int ci, int pos) {
          static_cast<size_t>(pos);
 }
 
-__device__ __forceinline__ bool d_dtt_well_separated(const TreeNode &Ci, const TreeNode &Cj) {
-  const Real dx = Ci.cx - Cj.cx;
-  const Real dy = Ci.cy - Cj.cy;
-  const Real dz = Ci.cz - Cj.cz;
-  const Real d2 = dx * dx + dy * dy + dz * dz;
-  const Real sr = Ci.r + Cj.r;
-  return (g_dtt_theta * g_dtt_theta * d2 > sr * sr * (Real(1) - Real(1e-3)));
-}
-
-__device__ __forceinline__ bool d_dtt_split_ci(const TreeNode &Ci, const TreeNode &Cj) {
-  if (Cj.is_leaf) return true;
-  if (Ci.is_leaf) return false;
-  return Ci.r >= Cj.r;
-}
-
-static inline bool h_dtt_well_separated(const TreeNode &Ci, const TreeNode &Cj, Real theta) {
+__host__ __device__ __forceinline__ bool dtt_well_separated(
+    const TreeNode &Ci, const TreeNode &Cj, Real theta) {
   const Real dx = Ci.cx - Cj.cx;
   const Real dy = Ci.cy - Cj.cy;
   const Real dz = Ci.cz - Cj.cz;
@@ -44,7 +30,7 @@ static inline bool h_dtt_well_separated(const TreeNode &Ci, const TreeNode &Cj, 
   return (theta * theta * d2 > sr * sr * (Real(1) - Real(1e-3)));
 }
 
-static inline bool h_dtt_split_ci(const TreeNode &Ci, const TreeNode &Cj) {
+__host__ __device__ __forceinline__ bool dtt_split_ci(const TreeNode &Ci, const TreeNode &Cj) {
   if (Cj.is_leaf) return true;
   if (Ci.is_leaf) return false;
   return Ci.r >= Cj.r;

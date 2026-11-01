@@ -65,7 +65,7 @@ static void print_run_report(const FmmRun &run) {
 #if FMM3D_GTAP_FUSED
   std::printf("  [GPU/GTaP]    DTT traversal + fused M2L/P2P: %.3f\n", t.ms_dtt_construct_handoff);
 #else
-  std::printf("  [GPU/GTaP]    DTT traversal core: %.3f\n", t.ms_dtt_fill_kernel);
+  std::printf("  [GPU/GTaP]    DTT traversal core: %.3f\n", t.ms_dtt_core);
 #endif
   std::printf("  [GPU]         DTT post/check: %.3f\n", t.ms_dtt_fill_post);
 #else

@@ -152,10 +152,6 @@ static bool alloc_and_bind(FmmRun &run) {
   d.d_bq = run.host.sorted_device_bodies.q;
 
   CUDA_CHECK(cudaMalloc(&d.d_tree, sizeof(TreeNode) * ncells));
-  if (!d.d_bx) CUDA_CHECK(cudaMalloc(&d.d_bx, sizeof(Real) * n));
-  if (!d.d_by) CUDA_CHECK(cudaMalloc(&d.d_by, sizeof(Real) * n));
-  if (!d.d_bz) CUDA_CHECK(cudaMalloc(&d.d_bz, sizeof(Real) * n));
-  if (!d.d_bq) CUDA_CHECK(cudaMalloc(&d.d_bq, sizeof(Real) * n));
   CUDA_CHECK(cudaMalloc(&d.d_phi, sizeof(Real) * n));
   CUDA_CHECK(cudaMalloc(&d.d_ax, sizeof(Real) * n));
   CUDA_CHECK(cudaMalloc(&d.d_ay, sizeof(Real) * n));
@@ -166,12 +162,6 @@ static bool alloc_and_bind(FmmRun &run) {
   CUDA_CHECK(cudaMalloc(&d.d_upward_cells, sizeof(int) * std::max(1, ncells)));
 
   CUDA_CHECK(cudaMemcpy(d.d_tree, run.host.htree.data(), sizeof(TreeNode) * ncells, cudaMemcpyHostToDevice));
-  if (!run.host.sorted_device_bodies.x) {
-    CUDA_CHECK(cudaMemcpy(d.d_bx, run.host.hb.x.data(), sizeof(Real) * n, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d.d_by, run.host.hb.y.data(), sizeof(Real) * n, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d.d_bz, run.host.hb.z.data(), sizeof(Real) * n, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d.d_bq, run.host.hb.q.data(), sizeof(Real) * n, cudaMemcpyHostToDevice));
-  }
   if (nleaf > 0) {
     CUDA_CHECK(cudaMemcpy(d.d_leaf_idx, run.host.leaf_idx.data(), sizeof(int) * nleaf, cudaMemcpyHostToDevice));
   }

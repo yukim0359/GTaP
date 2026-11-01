@@ -53,10 +53,6 @@ struct HostFixedLists {
   std::unique_ptr<int[]> m2l_src;
   std::unique_ptr<int[]> p2p_src;
   int overflow = 0;
-  int max_m2l = 0;
-  int max_p2p = 0;
-  long long total_m2l = 0;
-  long long total_p2p = 0;
 };
 
 struct HostDttBreakdown {

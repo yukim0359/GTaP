@@ -3,10 +3,6 @@
 #include "../device_symbols.cuh"
 #include "../fmm_types.cuh"
 
-__device__ __forceinline__ int d_child(const TreeNode &c, int oct) {
-  return c.child[oct];
-}
-
 __device__ __forceinline__ int d_abs_i(int x) { return x < 0 ? -x : x; }
 
 // ---------- Device spherical-harmonic helpers ----------
