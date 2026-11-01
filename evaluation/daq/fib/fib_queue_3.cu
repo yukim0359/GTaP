@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 // #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
+#include "../../common/gtap_launch.hpp"
 
 __device__ int d_result;
 __device__ int d_cutoff;
@@ -37,11 +38,14 @@ int main(int argc, char** argv) {
     if (argc >= 3) cutoff = atoi(argv[2]);
 
     gtap_thread_config config{
-        .grid_size = GTAP_DAQ_GRID_SIZE,
-        .block_size = GTAP_DAQ_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_DAQ_MAX_TASKS_PER_WARP,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
         .num_queues = 3,
     };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));

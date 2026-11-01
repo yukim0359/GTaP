@@ -3,7 +3,7 @@
 
 Two side-by-side panels (shared y, one legend):
   left  — compute sweep (binary_tree_compute_results.csv)
-  right — depth sweep   (binary_tree_performance_results.csv)
+  right — depth sweep   (binary_tree_depth_results.csv)
 
 Normalized series: Thread, Block, Block (cutoff).
 """
@@ -90,7 +90,7 @@ SWEEPS: tuple[SweepSpec, ...] = (
     ),
     SweepSpec(
         key="depth",
-        csv_path=BINARY_TREE_DIR / "binary_tree_performance_results.csv",
+        csv_path=BINARY_TREE_DIR / "binary_tree_depth_results.csv",
         x_col_candidates=("depth", "n"),
         xlabel="Depth",
     ),

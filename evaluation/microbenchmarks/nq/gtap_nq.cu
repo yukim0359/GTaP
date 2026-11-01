@@ -4,6 +4,7 @@
 #include <cuda_runtime.h>
 // #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
+#include "../../common/gtap_launch.hpp"
 
 __device__ unsigned long long d_answer;
 __device__ __constant__ int d_n;
@@ -71,11 +72,15 @@ int main(int argc, char **argv) {
     cudaMemcpyToSymbol(d_n, &n, sizeof(int));
     cudaMemcpyToSymbol(d_cutoff, &cutoff, sizeof(int));
 
-    gtap_thread_config config;
-    config.grid_size = 2000;
-    config.block_size = 32;
-    config.max_tasks_per_warp = 20000;
-    config.num_queues = 1;
+    gtap_thread_config config{
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
+        .num_queues = 1,
+    };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
 
     size_t device_bytes = 0;
     cudaError_t err = gtap_initialize(config, &device_bytes);

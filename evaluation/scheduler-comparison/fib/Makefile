@@ -2,7 +2,6 @@ BENCHMARK_NAME := fib
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
-
 CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
@@ -22,6 +21,9 @@ OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
 # ---- GTAP build settings ----
+GTAP_GRID_SIZE          ?= 4000
+GTAP_BLOCK_SIZE         ?= 32
+GTAP_MAX_TASKS_PER_WARP ?= 200000
 GTAP_CFLAGS             ?= 
 
 # ---- OpenMP build settings ----
@@ -64,6 +66,9 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -Xcuda-ptxas --warn-on-spills \
 	  -I"$(GT_INC)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_GTAP)" -o "$(OUT_GTAP)"
@@ -75,6 +80,9 @@ $(OUT_GTAP_GQ): $(SRC_GTAP) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -Xcuda-ptxas --warn-on-spills \
 	  -I"$(GT_INC)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  -DGQ \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
@@ -87,6 +95,9 @@ $(OUT_GTAP_CHASELEV): $(SRC_GTAP) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -Xcuda-ptxas --warn-on-spills \
 	  -I"$(GT_INC)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  -DCHASELEV \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \

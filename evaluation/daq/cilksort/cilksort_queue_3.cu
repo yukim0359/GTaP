@@ -7,6 +7,7 @@
 #include <cuda_runtime.h>
 // #define DEBUG
 #include "gtap_thread.cuh"
+#include "../../common/gtap_launch.hpp"
 
 #ifndef TASK_SPAWN_CUTOFF_SORT
 #define TASK_SPAWN_CUTOFF_SORT 64
@@ -225,11 +226,14 @@ int main(int argc, char** argv) {
     const char* reference_file = (argc > 2) ? argv[2] : nullptr;
 
     gtap_thread_config config{
-        .grid_size = GTAP_DAQ_GRID_SIZE,
-        .block_size = GTAP_DAQ_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_DAQ_MAX_TASKS_PER_WARP,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
         .num_queues = 3,
     };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));

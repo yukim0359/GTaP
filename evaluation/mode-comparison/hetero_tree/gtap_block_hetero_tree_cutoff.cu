@@ -4,6 +4,7 @@
 #include <stdlib.h>
 // #define GTAP_ENABLE_PROFILING
 #include "gtap_block.cuh"
+#include "../../common/gtap_launch.hpp"
 #include "hetero_tree_common.cuh"
 
 // Hetero tree (block) with subtree cutoff (OpenMP-style):
@@ -104,10 +105,13 @@ int main(int argc, char** argv) {
     }
 
     gtap_block_config config{
-        .grid_size = GTAP_BENCH_GRID_SIZE,
-        .block_size = GTAP_BENCH_BLOCK_SIZE,
-        .max_tasks_per_block = GTAP_BENCH_MAX_TASKS_PER_BLOCK,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_block = GTAP_MAX_TASKS_PER_BLOCK,
     };
+    if (!apply_block_launch_env(config.grid_size, config.block_size, config.max_tasks_per_block)) {
+        return 1;
+    }
     st = gtap_initialize(config);
     if (st != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));

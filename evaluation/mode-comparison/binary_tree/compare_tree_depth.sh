@@ -23,7 +23,7 @@ COMPUTE=${COMPUTE:-2048}
 MEMORY=${MEMORY:-0}
 NUM_RUNS=${NUM_RUNS:-20}
 
-RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_performance_results.csv"
+RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_depth_results.csv"
 echo "n,GTAP_thread_med,GTAP_thread_err_low,GTAP_thread_err_high,GTAP_block_med,GTAP_block_err_low,GTAP_block_err_high,GTAP_block_cutoff_med,GTAP_block_cutoff_err_low,GTAP_block_cutoff_err_high" > "$RESULTS_FILE"
 
 printf "%6s | %25s | %25s | %25s\n" "n" "thread (ms)" "block (ms)" "block cutoff (ms)"

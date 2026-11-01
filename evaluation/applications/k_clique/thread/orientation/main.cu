@@ -39,6 +39,7 @@ static const char* task_kind_name(int kind) {
 #include "../device_state.cuh"
 #include "counting.cuh"
 #include "tasks.cuh"
+#include "../../../../common/gtap_launch.hpp"
 #include "../../common/host_graph.hpp"
 #include "../../common/host_options.hpp"
 #include "../../common/timing.hpp"
@@ -66,7 +67,7 @@ int main(int argc, char** argv) {
         .max_tasks_per_warp = 150000,
         .num_queues = 1,
     };
-    if (!apply_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
         return 1;
     }
 

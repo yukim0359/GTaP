@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 #include "gtap_thread.cuh"
+#include "../../common/gtap_launch.hpp"
 
 __device__ int d_answer;
 __device__ __constant__ int d_grid_size;
@@ -69,11 +70,14 @@ int main(int argc, char **argv) {
     cudaMemcpyToSymbol(d_cutoff_depth, &CUTOFF_DEPTH, sizeof(int));
 
     gtap_thread_config config{
-        .grid_size = GTAP_DAQ_GRID_SIZE,
-        .block_size = GTAP_DAQ_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_DAQ_MAX_TASKS_PER_WARP,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
         .num_queues = 1,
     };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));

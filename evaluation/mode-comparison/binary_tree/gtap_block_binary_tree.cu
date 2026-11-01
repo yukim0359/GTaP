@@ -4,8 +4,8 @@
 #include <random>
 #include <algorithm>
 // #define GTAP_ENABLE_PROFILING
-#include "config_defaults.cuh"
 #include "gtap_block.cuh"
+#include "../../common/gtap_launch.hpp"
 
 // ------------------------------
 // Tunable synthetic workload
@@ -213,6 +213,9 @@ int main(int argc, char** argv) {
         .block_size = GTAP_BLOCK_SIZE,
         .max_tasks_per_block = GTAP_MAX_TASKS_PER_BLOCK,
     };
+    if (!apply_block_launch_env(config.grid_size, config.block_size, config.max_tasks_per_block)) {
+        return 1;
+    }
     st = gtap_initialize(config);
     if (st != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));

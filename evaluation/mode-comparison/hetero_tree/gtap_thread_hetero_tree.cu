@@ -4,6 +4,7 @@
 #include <stdlib.h>
 // #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
+#include "../../common/gtap_launch.hpp"
 #include "hetero_tree_common.cuh"
 
 // Hetero tree (thread, w/o DAQ): kind-specific compute on leaves only.
@@ -76,11 +77,14 @@ int main(int argc, char** argv) {
     }
 
     gtap_thread_config config{
-        .grid_size = GTAP_BENCH_GRID_SIZE,
-        .block_size = GTAP_BENCH_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
         .num_queues = 1,
     };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
     st = gtap_initialize(config);
     if (st != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));

@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdio.h>
 
 // Hetero tree: each leaf has kind = hash(node) % K and runs a distinct
 // branch-free compute column. Per-iter work matches binary_tree's

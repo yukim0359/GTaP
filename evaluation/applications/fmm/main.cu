@@ -11,6 +11,7 @@
 // #define GTAP_ENABLE_PROFILING
 #include "config_defaults.cuh"
 
+#include "../../common/gtap_launch.hpp"
 #include "host_options.hpp"
 #include "host_setup.cuh"
 #include "host_run.cuh"
@@ -20,6 +21,9 @@
 int main(int argc, char **argv) {
   FmmRun run;
   if (!parse_options(argc, argv, run.options)) return 1;
+  int sample_n = run.options.direct_sample_n;
+  if (!parse_int_env("FMM3D_DIRECT_SAMPLE_N", 0, sample_n)) return 1;
+  run.options.direct_sample_n = std::min(run.options.n, sample_n);
   if (!init_cuda()) return 1;
 
   run.timings.run_start = std::chrono::high_resolution_clock::now();

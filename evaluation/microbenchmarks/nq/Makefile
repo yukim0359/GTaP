@@ -11,7 +11,10 @@ OUT_GTAP   := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
 OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_CILK   := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
 
-GTAP_CFLAGS ?= -fgtap-no-taskwait
+GTAP_GRID_SIZE          ?= 2000
+GTAP_BLOCK_SIZE         ?= 32
+GTAP_MAX_TASKS_PER_WARP ?= 20000
+GTAP_CFLAGS             ?= -fgtap-no-taskwait
 
 .PHONY: all gtap omp cilk clean print-vars
 
@@ -39,6 +42,9 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
 	  "$(SRC_GTAP)" -o "$(OUT_GTAP)" \
 	  $(GTAP_CUDA_LIBS)

@@ -1,7 +1,7 @@
 #pragma once
 
+#include "../../../common/gtap_launch.hpp"
 #include "../host_cuda.hpp"
-#include "../host_options.hpp"
 #include "../host_types.hpp"
 #include "common.cuh"
 #include "gtap_thread.cuh"
@@ -120,7 +120,7 @@ static bool init_dtt_gtap(FmmRun &run) {
       .num_queues = 1,
       .profile_capacity_per_warp = GTAP_PROFILE_CAPACITY,
   };
-  if (!apply_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+  if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
     return false;
   }
   std::printf("GTaP config: grid=%d block=%d max_tasks_per_warp=%d "

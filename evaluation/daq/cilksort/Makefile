@@ -2,7 +2,6 @@ BENCHMARK_NAME := cilksort
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
-
 CUDA_PATH  ?= $(CUDA_HOME)
 CUDA_ARCH  ?= sm_90
 
@@ -49,9 +48,9 @@ $(OUT_QUEUE_1): $(SRC_QUEUE_1) | $(OUT_DIR)
 	  -Wall -Wextra \
 	  -Xcuda-ptxas --warn-on-spills \
 	  -I"$(GT_INC)" \
-	  -DGTAP_DAQ_GRID_SIZE="$(GTAP_GRID_SIZE)" \
-	  -DGTAP_DAQ_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-	  -DGTAP_DAQ_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_QUEUE_1)" -o "$(OUT_QUEUE_1)"
@@ -65,9 +64,9 @@ $(OUT_QUEUE_3): $(SRC_QUEUE_3) | $(OUT_DIR)
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
 	  -I"$(GT_INC)" \
-	  -DGTAP_DAQ_GRID_SIZE="$(GTAP_GRID_SIZE)" \
-	  -DGTAP_DAQ_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
-	  -DGTAP_DAQ_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
+	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
+	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
+	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
 	  -L"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_QUEUE_3)" -o "$(OUT_QUEUE_3)"

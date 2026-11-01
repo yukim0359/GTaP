@@ -147,9 +147,9 @@ compile_with_cutoff() {
       -Wall -Wextra \
       $extra_flags \
       -I"$GT_INC" \
-      -DGTAP_DAQ_GRID_SIZE="$GTAP_GRID_SIZE" \
-      -DGTAP_DAQ_BLOCK_SIZE="$GTAP_BLOCK_SIZE" \
-      -DGTAP_DAQ_MAX_TASKS_PER_WARP="$GTAP_MAX_TASKS_PER_WARP" \
+      -DGTAP_GRID_SIZE="$GTAP_GRID_SIZE" \
+      -DGTAP_BLOCK_SIZE="$GTAP_BLOCK_SIZE" \
+      -DGTAP_MAX_TASKS_PER_WARP="$GTAP_MAX_TASKS_PER_WARP" \
       -DTASK_SPAWN_CUTOFF_SORT="$cutoff" \
       -DTASK_SPAWN_CUTOFF_MERGE="$cutoff" \
       $GTAP_CFLAGS \

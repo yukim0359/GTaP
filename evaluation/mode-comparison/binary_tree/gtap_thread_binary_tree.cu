@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <stdint.h>
 // #define GTAP_ENABLE_PROFILING
-#include "config_defaults.cuh"
 #include "gtap_thread.cuh"
+#include "../../common/gtap_launch.hpp"
 
 // ------------------------------
 // Tunable synthetic workload
@@ -171,6 +171,9 @@ int main(int argc, char** argv) {
         .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
         .num_queues = 1,
     };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
     st = gtap_initialize(config);
     if (st != cudaSuccess) {
         fprintf(stderr, "gtap_initialize failed: %s\n", cudaGetErrorString(st));

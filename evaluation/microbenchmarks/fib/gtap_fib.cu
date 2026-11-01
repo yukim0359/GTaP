@@ -4,6 +4,7 @@
 #define GTAP_ENABLE_PROFILING
 // #define INIT_PROFILE
 #include "gtap_thread.cuh"
+#include "../../common/gtap_launch.hpp"
 
 __device__ int d_result;
 
@@ -49,11 +50,14 @@ int main(int argc, char** argv) {
 #endif
     size_t gtap_device_bytes = 0;
     gtap_thread_config config{
-        .grid_size = GTAP_BENCH_GRID_SIZE,
-        .block_size = GTAP_BENCH_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
-        .num_queues = GTAP_BENCH_NUM_QUEUES,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
+        .num_queues = GTAP_NUM_QUEUES,
     };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
     err = gtap_initialize(config, &gtap_device_bytes);
     if (err == cudaSuccess) {
         err = cudaDeviceSynchronize();
