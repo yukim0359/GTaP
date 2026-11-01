@@ -26,53 +26,27 @@ static bool is_integer_string(const char *s) {
   return true;
 }
 
-static bool parse_positive_int_env(const char *name, int &out) {
+static bool parse_int_env(const char *name, int minimum, int &out) {
   const char *s = std::getenv(name);
   if (s == nullptr || *s == '\0') return true;
   if (!is_integer_string(s)) {
-    std::fprintf(stderr, "%s must be a positive integer, got %s\n", name, s);
+    std::fprintf(stderr, "%s must be an integer >= %d, got %s\n", name, minimum, s);
     return false;
   }
-  int value = std::atoi(s);
-  if (value < 1) {
-    std::fprintf(stderr, "%s must be positive, got %d\n", name, value);
+  const long value = std::strtol(s, nullptr, 10);
+  if (value < minimum || value > std::numeric_limits<int>::max()) {
+    std::fprintf(stderr, "%s must be an integer in [%d, %d], got %s\n", name, minimum,
+                 std::numeric_limits<int>::max(), s);
     return false;
   }
-  out = value;
-  return true;
-}
-
-static bool parse_nonnegative_int_env(const char *name, int &out) {
-  const char *s = std::getenv(name);
-  if (s == nullptr || *s == '\0') return true;
-  if (!is_integer_string(s)) {
-    std::fprintf(stderr, "%s must be a non-negative integer, got %s\n", name, s);
-    return false;
-  }
-  int value = std::atoi(s);
-  if (value < 0) {
-    std::fprintf(stderr, "%s must be non-negative, got %d\n", name, value);
-    return false;
-  }
-  out = value;
+  out = static_cast<int>(value);
   return true;
 }
 
 static bool apply_launch_env(int &grid_size, int &block_size, int &max_tasks_per_warp) {
-  return parse_positive_int_env("GTAP_GRID_SIZE", grid_size) &&
-         parse_positive_int_env("GTAP_BLOCK_SIZE", block_size) &&
-         parse_nonnegative_int_env("GTAP_MAX_TASKS_PER_WARP", max_tasks_per_warp);
-}
-
-static int h_get_env_int(const char *name, int fallback) {
-  const char *value = std::getenv(name);
-  if (!value || value[0] == '\0') return fallback;
-  char *end = nullptr;
-  const long parsed = std::strtol(value, &end, 10);
-  if (end == value) return fallback;
-  if (parsed < 0) return 0;
-  if (parsed > std::numeric_limits<int>::max()) return std::numeric_limits<int>::max();
-  return static_cast<int>(parsed);
+  return parse_int_env("GTAP_GRID_SIZE", 1, grid_size) &&
+         parse_int_env("GTAP_BLOCK_SIZE", 1, block_size) &&
+         parse_int_env("GTAP_MAX_TASKS_PER_WARP", 0, max_tasks_per_warp);
 }
 
 static bool parse_options(int argc, char **argv, FmmOptions &options) {
@@ -83,7 +57,8 @@ static bool parse_options(int argc, char **argv, FmmOptions &options) {
   options.n = std::atoi(argv[1]);
   options.theta = (argc >= 3) ? static_cast<Real>(std::atof(argv[2])) : Real(0.5);
   if (options.n <= 0) return false;
-  options.direct_sample_n =
-      std::min(options.n, h_get_env_int("FMM3D_DIRECT_SAMPLE_N", DIRECT_SAMPLE_N_DEFAULT));
+  int sample_n = DIRECT_SAMPLE_N_DEFAULT;
+  if (!parse_int_env("FMM3D_DIRECT_SAMPLE_N", 0, sample_n)) return false;
+  options.direct_sample_n = std::min(options.n, sample_n);
   return true;
 }

@@ -112,8 +112,9 @@ static void h_reset_fixed_lists(HostFixedLists &lists) {
   lists.overflow = 0;
 }
 
-static void h_aggregate_fixed_list_stats(const HostFixedLists &lists, int ncells,
-                                        FmmDttState &dtt) {
+static void h_aggregate_fixed_list_stats(FmmDttState &dtt) {
+  const HostFixedLists &lists = dtt.host_fixed_lists;
+  const int ncells = static_cast<int>(lists.m2l_count.size());
   dtt.m2l_total_ll = 0;
   dtt.p2p_total_ll = 0;
   dtt.max_m2l_count = 0;
@@ -126,10 +127,10 @@ static void h_aggregate_fixed_list_stats(const HostFixedLists &lists, int ncells
   }
 }
 
-static void h_run_host_dtt_traversal(
-    const std::vector<TreeNode> &tree, Real theta,
-    HostFixedLists &lists, FmmDttState &dtt, HostDttBreakdown &breakdown) {
-  const int ncells = static_cast<int>(tree.size());
+static void h_run_host_dtt_traversal(const std::vector<TreeNode> &tree, Real theta,
+                                    FmmDttState &dtt) {
+  HostFixedLists &lists = dtt.host_fixed_lists;
+  HostDttBreakdown &breakdown = dtt.host_dtt_breakdown;
   const auto t_reset_start = std::chrono::high_resolution_clock::now();
   h_reset_fixed_lists(lists);
   const auto t_reset_end = std::chrono::high_resolution_clock::now();
@@ -141,7 +142,7 @@ static void h_run_host_dtt_traversal(
   }
   const auto t_traverse_end = std::chrono::high_resolution_clock::now();
   const auto t_stats_start = std::chrono::high_resolution_clock::now();
-  h_aggregate_fixed_list_stats(lists, ncells, dtt);
+  h_aggregate_fixed_list_stats(dtt);
   const auto t_stats_end = std::chrono::high_resolution_clock::now();
   breakdown.ms_reset_counts =
       std::chrono::duration<double, std::milli>(t_reset_end - t_reset_start).count();
@@ -172,8 +173,7 @@ static bool run_dtt_openmp(FmmRun &run) {
 
   const std::chrono::high_resolution_clock::time_point t_dtt_total_start =
       std::chrono::high_resolution_clock::now();
-  h_run_host_dtt_traversal(run.host.htree, run.options.theta, dtt.host_fixed_lists, dtt,
-                          dtt.host_dtt_breakdown);
+  h_run_host_dtt_traversal(run.host.htree, run.options.theta, dtt);
   dtt.overflow = dtt.host_fixed_lists.overflow;
   if (dtt.overflow) {
     std::printf("Host 3D DTT fixed-cap overflow: m2l_cap=%d max_m2l=%d  p2p_cap=%d max_p2p=%d\n",
