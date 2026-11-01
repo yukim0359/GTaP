@@ -131,11 +131,15 @@ int main(int argc, char** argv) {
         return 1;
     }
     cudaEventRecord(stop);
+    st = gtap_synchronize();
+    if (st != cudaSuccess) {
+        fprintf(stderr, "gtap_synchronize failed: %s\n", cudaGetErrorString(st));
+        return 1;
+    }
     cudaEventSynchronize(stop);
 
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
-    cudaDeviceSynchronize();
 
     double sample = 0.0;
     int64_t sample_idx = (height == 0) ? 0 : ((int64_t(1) << height) - 1);

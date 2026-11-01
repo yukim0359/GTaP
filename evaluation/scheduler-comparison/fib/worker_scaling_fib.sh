@@ -184,7 +184,8 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         echo "    Running WS variant $NUM_RUNS times..."
         TIMES_WS=()
         for i in $(seq 1 $NUM_RUNS); do
-            output=$("$BINARY_WS_PATH" "$INPUT_N" 2>&1 || true)
+            output=$(GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
+                "$BINARY_WS_PATH" "$INPUT_N" 2>&1 || true)
             time=$(echo "$output" | grep "Execution time" | sed 's/.*: \([0-9.]*\) ms.*/\1/')
             if [ -n "$time" ]; then
                 TIMES_WS+=("$time")
@@ -195,7 +196,8 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         echo "    Running GQ variant $NUM_RUNS times..."
         TIMES_GQ=()
         for i in $(seq 1 $NUM_RUNS); do
-            output=$("$BINARY_GQ_PATH" "$INPUT_N" 2>&1 || true)
+            output=$(GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
+                "$BINARY_GQ_PATH" "$INPUT_N" 2>&1 || true)
             time=$(echo "$output" | grep "Execution time" | sed 's/.*: \([0-9.]*\) ms.*/\1/')
             if [ -n "$time" ]; then
                 TIMES_GQ+=("$time")
@@ -206,7 +208,8 @@ for block_size in "${BLOCK_SIZES[@]}"; do
         echo "    Running CHASELEV variant $NUM_RUNS times..."
         TIMES_CL=()
         for i in $(seq 1 $NUM_RUNS); do
-            output=$("$BINARY_CL_PATH" "$INPUT_N" 2>&1 || true)
+            output=$(GTAP_GRID_SIZE="$grid_size" GTAP_BLOCK_SIZE="$block_size" GTAP_MAX_TASKS_PER_WARP="$max_tasks_per_warp" \
+                "$BINARY_CL_PATH" "$INPUT_N" 2>&1 || true)
             time=$(echo "$output" | grep "Execution time" | sed 's/.*: \([0-9.]*\) ms.*/\1/')
             if [ -n "$time" ]; then
                 TIMES_CL+=("$time")

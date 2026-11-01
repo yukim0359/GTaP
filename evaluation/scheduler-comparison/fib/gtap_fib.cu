@@ -63,9 +63,13 @@ int main(int argc, char** argv) {
         gtap_finalize();
         return 1;
     }
-    gtap_synchronize();
     cudaEventRecord(stop);
-    cudaDeviceSynchronize();
+    err = gtap_synchronize();
+    if (err != cudaSuccess) {
+        printf("Error: %s\n", cudaGetErrorString(err));
+        gtap_finalize();
+        return 1;
+    }
     cudaEventSynchronize(stop);
     
     int h_result;

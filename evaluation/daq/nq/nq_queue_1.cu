@@ -31,10 +31,6 @@ __device__ void nq(int row, uint32_t column, uint32_t left, uint32_t down, uint3
         serial_search(row, column, left, down, right);
         return;
     }
-    // if (row == grid_size) {
-    //     atomicAdd(&d_answer, 1);
-    //     return;
-    // }
 
     uint32_t mask = (grid_size < 32 ? (1u << grid_size) - 1 : 0xFFFFFFFFu);
     uint32_t avail = mask & ~((column | left | right));
@@ -90,6 +86,7 @@ int main(int argc, char **argv) {
     cudaEventRecord(start);
     err = gtap_launch(my_kernel);
     cudaEventRecord(stop);
+    gtap_synchronize();
     cudaEventSynchronize(stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);

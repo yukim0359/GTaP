@@ -104,7 +104,6 @@ __device__ void cilkmerge(int* a, int a_len, int* b, int b_len, int* dst) {
             for (int i = 0; i < a_len; i++) {
                 dst[i] = a[i];
             }
-            // printf("cilkmerge: a_len = %d\n", a_len);
         }
         __threadfence();
         return;

@@ -8,22 +8,12 @@
 #include "gtap_thread.cuh"
 #include "../../common/gtap_launch.hpp"
 
-// ------------------------------
-// Tunable synthetic workload
-// ------------------------------
-// Each task does:
-//  - mem_ops global loads (random indices) from g_input
-//  - compute_iters iterations of FMA-like arithmetic
-// Output: one double per node (g_out[node])
-
-// Device globals
 __device__ const double* g_input;
 __device__ const int*    g_indices;
 __device__ double*       g_out;
 __device__ int           g_input_n;
 __device__ int           g_indices_n;
 
-// Bind helper
 static inline cudaError_t bind_globals(const double* d_input, int input_n,
                                        const int* d_indices, int indices_n,
                                        double* d_out) {
@@ -41,18 +31,8 @@ static inline cudaError_t bind_globals(const double* d_input, int input_n,
     return cudaSuccess;
 }
 
-// Prevent the compiler from optimizing away the loads too aggressively
 __device__ __forceinline__ double mix_fma(double x) {
     return fma(x, 1.0000001192092896, 0.9999999403953552);
-}
-
-__device__ __forceinline__ uint32_t hash32(uint32_t x){
-    x ^= x >> 16;
-    x *= 0x7feb352dU;
-    x ^= x >> 15;
-    x *= 0x846ca68bU;
-    x ^= x >> 16;
-    return x;
 }
 
 __device__ __forceinline__ uint32_t xorshift32(uint32_t x) {
@@ -86,15 +66,9 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
     return (double)mix;
 }
 
-// ------------------------------
-// Tree task: spawn two children and join
-// Each node writes one scalar result
-// 1 thread == 1 task
-// ------------------------------
 #pragma gtap function
 __device__ void tree_work(int node, int height, int mem_ops, int compute_iters) {
     if (height == 0) {
-        // leaf only: synthetic work
         double v = do_memory_and_compute(node, mem_ops, compute_iters);
         g_out[node] = v;
         return;
@@ -133,7 +107,6 @@ int main(int argc, char** argv) {
     printf("Tree workload (1 thread = 1 task): height=%d nodes=%d mem_ops=%d compute_iters=%d\n",
            height, total_nodes, mem_ops, compute_iters);
 
-    // Host init
     std::mt19937_64 rng(0xC0FFEE);
     std::uniform_real_distribution<double> dist(-1.0, 1.0);
     std::uniform_int_distribution<int> idist(0, input_n - 1);
@@ -144,7 +117,6 @@ int main(int argc, char** argv) {
     std::vector<int> h_indices(indices_n);
     for (int i = 0; i < indices_n; ++i) h_indices[i] = idist(rng);
 
-    // Device alloc
     double* d_input = nullptr;
     int*    d_indices = nullptr;
     double* d_out = nullptr;
@@ -157,14 +129,12 @@ int main(int argc, char** argv) {
     cudaMemcpy(d_indices, h_indices.data(), sizeof(int)    * (size_t)indices_n, cudaMemcpyHostToDevice);
     cudaMemset(d_out, 0, sizeof(double) * (size_t)total_nodes);
 
-    // Bind device globals
     auto st = bind_globals(d_input, input_n, d_indices, indices_n, d_out);
     if (st != cudaSuccess) {
         fprintf(stderr, "bind_globals failed: %s\n", cudaGetErrorString(st));
         return 1;
     }
 
-    // Init task runtime
     gtap_thread_config config{
         .grid_size = GTAP_GRID_SIZE,
         .block_size = GTAP_BLOCK_SIZE,
@@ -191,11 +161,15 @@ int main(int argc, char** argv) {
         return 1;
     }
     cudaEventRecord(stop);
+    st = gtap_synchronize();
+    if (st != cudaSuccess) {
+        fprintf(stderr, "gtap_synchronize failed: %s\n", cudaGetErrorString(st));
+        return 1;
+    }
     cudaEventSynchronize(stop);
 
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
-    cudaDeviceSynchronize();
 
     double root = 0.0;
     cudaMemcpy(&root, d_out, sizeof(double), cudaMemcpyDeviceToHost);

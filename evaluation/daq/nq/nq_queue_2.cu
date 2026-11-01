@@ -86,6 +86,7 @@ int main(int argc, char **argv) {
     cudaEventRecord(start);
     err = gtap_launch(my_kernel);
     cudaEventRecord(stop);
+    gtap_synchronize();
     cudaEventSynchronize(stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);

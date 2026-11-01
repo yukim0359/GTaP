@@ -148,9 +148,9 @@ static void launch_and_measure(void (*kernel)(), GtapKCliqueRunResult& result) {
     CUDA_CHECK(cudaEventCreate(&stop));
     CUDA_CHECK(cudaEventRecord(start));
     CUDA_CHECK(gtap_launch(kernel));
+    CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(gtap_synchronize());
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaEventRecord(stop));
     CUDA_CHECK(cudaEventSynchronize(stop));
     float kernel_ms = 0.0f;
     CUDA_CHECK(cudaEventElapsedTime(&kernel_ms, start, stop));

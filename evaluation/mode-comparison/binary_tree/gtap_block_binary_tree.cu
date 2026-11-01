@@ -44,15 +44,6 @@ __device__ __forceinline__ double mix_fma(double x) {
     return fma(x, 1.0000001192092896, 0.9999999403953552);
 }
 
-__device__ __forceinline__ uint32_t hash32(uint32_t x){
-    x ^= x >> 16;
-    x *= 0x7feb352dU;
-    x ^= x >> 15;
-    x *= 0x846ca68bU;
-    x ^= x >> 16;
-    return x;
-}
-
 __device__ __forceinline__ uint32_t xorshift32(uint32_t x) {
     x ^= x << 13;
     x ^= x >> 17;
@@ -103,36 +94,6 @@ __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters
     return (double)mix;
 }
 
-// old ver.
-// __device__ double do_memory_and_compute(int node, int mem_ops, int compute_iters) {
-//     // 1) fixed number of random global loads
-//     double acc = 0.0;
-//     // make per-node starting point different
-//     uint32_t base = hash32((uint32_t)node) % (uint32_t)g_indices_n;
-
-//     for (int m = threadIdx.x; m < mem_ops; m += blockDim.x) {
-//         int idx = g_indices[(base + m) % g_indices_n];
-//         // idx in [0, g_input_n)
-//         acc += g_input[idx];
-//     }
-
-//     // 2) variable compute: FMA-heavy loop
-//     // per-thread compute (no block-wide reduction)
-//     double x = acc + (double)(node & 0xFF) * 1e-9;
-//     for (int it = threadIdx.x; it < compute_iters; it += blockDim.x) {
-//         x = mix_fma(x);
-//     }
-
-//     // Prevent dead-code elimination without adding any reduction/atomic.
-//     // This keeps the random loads + FMA work "real" for every participating thread.
-//     asm volatile("" :: "f"(x));
-//     return x; // per-thread value (not reduced)
-// }
-
-// ------------------------------
-// Tree task: spawn two children and join
-// Each node writes one scalar result
-// ------------------------------
 #pragma gtap function
 __device__ void tree_work(const int node, const int height,
                           const int mem_ops, const int compute_iters) {
@@ -232,11 +193,15 @@ int main(int argc, char** argv) {
         return 1;
     }
     cudaEventRecord(stop);
+    st = gtap_synchronize();
+    if (st != cudaSuccess) {
+        fprintf(stderr, "gtap_synchronize failed: %s\n", cudaGetErrorString(st));
+        return 1;
+    }
     cudaEventSynchronize(stop);
 
     float ms = 0.0f;
     cudaEventElapsedTime(&ms, start, stop);
-    cudaDeviceSynchronize();
 
     // Copy root output and checksum
     double root = 0.0;

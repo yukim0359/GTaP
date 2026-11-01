@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 #include <time.h>
-#define GTAP_ENABLE_PROFILING
+// #define GTAP_ENABLE_PROFILING
 // #define INIT_PROFILE
 #include "gtap_thread.cuh"
 #include "../../common/gtap_launch.hpp"

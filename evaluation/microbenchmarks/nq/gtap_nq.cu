@@ -109,6 +109,7 @@ int main(int argc, char **argv) {
         gtap_finalize();
         return 1;
     }
+    cudaEventSynchronize(stop);
     float milliseconds = 0;
     cudaEventElapsedTime(&milliseconds, start, stop);
 
