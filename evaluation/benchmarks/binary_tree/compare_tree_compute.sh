@@ -116,4 +116,3 @@ for compute in "${COMPUTE_VALUES[@]}"; do
 done
 
 echo "Wrote $RESULTS_FILE"
-cd "$COMPARE_DIR" && python3 plot_performance_tree.py

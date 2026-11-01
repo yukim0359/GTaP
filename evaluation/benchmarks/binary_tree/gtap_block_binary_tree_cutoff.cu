@@ -4,6 +4,7 @@
 #include <random>
 #include <algorithm>
 // #define GTAP_ENABLE_PROFILING
+#include "config_defaults.cuh"
 #include "gtap_block.cuh"
 
 // Binary tree (block) with OpenMP-style subtree cutoff:
@@ -11,10 +12,6 @@
 // - height <= cutoff: ordinary device helper recurses sequentially
 //   (same per-node block-tiled compute as gtap_block_binary_tree)
 // Default CUTOFF=5 → 32 leaves / task.
-
-#ifndef BINARY_BLOCK_CUTOFF
-#define BINARY_BLOCK_CUTOFF 5
-#endif
 
 __device__ const double* g_input;
 __device__ const int*    g_indices;
@@ -201,9 +198,9 @@ int main(int argc, char** argv) {
     }
 
     gtap_block_config config{
-        .grid_size = GTAP_BENCH_GRID_SIZE,
-        .block_size = GTAP_BENCH_BLOCK_SIZE,
-        .max_tasks_per_block = GTAP_BENCH_MAX_TASKS_PER_BLOCK,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_block = GTAP_MAX_TASKS_PER_BLOCK,
     };
     st = gtap_initialize(config);
     if (st != cudaSuccess) {

@@ -18,7 +18,7 @@ if [ ! -d "$BIN_DIR" ]; then
 fi
 
 echo "Building fib binaries (force rebuild for updated runtime) ..."
-make -C "$COMPARE_DIR" -B gtap omp cilk seq
+make -C "$COMPARE_DIR" -B gtap omp cilk
 
 N_VALUES=(2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40)
 
@@ -73,8 +73,8 @@ else
 fi
 
 # Pretty header (fixed width columns)
-printf "%6s | %25s | %25s | %25s | %25s | %25s | %10s\n" "n" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "Seq (ms)" "OMP/GTAP"
-printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" "------" "-------------------------" "-------------------------" "-------------------------" "-------------------------" "-------------------------" "----------"
+printf "%6s | %25s | %25s | %25s | %25s | %10s\n" "n" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "OMP/GTAP"
+printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" "------" "-------------------------" "-------------------------" "-------------------------" "-------------------------" "----------"
 
 run_stats() {
     local program=$1
@@ -218,11 +218,7 @@ for n in "${N_VALUES[@]}"; do
         read DYNASOAR_MED _ _ DYNASOAR_ELO DYNASOAR_EHI < <(run_stats_dynasoar "$DYNASOAR_FIB_BIN" "$n")
     fi
 
-    # --- Sequential ---
     SEQ_MED=0 SEQ_ELO=0 SEQ_EHI=0
-    if [ -x "$BIN_DIR/seq_$BENCHMARK_NAME" ]; then
-        read SEQ_MED _ _ SEQ_ELO SEQ_EHI < <(run_stats "$BIN_DIR/seq_$BENCHMARK_NAME" "$n" "Execution time")
-    fi
 
     # Speedup (OMP / GTAP, CILK / GTAP) based on medians
     SPEEDUP=0
@@ -244,7 +240,6 @@ for n in "${N_VALUES[@]}"; do
     fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
     fmt_med_iqr "$CILK_MED" "$CILK_ELO" "$CILK_EHI"; printf " | "
     fmt_med_iqr "$DYNASOAR_MED" "$DYNASOAR_ELO" "$DYNASOAR_EHI"; printf " | "
-    fmt_med_iqr "$SEQ_MED"  "$SEQ_ELO"  "$SEQ_EHI";  printf " | "
     if [ "$SPEEDUP" = "0" ]; then
         printf "%10s\n" "N/A"
     else

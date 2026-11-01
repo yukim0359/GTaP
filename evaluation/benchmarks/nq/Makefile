@@ -14,13 +14,11 @@ GT_INC     ?= $(PROJ_DIR)/runtime
 SRC_GTAP   := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
 SRC_OMP    := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).c
 SRC_CILK   := $(SCRIPT_DIR)/cilk_$(BENCHMARK_NAME).c
-SRC_SEQ    := $(SCRIPT_DIR)/seq_$(BENCHMARK_NAME).c
 
 OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_GTAP   := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
 OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_CILK   := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
-OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
 GTAP_CFLAGS ?= -fgtap-no-taskwait
 
@@ -39,11 +37,7 @@ CC_CILK          ?= $(OPENCILK_PREFIX)/bin/clang
 CFLAGS_CILK      ?= -O3 -Wall -Wextra -fopencilk
 LDFLAGS_CILK     ?= -fopencilk
 
-# ---- Sequential build settings ----
-CC_SEQ           ?= $(CLANG_BIN)
-CFLAGS_SEQ       ?= -O3 -Wall -Wextra
-
-.PHONY: all gtap omp cilk seq clean print-vars
+.PHONY: all gtap omp cilk clean print-vars
 
 all: gtap omp cilk
 
@@ -87,11 +81,5 @@ $(OUT_CILK): $(SRC_CILK) | $(OUT_DIR)
 	@test -x "$(CC_CILK)" || (echo "Error: OpenCilk not found at $(CC_CILK). Run: $(PROJ_DIR)/evaluation/scripts/build_opencilk.sh" && false)
 	"$(CC_CILK)" $(CFLAGS_CILK) $(LDFLAGS_CILK) "$(SRC_CILK)" -o "$(OUT_CILK)"
 
-# ---- Build: seq_$(BENCHMARK_NAME).c ----
-seq: $(OUT_SEQ)
-
-$(OUT_SEQ): $(SRC_SEQ) | $(OUT_DIR)
-	"$(CC_SEQ)" $(CFLAGS_SEQ) "$(SRC_SEQ)" -o "$(OUT_SEQ)"
-
 clean:
-	rm -f $(OUT_GTAP) $(OUT_OMP) $(OUT_CILK) $(OUT_SEQ)
+	rm -f $(OUT_GTAP) $(OUT_OMP) $(OUT_CILK)

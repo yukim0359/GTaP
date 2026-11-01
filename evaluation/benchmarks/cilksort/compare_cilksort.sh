@@ -47,8 +47,6 @@ mkdir -p "$TMP_DIR"
 SIZES=(100000 200000 500000 1000000 2000000 5000000 10000000 20000000 50000000 100000000 200000000 500000000 1000000000)
 
 NUM_RUNS=20
-# Set INCLUDE_SEQ=1 to benchmark CPU sequential (default: skip).
-INCLUDE_SEQ="${INCLUDE_SEQ:-0}"
 
 ### cilksort-specific settings ###
 export OMP_STACKSIZE=500M
@@ -96,19 +94,11 @@ else
 fi
 
 # Pretty header (fixed width columns)
-if [ "$INCLUDE_SEQ" -eq 1 ]; then
-    printf "%6s | %25s | %25s | %25s | %25s | %25s | %10s\n" \
-        "size" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "Seq (ms)" "OMP/GTAP"
-    printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
-        "------" "-------------------------" "-------------------------" "-------------------------" \
-        "-------------------------" "-------------------------" "----------"
-else
-    printf "%6s | %25s | %25s | %25s | %25s | %10s\n" \
-        "size" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "OMP/GTAP"
-    printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
-        "------" "-------------------------" "-------------------------" "-------------------------" \
-        "-------------------------" "----------"
-fi
+printf "%6s | %25s | %25s | %25s | %25s | %10s\n" \
+    "size" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "OMP/GTAP"
+printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
+    "------" "-------------------------" "-------------------------" "-------------------------" \
+    "-------------------------" "----------"
 
 run_stats() {
     local program=$1
@@ -258,11 +248,7 @@ for size in "${SIZES[@]}"; do
         read DYNASOAR_MED _ _ DYNASOAR_ELO DYNASOAR_EHI < <(run_stats_dynasoar "$DYNASOAR_CILKSORT_BIN" "$TMP_DIR/$DATA_FILE")
     fi
 
-    # --- Sequential (optional) ---
     SEQ_MED=0 SEQ_ELO=0 SEQ_EHI=0
-    if [ "$INCLUDE_SEQ" -eq 1 ] && [ -x "$BIN_DIR/seq_$BENCHMARK_NAME" ]; then
-        read SEQ_MED _ _ SEQ_ELO SEQ_EHI < <(run_stats "$BIN_DIR/seq_$BENCHMARK_NAME" "$TMP_DIR/$DATA_FILE" "Execution time")
-    fi
 
     # Speedup based on medians
     SPEEDUP=0
@@ -286,9 +272,6 @@ for size in "${SIZES[@]}"; do
     fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
     fmt_med_iqr "$CILK_MED" "$CILK_ELO" "$CILK_EHI"; printf " | "
     fmt_med_iqr "$DYNASOAR_MED" "$DYNASOAR_ELO" "$DYNASOAR_EHI"; printf " | "
-    if [ "$INCLUDE_SEQ" -eq 1 ]; then
-        fmt_med_iqr "$SEQ_MED" "$SEQ_ELO" "$SEQ_EHI"; printf " | "
-    fi
     if [ "$SPEEDUP" = "0" ]; then
         printf "%10s\n" "N/A"
     else

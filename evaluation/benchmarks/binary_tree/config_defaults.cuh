@@ -1,0 +1,17 @@
+#pragma once
+
+#ifndef GTAP_GRID_SIZE
+#define GTAP_GRID_SIZE 2000
+#endif
+#ifndef GTAP_BLOCK_SIZE
+#define GTAP_BLOCK_SIZE 32
+#endif
+#ifndef GTAP_MAX_TASKS_PER_WARP
+#define GTAP_MAX_TASKS_PER_WARP 300000
+#endif
+#ifndef GTAP_MAX_TASKS_PER_BLOCK
+#define GTAP_MAX_TASKS_PER_BLOCK 40000
+#endif
+#ifndef BINARY_BLOCK_CUTOFF
+#define BINARY_BLOCK_CUTOFF 5
+#endif

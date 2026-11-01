@@ -116,4 +116,3 @@ for depth in "${DEPTH_VALUES[@]}"; do
 done
 
 echo "Wrote $RESULTS_FILE"
-cd "$COMPARE_DIR" && python3 plot_performance_tree.py

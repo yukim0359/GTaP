@@ -4,6 +4,7 @@
 #include <random>
 #include <algorithm>
 // #define GTAP_ENABLE_PROFILING
+#include "config_defaults.cuh"
 #include "gtap_block.cuh"
 
 // ------------------------------
@@ -208,9 +209,9 @@ int main(int argc, char** argv) {
 
     // Init task runtime
     gtap_block_config config{
-        .grid_size = GTAP_BENCH_GRID_SIZE,
-        .block_size = GTAP_BENCH_BLOCK_SIZE,
-        .max_tasks_per_block = GTAP_BENCH_MAX_TASKS_PER_BLOCK,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_block = GTAP_MAX_TASKS_PER_BLOCK,
     };
     st = gtap_initialize(config);
     if (st != cudaSuccess) {

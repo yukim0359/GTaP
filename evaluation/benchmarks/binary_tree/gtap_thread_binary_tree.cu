@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stdint.h>
 // #define GTAP_ENABLE_PROFILING
+#include "config_defaults.cuh"
 #include "gtap_thread.cuh"
 
 // ------------------------------
@@ -165,9 +166,9 @@ int main(int argc, char** argv) {
 
     // Init task runtime
     gtap_thread_config config{
-        .grid_size = GTAP_BENCH_GRID_SIZE,
-        .block_size = GTAP_BENCH_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
         .num_queues = 1,
     };
     st = gtap_initialize(config);
