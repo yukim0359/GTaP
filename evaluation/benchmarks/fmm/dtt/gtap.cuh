@@ -2,15 +2,114 @@
 
 #include "../host_cuda.hpp"
 #include "../host_options.hpp"
-#include "../host_timing.hpp"
 #include "../host_types.hpp"
-#include "device.cuh"
-#include "host.cuh"
+#include "../numerics/device_sph.cuh"
+#include "common.cuh"
+#include "gtap_thread.cuh"
 
-#include <algorithm>
 #include <chrono>
 #include <cstdio>
-#include "gtap_thread.cuh"
+
+__device__ void d_dtt_fill_seq(int ci, int cj) {
+  const TreeNode &Ci = g_tree[ci];
+  if (ci == cj) {
+    if (Ci.is_leaf) {
+      d_append_p2p(ci, cj);
+    } else {
+      for (int oi = 0; oi < 8; ++oi) {
+        const int child_i = d_child(Ci, oi);
+        if (child_i == -1) continue;
+        for (int oj = 0; oj < 8; ++oj) {
+          const int child_j = d_child(Ci, oj);
+          if (child_j != -1) d_dtt_fill_seq(child_i, child_j);
+        }
+      }
+    }
+    return;
+  }
+
+  const TreeNode &Cj = g_tree[cj];
+  if (d_dtt_well_separated(Ci, Cj)) {
+    d_append_m2l(ci, cj);
+    return;
+  }
+  if (Ci.is_leaf && Cj.is_leaf) {
+    d_append_p2p(ci, cj);
+    return;
+  }
+
+  {
+    const bool split_ci = d_dtt_split_ci(Ci, Cj);
+    for (int oct = 0; oct < 8; ++oct) {
+      const int child_i = split_ci ? d_child(Ci, oct) : ci;
+      const int child_j = split_ci ? cj : d_child(Cj, oct);
+      if (split_ci ? (child_i == -1) : (child_j == -1)) continue;
+      d_dtt_fill_seq(child_i, child_j);
+    }
+  }
+}
+
+#pragma gtap function
+__device__ void d_dtt_fill(int ci, int cj, int depth) {
+  const TreeNode &Ci = g_tree[ci];
+  if (ci == cj) {
+    if (Ci.is_leaf) {
+      d_append_p2p(ci, cj);
+    } else {
+      for (int oi = 0; oi < 8; ++oi) {
+        const int child_i = d_child(Ci, oi);
+        if (child_i == -1) continue;
+        const bool spawn = (depth < DTT_TASK_DEPTH) &&
+                           (g_tree[child_i].nbody >= DTT_TASK_MIN_N);
+        for (int oj = 0; oj < 8; ++oj) {
+          const int child_j = d_child(Ci, oj);
+          if (child_j == -1) continue;
+          if (spawn) {
+            #pragma gtap task
+            d_dtt_fill(child_i, child_j, depth + 1);
+          } else {
+            d_dtt_fill_seq(child_i, child_j);
+          }
+        }
+      }
+      // #pragma gtap taskwait
+    }
+    return;
+  }
+
+  const TreeNode &Cj = g_tree[cj];
+  if (d_dtt_well_separated(Ci, Cj)) {
+    d_append_m2l(ci, cj);
+    return;
+  }
+  if (Ci.is_leaf && Cj.is_leaf) {
+    d_append_p2p(ci, cj);
+    return;
+  }
+
+  {
+    const bool split_ci = d_dtt_split_ci(Ci, Cj);
+    for (int oct = 0; oct < 8; ++oct) {
+      const int child_i = split_ci ? d_child(Ci, oct) : ci;
+      const int child_j = split_ci ? cj : d_child(Cj, oct);
+      if (split_ci ? (child_i == -1) : (child_j == -1)) continue;
+      const int nb_lhs = split_ci ? g_tree[child_i].nbody : Ci.nbody;
+      const int nb_rhs = split_ci ? Cj.nbody : g_tree[child_j].nbody;
+      if (depth < DTT_TASK_DEPTH && nb_lhs + nb_rhs >= DTT_TASK_MIN_N) {
+        #pragma gtap task
+        d_dtt_fill(child_i, child_j, depth + 1);
+      } else {
+        d_dtt_fill_seq(child_i, child_j);
+      }
+    }
+  }
+  // #pragma gtap taskwait
+}
+
+__global__ void fmm3d_dtt_fill_kernel() {
+  #pragma gtap entry
+  d_dtt_fill(0, 0, 0);
+}
 
 static bool init_dtt_gtap(FmmRun &run) {
   const std::chrono::high_resolution_clock::time_point t_gtap_init_start =
@@ -42,9 +141,9 @@ static bool init_dtt_gtap(FmmRun &run) {
 }
 
 static bool run_dtt_gtap(FmmRun &run) {
-  [[maybe_unused]] const int ncells = run.host.ncells;
+  const int ncells = run.host.ncells;
   FmmDeviceBuffers &d = run.device;
-  [[maybe_unused]] FmmDttState &dtt = run.dtt;
+  FmmDttState &dtt = run.dtt;
   FmmTimings &t = run.timings;
 
 #if FMM3D_GTAP_FUSED
@@ -55,11 +154,9 @@ static bool run_dtt_gtap(FmmRun &run) {
 #endif
   const std::chrono::high_resolution_clock::time_point t_dtt_total_start =
       std::chrono::high_resolution_clock::now();
-#if !FMM3D_PARTITIONED_FUSED_DTT
   CUDA_CHECK(cudaMemset(d.d_m2l_count, 0, sizeof(int) * ncells));
   CUDA_CHECK(cudaMemset(d.d_p2p_count, 0, sizeof(int) * ncells));
   CUDA_CHECK(cudaMemset(d.d_dtt_overflow, 0, sizeof(int)));
-#endif
 
   const std::chrono::high_resolution_clock::time_point t_dtt_kernel_start =
       std::chrono::high_resolution_clock::now();
@@ -69,7 +166,6 @@ static bool run_dtt_gtap(FmmRun &run) {
   const std::chrono::high_resolution_clock::time_point t_dtt_kernel_end =
       std::chrono::high_resolution_clock::now();
 
-#if !FMM3D_PARTITIONED_FUSED_DTT
   CUDA_CHECK(h_copy_dtt_counts_from_device(
       d.d_m2l_count, d.d_p2p_count, d.d_dtt_overflow, ncells,
       dtt.overflow, dtt.max_m2l_count, dtt.max_p2p_count,
@@ -79,13 +175,11 @@ static bool run_dtt_gtap(FmmRun &run) {
                 DTT_M2L_CAP, dtt.max_m2l_count, DTT_P2P_CAP, dtt.max_p2p_count);
     return false;
   }
-#endif
   const std::chrono::high_resolution_clock::time_point t_dtt_total_end =
       std::chrono::high_resolution_clock::now();
   t.ms_dtt_fill_setup = h_elapsed_ms(t_dtt_total_start, t_dtt_kernel_start);
   t.ms_dtt_fill_kernel = h_elapsed_ms(t_dtt_kernel_start, t_dtt_kernel_end);
   t.ms_dtt_fill_post = h_elapsed_ms(t_dtt_kernel_end, t_dtt_total_end);
-  t.ms_dtt = h_elapsed_ms(t_dtt_total_start, t_dtt_total_end);
   t.ms_dtt_core = t.ms_dtt_fill_kernel;
   t.ms_dtt_construct = t.ms_dtt_fill_setup + t.ms_dtt_fill_kernel;
   t.ms_dtt_construct_handoff = t.ms_dtt_construct;

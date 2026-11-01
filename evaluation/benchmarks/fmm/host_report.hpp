@@ -27,11 +27,7 @@ static void print_run_report(const FmmRun &run) {
               4 * EXA_P * EXA_P);
   std::printf("FMM constant memory total: %.1f KiB / 64 KiB\n",
               static_cast<double>(FMM_CONST_BYTES) / 1024.0);
-#if FMM3D_PARTITIONED_FUSED_DTT
-  std::printf("Interactions: (partitioned fused DTT; list counters not updated during traversal)\n");
-#else
   std::printf("Interactions: M2L=%lld  P2P=%lld\n", dtt.m2l_total_ll, dtt.p2p_total_ll);
-#endif
   std::printf("Validation: phi_checksum=%.9e  acc_checksum=%.9e  nonzero_phi=%d/%d  nonzero_acc=%d/%d\n",
               v.checksum, v.acc_checksum, v.nonzero_phi, n, v.nonzero_acc, n);
   if (v.direct_validated) {
@@ -66,10 +62,7 @@ static void print_run_report(const FmmRun &run) {
   std::printf("  [GPU]         DTT post/check: %.3f\n", t.ms_dtt_fill_post);
 #elif FMM3D_ENABLE_GTAP_DTT
   std::printf("  [GPU]         DTT setup: %.3f\n", t.ms_dtt_fill_setup);
-#if FMM3D_PARTITIONED_FUSED_DTT
-  std::printf("  [GPU/GTaP]    DTT exafmm-style range split + fused M2L/P2P: %.3f\n",
-              t.ms_dtt_construct_handoff);
-#elif FMM3D_GTAP_FUSED
+#if FMM3D_GTAP_FUSED
   std::printf("  [GPU/GTaP]    DTT traversal + fused M2L/P2P: %.3f\n", t.ms_dtt_construct_handoff);
 #else
   std::printf("  [GPU/GTaP]    DTT traversal core: %.3f\n", t.ms_dtt_fill_kernel);
@@ -114,9 +107,7 @@ static void print_run_report(const FmmRun &run) {
               run.device.worklist_pair_cap, dtt.worklist_iterations, dtt.worklist_max_frontier, dtt.worklist_overflow);
   std::printf("DTT mode: GPU worklist fixed-cap lists (level-synchronous)\n");
 #elif FMM3D_ENABLE_GTAP_DTT
-#if FMM3D_PARTITIONED_FUSED_DTT
-  std::printf("DTT mode: GTaP partitioned fused traversal (exafmm-style dualTreeTraversal + child-range TraverseRange; no atomics on L/phi)\n");
-#elif FMM3D_GTAP_FUSED
+#if FMM3D_GTAP_FUSED
   std::printf("DTT mode: GTaP fused traversal (M2L/P2P during DTT; M2L kernel skipped)\n");
 #else
   std::printf("DTT mode: GTaP task traversal, GPU fixed-cap lists\n");

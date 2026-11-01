@@ -15,7 +15,7 @@
 #include "host_options.hpp"
 #include "host_setup.cuh"
 #include "host_run.cuh"
-#include "host_validate.hpp"
+#include "host_validate.cuh"
 #include "host_report.hpp"
 
 int main(int argc, char **argv) {

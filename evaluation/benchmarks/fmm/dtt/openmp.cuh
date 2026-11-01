@@ -1,53 +1,13 @@
 #pragma once
 
-#include "../fmm_types.cuh"
+#include "../host_cuda.hpp"
+#include "../host_types.hpp"
+#include "common.cuh"
 
 #include <algorithm>
 #include <chrono>
-#include <cuda_runtime.h>
+#include <cstdio>
 #include <vector>
-
-static inline bool h_dtt_well_separated(const TreeNode &Ci, const TreeNode &Cj, Real theta) {
-  const Real dx = Ci.cx - Cj.cx;
-  const Real dy = Ci.cy - Cj.cy;
-  const Real dz = Ci.cz - Cj.cz;
-  const Real d2 = dx * dx + dy * dy + dz * dz;
-  const Real sr = Ci.r + Cj.r;
-  return (theta * theta * d2 > sr * sr * (Real(1) - Real(1e-3)));
-}
-
-static inline bool h_dtt_split_ci(const TreeNode &Ci, const TreeNode &Cj) {
-  if (Cj.is_leaf) return true;
-  if (Ci.is_leaf) return false;
-  return Ci.r >= Cj.r;
-}
-
-#if FMM3D_PARTITIONED_FUSED_DTT
-static void h_build_child_ranges(const std::vector<TreeNode> &tree,
-                                 std::vector<int> &child_lo,
-                                 std::vector<int> &child_hi) {
-  const int ncells = static_cast<int>(tree.size());
-  child_lo.assign(ncells, 0);
-  child_hi.assign(ncells, 0);
-  for (int ci = 0; ci < ncells; ++ci) {
-    if (tree[ci].is_leaf) continue;
-    int lo = ncells;
-    int hi = 0;
-    for (int oct = 0; oct < 8; ++oct) {
-      const int ch = tree[ci].child[oct];
-      if (ch < 0) continue;
-      lo = std::min(lo, ch);
-      hi = std::max(hi, ch + 1);
-    }
-    if (hi > lo) {
-      child_lo[ci] = lo;
-      child_hi[ci] = hi;
-    }
-  }
-}
-#endif
-
-// ---------- Host dual-tree traversal (fixed-cap lists) ----------
 
 static inline void h_fixed_append_m2l(HostFixedLists &lists, int ci, int cj) {
   int pos;
@@ -136,7 +96,7 @@ static void h_dtt_fixed(int ci, int cj,
   }
 }
 
-[[maybe_unused]] static void h_prepare_fixed_lists(HostFixedLists &lists, int ncells) {
+static void h_prepare_fixed_lists(HostFixedLists &lists, int ncells) {
   lists.m2l_count.assign(ncells, 0);
   lists.p2p_count.assign(ncells, 0);
   const size_t m2l_size = static_cast<size_t>(ncells) * DTT_M2L_CAP;
@@ -150,7 +110,7 @@ static void h_dtt_fixed(int ci, int cj,
   lists.total_p2p = 0;
 }
 
-[[maybe_unused]] static void h_reset_fixed_lists(HostFixedLists &lists, int ncells) {
+static void h_reset_fixed_lists(HostFixedLists &lists) {
   std::fill(lists.m2l_count.begin(), lists.m2l_count.end(), 0);
   std::fill(lists.p2p_count.begin(), lists.p2p_count.end(), 0);
   lists.overflow = 0;
@@ -160,7 +120,7 @@ static void h_dtt_fixed(int ci, int cj,
   lists.total_p2p = 0;
 }
 
-[[maybe_unused]] static void h_aggregate_fixed_list_stats(HostFixedLists &lists, int ncells) {
+static void h_aggregate_fixed_list_stats(HostFixedLists &lists, int ncells) {
   for (int ci = 0; ci < ncells; ++ci) {
     lists.total_m2l += lists.m2l_count[ci];
     lists.total_p2p += lists.p2p_count[ci];
@@ -169,12 +129,12 @@ static void h_dtt_fixed(int ci, int cj,
   }
 }
 
-[[maybe_unused]] static void h_run_host_dtt_traversal(
+static void h_run_host_dtt_traversal(
     const std::vector<TreeNode> &tree, Real theta,
     HostFixedLists &lists, HostDttBreakdown *breakdown = nullptr) {
   const int ncells = static_cast<int>(tree.size());
   const auto t_reset_start = std::chrono::high_resolution_clock::now();
-  h_reset_fixed_lists(lists, ncells);
+  h_reset_fixed_lists(lists);
   const auto t_reset_end = std::chrono::high_resolution_clock::now();
   const auto t_traverse_start = std::chrono::high_resolution_clock::now();
   #pragma omp parallel
@@ -196,30 +156,69 @@ static void h_dtt_fixed(int ci, int cj,
   }
 }
 
+static bool init_dtt_host(FmmRun &run) {
+  const int ncells = run.host.ncells;
+  const std::chrono::high_resolution_clock::time_point t_buffer_alloc_start =
+      std::chrono::high_resolution_clock::now();
+  h_prepare_fixed_lists(run.dtt.host_fixed_lists, ncells);
+  const std::chrono::high_resolution_clock::time_point t_buffer_alloc_end =
+      std::chrono::high_resolution_clock::now();
+  run.dtt.host_dtt_breakdown.ms_buffer_alloc =
+      h_elapsed_ms(t_buffer_alloc_start, t_buffer_alloc_end);
+  run.timings.ms_host_list_buffer_alloc = run.dtt.host_dtt_breakdown.ms_buffer_alloc;
+  return true;
+}
 
-static cudaError_t h_copy_dtt_counts_from_device(
-    int *d_m2l_count, int *d_p2p_count, int *d_dtt_overflow,
-    int ncells,
-    int &out_overflow,
-    int &max_m2l_count, int &max_p2p_count,
-    long long &m2l_total_ll, long long &p2p_total_ll) {
-  cudaError_t err = cudaMemcpy(&out_overflow, d_dtt_overflow, sizeof(int), cudaMemcpyDeviceToHost);
-  if (err != cudaSuccess) return err;
-  std::vector<int> h_m2l_count(ncells), h_p2p_count(ncells);
-  err = cudaMemcpy(h_m2l_count.data(), d_m2l_count, sizeof(int) * ncells, cudaMemcpyDeviceToHost);
-  if (err != cudaSuccess) return err;
-  err = cudaMemcpy(h_p2p_count.data(), d_p2p_count, sizeof(int) * ncells, cudaMemcpyDeviceToHost);
-  if (err != cudaSuccess) return err;
+static bool run_dtt_host(FmmRun &run) {
+  const int ncells = run.host.ncells;
+  FmmDeviceBuffers &d = run.device;
+  FmmDttState &dtt = run.dtt;
+  FmmTimings &t = run.timings;
 
-  m2l_total_ll = 0;
-  p2p_total_ll = 0;
-  max_m2l_count = 0;
-  max_p2p_count = 0;
-  for (int ci = 0; ci < ncells; ++ci) {
-    m2l_total_ll += h_m2l_count[ci];
-    p2p_total_ll += h_p2p_count[ci];
-    max_m2l_count = std::max(max_m2l_count, h_m2l_count[ci]);
-    max_p2p_count = std::max(max_p2p_count, h_p2p_count[ci]);
+  const std::chrono::high_resolution_clock::time_point t_dtt_total_start =
+      std::chrono::high_resolution_clock::now();
+  h_run_host_dtt_traversal(run.host.htree, run.options.theta, dtt.host_fixed_lists, &dtt.host_dtt_breakdown);
+
+  dtt.overflow = dtt.host_fixed_lists.overflow;
+  dtt.max_m2l_count = dtt.host_fixed_lists.max_m2l;
+  dtt.max_p2p_count = dtt.host_fixed_lists.max_p2p;
+  dtt.m2l_total_ll = dtt.host_fixed_lists.total_m2l;
+  dtt.p2p_total_ll = dtt.host_fixed_lists.total_p2p;
+  if (dtt.overflow) {
+    std::printf("Host 3D DTT fixed-cap overflow: m2l_cap=%d max_m2l=%d  p2p_cap=%d max_p2p=%d\n",
+                DTT_M2L_CAP, dtt.max_m2l_count, DTT_P2P_CAP, dtt.max_p2p_count);
+    return false;
   }
-  return cudaSuccess;
+  const std::chrono::high_resolution_clock::time_point t_h2d_counts_start =
+      std::chrono::high_resolution_clock::now();
+  CUDA_CHECK(cudaMemcpy(d.d_m2l_count, dtt.host_fixed_lists.m2l_count.data(),
+                        sizeof(int) * ncells, cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d.d_p2p_count, dtt.host_fixed_lists.p2p_count.data(),
+                        sizeof(int) * ncells, cudaMemcpyHostToDevice));
+  const std::chrono::high_resolution_clock::time_point t_h2d_counts_end =
+      std::chrono::high_resolution_clock::now();
+  const std::chrono::high_resolution_clock::time_point t_h2d_lists_start =
+      std::chrono::high_resolution_clock::now();
+  CUDA_CHECK(cudaMemcpy(d.d_m2l_src, dtt.host_fixed_lists.m2l_src.get(),
+                        sizeof(int) * static_cast<size_t>(ncells) * DTT_M2L_CAP,
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d.d_p2p_src, dtt.host_fixed_lists.p2p_src.get(),
+                        sizeof(int) * static_cast<size_t>(ncells) * DTT_P2P_CAP,
+                        cudaMemcpyHostToDevice));
+  const std::chrono::high_resolution_clock::time_point t_h2d_lists_end =
+      std::chrono::high_resolution_clock::now();
+  dtt.host_dtt_breakdown.ms_h2d_counts = h_elapsed_ms(t_h2d_counts_start, t_h2d_counts_end);
+  dtt.host_dtt_breakdown.ms_h2d_lists = h_elapsed_ms(t_h2d_lists_start, t_h2d_lists_end);
+  const std::chrono::high_resolution_clock::time_point t_dtt_total_end =
+      std::chrono::high_resolution_clock::now();
+  t.ms_dtt_fill_setup = dtt.host_dtt_breakdown.ms_reset_counts;
+  t.ms_dtt_fill_kernel = dtt.host_dtt_breakdown.ms_traverse;
+  t.ms_dtt_fill_post = dtt.host_dtt_breakdown.ms_stats + dtt.host_dtt_breakdown.ms_h2d_counts +
+                     dtt.host_dtt_breakdown.ms_h2d_lists;
+  t.ms_dtt_core = dtt.host_dtt_breakdown.ms_traverse;
+  t.ms_dtt_construct = dtt.host_dtt_breakdown.ms_reset_counts + dtt.host_dtt_breakdown.ms_traverse +
+                     dtt.host_dtt_breakdown.ms_stats;
+  t.ms_dtt_construct_handoff = h_elapsed_ms(t_dtt_total_start, t_dtt_total_end);
+
+  return true;
 }

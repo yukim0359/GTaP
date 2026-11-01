@@ -15,8 +15,6 @@ __device__ Real *g_ay;
 __device__ Real *g_az;
 __device__ int g_n;
 __device__ int g_ncells;
-__device__ int g_nleaf;
-__device__ const int *g_leaf_idx;
 __device__ const int *g_body_cell;
 __device__ int *g_dtt_m2l_count;
 __device__ int *g_dtt_p2p_count;
@@ -24,12 +22,6 @@ __device__ int *g_dtt_m2l_src;
 __device__ int *g_dtt_p2p_src;
 __device__ int *g_dtt_overflow;
 __device__ Real g_dtt_theta;
-
-#if FMM3D_PARTITIONED_FUSED_DTT
-__device__ const int *g_child_lo;
-__device__ const int *g_child_hi;
-__device__ int g_dtt_nspawn;
-#endif
 
 #if FMM_CONST_IN_CONSTANT
 __constant__ Real g_m2l_cnm_re[M2L_CNM_SIZE];

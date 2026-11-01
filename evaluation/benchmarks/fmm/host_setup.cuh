@@ -2,7 +2,6 @@
 
 #include "device_bind.cuh"
 #include "host_cuda.hpp"
-#include "host_timing.hpp"
 #include "host_types.hpp"
 #include "tree/gpu_morton.cuh"
 #include "tree/host_octree.hpp"
@@ -184,9 +183,9 @@ static bool alloc_and_bind(FmmRun &run) {
   CUDA_CHECK(cudaMemcpy(d.d_upward_cells, run.host.upward_cells.data(), sizeof(int) * ncells,
                         cudaMemcpyHostToDevice));
 
-  CUDA_CHECK(bind_params(n, ncells, nleaf));
+  CUDA_CHECK(bind_params(n, ncells));
   CUDA_CHECK(bind_ptrs(d.d_tree, d.d_bx, d.d_by, d.d_bz, d.d_bq, d.d_phi, d.d_ax, d.d_ay, d.d_az,
-                       d.d_leaf_idx, d.d_body_cell));
+                       d.d_body_cell));
   run.timings.ms_h2d_bind = h_elapsed_ms(
       t_h2d_bind_start, std::chrono::high_resolution_clock::now());
   return true;

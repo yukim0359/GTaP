@@ -42,10 +42,26 @@ static bool parse_positive_int_env(const char *name, int &out) {
   return true;
 }
 
+static bool parse_nonnegative_int_env(const char *name, int &out) {
+  const char *s = std::getenv(name);
+  if (s == nullptr || *s == '\0') return true;
+  if (!is_integer_string(s)) {
+    std::fprintf(stderr, "%s must be a non-negative integer, got %s\n", name, s);
+    return false;
+  }
+  int value = std::atoi(s);
+  if (value < 0) {
+    std::fprintf(stderr, "%s must be non-negative, got %d\n", name, value);
+    return false;
+  }
+  out = value;
+  return true;
+}
+
 static bool apply_launch_env(int &grid_size, int &block_size, int &max_tasks_per_warp) {
   return parse_positive_int_env("GTAP_GRID_SIZE", grid_size) &&
          parse_positive_int_env("GTAP_BLOCK_SIZE", block_size) &&
-         parse_positive_int_env("GTAP_MAX_TASKS_PER_WARP", max_tasks_per_warp);
+         parse_nonnegative_int_env("GTAP_MAX_TASKS_PER_WARP", max_tasks_per_warp);
 }
 
 static int h_get_env_int(const char *name, int fallback) {

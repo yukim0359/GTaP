@@ -44,8 +44,6 @@ struct FmmDeviceBuffers {
   int *d_m2l_src = nullptr;
   int *d_p2p_src = nullptr;
   int *d_dtt_overflow = nullptr;
-  int *d_child_lo = nullptr;
-  int *d_child_hi = nullptr;
   DttPair *d_pairs_a = nullptr;
   DttPair *d_pairs_b = nullptr;
   int *d_worklist_out_count = nullptr;
@@ -69,12 +67,16 @@ struct FmmDttState {
   HostDttBreakdown host_dtt_breakdown;
 };
 
+static double h_elapsed_ms(std::chrono::high_resolution_clock::time_point begin,
+                           std::chrono::high_resolution_clock::time_point end) {
+  return std::chrono::duration<double, std::milli>(end - begin).count();
+}
+
 struct FmmTimings {
   std::chrono::high_resolution_clock::time_point run_start{};
   double ms_tree_build = 0.0;
   double ms_upward = 0.0;
   double ms_gtap_init = 0.0;
-  double ms_dtt = 0.0;
   [[maybe_unused]] double ms_dtt_fill_setup = 0.0;
   [[maybe_unused]] double ms_dtt_fill_kernel = 0.0;
   [[maybe_unused]] double ms_dtt_fill_post = 0.0;

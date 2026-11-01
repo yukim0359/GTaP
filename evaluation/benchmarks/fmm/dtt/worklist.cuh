@@ -5,15 +5,84 @@
 #endif
 
 #include "../host_cuda.hpp"
-#include "../host_timing.hpp"
 #include "../host_types.hpp"
-#include "device.cuh"
-#include "host.cuh"
+#include "../numerics/device_sph.cuh"
+#include "common.cuh"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <limits>
+
+__device__ __forceinline__ void d_worklist_push(DttPair *out, int *out_count,
+                                                int pair_cap, int *overflow,
+                                                int ci, int cj) {
+  int pos = atomicAdd(out_count, 1);
+  if (pos < pair_cap) {
+    out[pos] = DttPair{ci, cj};
+  } else if (overflow) {
+    atomicExch(overflow, 1);
+  }
+}
+
+__device__ __forceinline__ void d_worklist_expand_one(int ci, int cj, DttPair *out,
+                                                      int *out_count, int pair_cap,
+                                                      int *overflow) {
+  const TreeNode &Ci = g_tree[ci];
+  if (ci == cj) {
+    if (Ci.is_leaf) {
+      d_append_p2p(ci, cj);
+    } else {
+      for (int oi = 0; oi < 8; ++oi) {
+        const int child_i = d_child(Ci, oi);
+        if (child_i == -1) continue;
+        for (int oj = 0; oj < 8; ++oj) {
+          const int child_j = d_child(Ci, oj);
+          if (child_j != -1) {
+            d_worklist_push(out, out_count, pair_cap, overflow, child_i, child_j);
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  const TreeNode &Cj = g_tree[cj];
+  if (d_dtt_well_separated(Ci, Cj)) {
+    d_append_m2l(ci, cj);
+    return;
+  }
+  if (Ci.is_leaf && Cj.is_leaf) {
+    d_append_p2p(ci, cj);
+    return;
+  }
+
+  if (d_dtt_split_ci(Ci, Cj)) {
+    for (int oct = 0; oct < 8; ++oct) {
+      const int child_i = d_child(Ci, oct);
+      if (child_i != -1) {
+        d_worklist_push(out, out_count, pair_cap, overflow, child_i, cj);
+      }
+    }
+  } else {
+    for (int oct = 0; oct < 8; ++oct) {
+      const int child_j = d_child(Cj, oct);
+      if (child_j != -1) {
+        d_worklist_push(out, out_count, pair_cap, overflow, ci, child_j);
+      }
+    }
+  }
+}
+
+__global__ void fmm3d_worklist_expand_kernel(const DttPair *in, int in_count,
+                                             DttPair *out, int *out_count,
+                                             int pair_cap, int *overflow) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int stride = blockDim.x * gridDim.x;
+  for (int idx = tid; idx < in_count; idx += stride) {
+    d_worklist_expand_one(in[idx].ci, in[idx].cj, out, out_count, pair_cap, overflow);
+  }
+}
 
 static bool prepare_dtt_worklist(FmmRun &run) {
   FmmDeviceBuffers &d = run.device;
@@ -114,7 +183,6 @@ static bool run_dtt_worklist(FmmRun &run) {
   t.ms_dtt_fill_setup = h_elapsed_ms(t_dtt_total_start, t_dtt_kernel_start);
   t.ms_dtt_fill_kernel = h_elapsed_ms(t_dtt_kernel_start, t_dtt_kernel_end);
   t.ms_dtt_fill_post = h_elapsed_ms(t_dtt_kernel_end, t_dtt_total_end);
-  t.ms_dtt = h_elapsed_ms(t_dtt_total_start, t_dtt_total_end);
   t.ms_dtt_core = t.ms_dtt_fill_kernel;
   t.ms_dtt_construct = t.ms_dtt_fill_setup + t.ms_dtt_fill_kernel;
   t.ms_dtt_construct_handoff = t.ms_dtt_construct;

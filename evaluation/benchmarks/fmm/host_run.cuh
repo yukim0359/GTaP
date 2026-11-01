@@ -1,18 +1,15 @@
 #pragma once
 
 #include "device_bind.cuh"
-#include "dtt/device.cuh"
-#include "dtt/host.cuh"
 #if FMM3D_ENABLE_GTAP_DTT
-#include "dtt/run_gtap.cuh"
+#include "dtt/gtap.cuh"
 #elif FMM3D_WORKLIST_DTT
-#include "dtt/run_worklist.cuh"
+#include "dtt/worklist.cuh"
 #else
-#include "dtt/run_host.cuh"
+#include "dtt/openmp.cuh"
 #endif
 #include "gtap_thread.cuh"
 #include "host_cuda.hpp"
-#include "host_timing.hpp"
 #include "host_types.hpp"
 #include "numerics/kernels.cuh"
 
@@ -62,22 +59,6 @@ static bool init_dtt(FmmRun &run) {
   CUDA_CHECK(cudaMalloc(&d.d_m2l_src, sizeof(int) * static_cast<size_t>(ncells) * DTT_M2L_CAP));
   CUDA_CHECK(cudaMalloc(&d.d_p2p_src, sizeof(int) * static_cast<size_t>(ncells) * DTT_P2P_CAP));
   CUDA_CHECK(cudaMalloc(&d.d_dtt_overflow, sizeof(int)));
-#if FMM3D_PARTITIONED_FUSED_DTT
-  {
-    std::vector<int> h_child_lo;
-    std::vector<int> h_child_hi;
-    h_build_child_ranges(run.host.htree, h_child_lo, h_child_hi);
-    CUDA_CHECK(cudaMalloc(&d.d_child_lo, sizeof(int) * std::max(1, ncells)));
-    CUDA_CHECK(cudaMalloc(&d.d_child_hi, sizeof(int) * std::max(1, ncells)));
-    if (ncells > 0) {
-      CUDA_CHECK(cudaMemcpy(d.d_child_lo, h_child_lo.data(), sizeof(int) * ncells,
-                            cudaMemcpyHostToDevice));
-      CUDA_CHECK(cudaMemcpy(d.d_child_hi, h_child_hi.data(), sizeof(int) * ncells,
-                            cudaMemcpyHostToDevice));
-    }
-    CUDA_CHECK(bind_partitioned_dtt_ptrs(d.d_child_lo, d.d_child_hi, DTT_NSPAWN));
-  }
-#endif
   CUDA_CHECK(bind_dtt_ptrs(d.d_m2l_count, d.d_p2p_count, d.d_m2l_src, d.d_p2p_src,
                            d.d_dtt_overflow, theta));
 #if FMM3D_ENABLE_GTAP_DTT
@@ -210,10 +191,6 @@ static void release_run(FmmRun &run) {
   cudaFree(d.d_m2l_src);
   cudaFree(d.d_p2p_src);
   cudaFree(d.d_dtt_overflow);
-#if FMM3D_PARTITIONED_FUSED_DTT
-  cudaFree(d.d_child_lo);
-  cudaFree(d.d_child_hi);
-#endif
 #if FMM3D_WORKLIST_DTT
   cudaFree(d.d_pairs_a);
   cudaFree(d.d_pairs_b);
