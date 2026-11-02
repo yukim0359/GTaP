@@ -4,6 +4,7 @@
 #PBS -l walltime=12:00:00
 #PBS -W group_list=gc64
 #PBS -j oe
+#PBS -V
 #
 # KCGPU orientation: collect SM working-timeline CSVs/PDFs for k579 graphs.
 #   graphs: DBLP, as-Skitter, com-Orkut

@@ -4,6 +4,7 @@
 #PBS -l walltime=02:00:00
 #PBS -W group_list=gc64
 #PBS -j oe
+#PBS -V
 #
 # GTAP pivot: render the paper timeline from a current-format profile
 # (run gtap_pivot with GTAP_ENABLE_PROFILING=1 first).

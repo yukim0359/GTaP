@@ -4,6 +4,7 @@
 #PBS -l walltime=00:30:00
 #PBS -W group_list=gc64
 #PBS -j oe
+#PBS -V
 #PBS -N pivot_prof_sk9
 
 set -euo pipefail

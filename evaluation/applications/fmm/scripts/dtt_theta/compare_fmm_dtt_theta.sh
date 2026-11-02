@@ -14,7 +14,7 @@
 #
 #   ./scripts/dtt_theta/compare_fmm_dtt_theta.sh
 #   ./scripts/dtt_theta/compare_fmm_dtt_theta.sh --plot-only
-# PBS (rebuild + measure + paper figure):
+# PBS (rebuild + measure):
 #   qsub scripts/dtt_theta/run_compare_fmm_dtt_theta_rebuild.pbs
 #
 # Paper figure:

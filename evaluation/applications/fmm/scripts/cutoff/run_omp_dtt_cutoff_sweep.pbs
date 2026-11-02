@@ -4,6 +4,7 @@
 #PBS -l walltime=06:00:00
 #PBS -W group_list=gc64
 #PBS -j oe
+#PBS -V
 #PBS -N omp_dtt_cutoff
 #
 #   qsub scripts/cutoff/run_omp_dtt_cutoff_sweep.pbs
