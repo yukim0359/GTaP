@@ -3,7 +3,7 @@
 # for k=5,7,9. GTAP build params come from gtap_graph_k_config.csv (per graph×k).
 #
 # KCGPU variants: edge p1b p2b p4b p8b p16b (pivot_binary)
-# Runs REPEATS=20 by default and writes averaged results via summarize_k579_repeats.py.
+# Runs REPEATS=20 by default and writes median results via summarize_k579_repeats.py.
 #
 # Usage:
 #   ./run_kcgpu_pivot_k579_graph_tuned.sh

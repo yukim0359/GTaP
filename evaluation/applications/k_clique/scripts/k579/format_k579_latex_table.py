@@ -71,7 +71,7 @@ def render_table(table: dict[tuple[str, int, str], dict]) -> str:
     lines.append("% k-clique k=5,7,9 benchmark table (end-to-end time in seconds)")
     lines.append("% GTaP e2e: orient + workspace + count phase (includes gtap_initialize)")
     lines.append("% KCGPU e2e: preprocess + ctor + count (best q per graph×k; k579_min variants)")
-    lines.append("% Source: orientation_e2e + pivot_e2e logs (job 2361719/2361720, 20 repeats avg)")
+    lines.append("% Source: orientation_e2e + pivot_e2e logs (20 repeats, median)")
     lines.append("% Table style from Almasri et al., arXiv:2104.13209 (fig/4-evaluation/tab-results.tex)")
     lines.append("% Requires: \\usepackage{multirow}")
     lines.append("\\begin{table}[tb]")

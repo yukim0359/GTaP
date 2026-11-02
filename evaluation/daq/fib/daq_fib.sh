@@ -1,22 +1,16 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=01:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 BENCHMARK_NAME=fib
 
-cd "$PBS_O_WORKDIR"
-
-COMPARE_DIR=$(pwd)
-source "$COMPARE_DIR/../../common/benchmark.sh"
-PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
+PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd) || exit 1
 BIN_DIR="$PROJECT_ROOT/bin"
 mkdir -p "$BIN_DIR"
 
 echo "Building DAQ fib binaries (force rebuild for updated runtime) ..."
-make -C "$COMPARE_DIR" -B all
+make -C "$COMPARE_DIR" -B all || exit 1
 
 # Test values for cutoff depth
 CUTOFF_DEPTHS=(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18)

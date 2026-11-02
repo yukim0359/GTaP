@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
-// #define GTAP_ENABLE_PROFILING
 
 #ifdef GQ
 #include "experimental/gtap_thread_gq.cuh"
@@ -79,10 +78,6 @@ int main(int argc, char** argv) {
     float elapsed_time;
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
-
-#ifdef GTAP_ENABLE_PROFILING
-    visualize_working_time("fib");
-#endif
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);

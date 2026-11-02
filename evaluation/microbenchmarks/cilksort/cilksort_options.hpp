@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 
@@ -29,6 +30,10 @@ inline const char* cilksort_data_file_arg(int argc, char** argv) {
         }
     }
     return nullptr;
+}
+
+inline bool cilksort_arrays_equal(const int* a, const int* b, size_t n) {
+    return a && b && std::memcmp(a, b, n * sizeof(int)) == 0;
 }
 
 inline const char* cilksort_reference_file_arg(int argc, char** argv) {

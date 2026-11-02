@@ -1,16 +1,10 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=08:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 BENCHMARK_NAME=nq
 
-cd "$PBS_O_WORKDIR"
-
-COMPARE_DIR=$(pwd)
-source "$COMPARE_DIR/../../common/benchmark.sh"
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
 BIN_DIR="$COMPARE_DIR/bin"
 
 if [ ! -d "$COMPARE_DIR" ]; then
@@ -71,7 +65,7 @@ RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_performance_results.csv"
 echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,OMP_med,OMP_err_low,OMP_err_high,CILK_med,CILK_err_low,CILK_err_high,DYNASOAR_med,DYNASOAR_err_low,DYNASOAR_err_high,DYNASOAR_cutoff,Speedup_med(OMP/GTAP),Speedup_med(CILK/GTAP),Speedup_med(DYNASOAR/GTAP)" > "$RESULTS_FILE"
 
 echo "Building GTaP / OpenMP / Cilk binaries ..."
-make -C "$COMPARE_DIR" -B gtap omp cilk
+make -C "$COMPARE_DIR" -B gtap omp cilk || exit 1
 
 DYNASOAR_ENABLED=0
 if ensure_dynasoar_bin; then

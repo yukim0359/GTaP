@@ -1,17 +1,11 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=01:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 BENCHMARK_NAME=cilksort
 
-cd "$PBS_O_WORKDIR"
-
-COMPARE_DIR=$(pwd)
-source "$COMPARE_DIR/../../common/benchmark.sh"
-PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
+PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd) || exit 1
 BIN_DIR="$PROJECT_ROOT/bin"
 MAKEFILE="$COMPARE_DIR/Makefile"
 UTIL_DIR="$PROJECT_ROOT/../../util"
@@ -28,6 +22,7 @@ NUM_RUNS=20
 
 # Create tmp directory
 mkdir -p "$TMP_DIR"
+make -C "$UTIL_DIR" gen_vector || exit 1
 
 # Create results file
 RESULTS_FILE="daq_performance_results_$BENCHMARK_NAME.csv"
@@ -92,14 +87,17 @@ compile_with_cutoff() {
       "$src_file" -o "$out_file"
 }
 
-# Generate test data once
+# Generate test data once (unsorted + gen_vector sidecar .sorted.bin)
 echo "Generating test data..."
-cd "$UTIL_DIR"
+cd "$UTIL_DIR" || exit 1
 DATA_FILE="test_data_${SIZE}.bin"
-if [ ! -f "$TMP_DIR/$DATA_FILE" ]; then
-    ./gen_vector "$SIZE" "$TMP_DIR/$DATA_FILE" > /dev/null 2>&1
+REF_FILE="test_data_${SIZE}.sorted.bin"
+./gen_vector "$SIZE" "$TMP_DIR/$DATA_FILE" || exit 1
+cd "$COMPARE_DIR" || exit 1
+if [ ! -f "$TMP_DIR/$REF_FILE" ]; then
+    echo "Error: missing sorted reference $TMP_DIR/$REF_FILE" >&2
+    exit 1
 fi
-cd "$COMPARE_DIR"
 
 for cutoff in "${CUTOFF_VALUES[@]}"; do
     # Compile with current cutoff value
@@ -120,7 +118,7 @@ for cutoff in "${CUTOFF_VALUES[@]}"; do
     if [ -x "$BIN_DIR/${BENCHMARK_NAME}_queue_1" ]; then
         read QUEUE1_MED _ _ QUEUE1_ELO QUEUE1_EHI < <(
             benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
-                "$BIN_DIR/${BENCHMARK_NAME}_queue_1" "$TMP_DIR/$DATA_FILE"
+                "$BIN_DIR/${BENCHMARK_NAME}_queue_1" "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"
         )
     fi
 
@@ -129,7 +127,7 @@ for cutoff in "${CUTOFF_VALUES[@]}"; do
     if [ -x "$BIN_DIR/${BENCHMARK_NAME}_queue_3" ]; then
         read QUEUE3_MED _ _ QUEUE3_ELO QUEUE3_EHI < <(
             benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
-                "$BIN_DIR/${BENCHMARK_NAME}_queue_3" "$TMP_DIR/$DATA_FILE"
+                "$BIN_DIR/${BENCHMARK_NAME}_queue_3" "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"
         )
     fi
 
@@ -154,4 +152,4 @@ for cutoff in "${CUTOFF_VALUES[@]}"; do
 done
 
 # Cleanup
-rm -f "$TMP_DIR/$DATA_FILE"
+rm -f "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"

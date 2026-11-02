@@ -1,18 +1,14 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=03:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 BENCHMARK_NAME=cilksort
 
-# Sort correctness checks (reference qsort + is_sorted) are expensive at large n.
-# Disabled by default for benchmark runs. Enable with:
-#   ./compare_cilksort.sh --validate
-#   VALIDATE=1 ./compare_cilksort.sh
-#   qsub -v VALIDATE=1 compare_cilksort.sh
-VALIDATE="${VALIDATE:-0}"
+# Sort checks compare the output to gen_vector's sidecar .sorted.bin
+# (same as examples/cilksort). Timing is recorded before the check.
+# Default is on. Disable with:
+#   ./compare_cilksort.sh --no-validate
+#   VALIDATE=0 ./compare_cilksort.sh
+#   qsub -v VALIDATE=0 compare_cilksort.pbs
+VALIDATE="${VALIDATE:-1}"
 for arg in "$@"; do
     case "$arg" in
         --no-validate|--skip-validate) VALIDATE=0 ;;
@@ -20,12 +16,12 @@ for arg in "$@"; do
     esac
 done
 
-COMPARE_DIR="${PBS_O_WORKDIR:-$(pwd)}"
-cd "$COMPARE_DIR"
-source "$COMPARE_DIR/../../common/benchmark.sh"
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
 mkdir -p "$COMPARE_DIR/bin"
 echo "Building cilksort binaries (force rebuild for updated runtime) ..."
-make -C "$COMPARE_DIR" -B gtap omp cilk
+make -C "$COMPARE_DIR" -B gtap omp cilk || exit 1
 
 if [ "$VALIDATE" = "0" ]; then
     export CILKSORT_VALIDATE=0
@@ -39,11 +35,12 @@ if [ "$VALIDATE" = "0" ]; then
     VALIDATE_ARGS=(--no-validate)
 fi
 
-PROJECT_ROOT=$(cd "$COMPARE_DIR/../../.." && pwd)
+PROJECT_ROOT=$(cd "$COMPARE_DIR/../../.." && pwd) || exit 1
 BIN_DIR="$COMPARE_DIR/bin"
 UTIL_DIR="$PROJECT_ROOT/evaluation/util"
 TMP_DIR="$COMPARE_DIR/tmp"
 mkdir -p "$TMP_DIR"
+make -C "$UTIL_DIR" gen_vector || exit 1
 
 SIZES=(100000 200000 500000 1000000 2000000 5000000 10000000 20000000 50000000 100000000 200000000 500000000 1000000000)
 
@@ -103,17 +100,26 @@ printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
 
 for size in "${SIZES[@]}"; do
     echo "  Generating test data..."
-    cd "$UTIL_DIR"
+    cd "$UTIL_DIR" || exit 1
     DATA_FILE="test_data_${size}.bin"
-    ./gen_vector "$size" "$TMP_DIR/$DATA_FILE" > /dev/null 2>&1
-    cd "$COMPARE_DIR"
+    REF_FILE="test_data_${size}.sorted.bin"
+    ./gen_vector "$size" "$TMP_DIR/$DATA_FILE" || exit 1
+    cd "$COMPARE_DIR" || exit 1
+    if [ ! -f "$TMP_DIR/$REF_FILE" ]; then
+        echo "Error: missing sorted reference $TMP_DIR/$REF_FILE" >&2
+        exit 1
+    fi
+    RUN_ARGS=("${VALIDATE_ARGS[@]}" "$TMP_DIR/$DATA_FILE")
+    if [ "$VALIDATE" = "1" ]; then
+        RUN_ARGS+=("$TMP_DIR/$REF_FILE")
+    fi
 
     # --- GTAP ---
     GTAP_MED=0 GTAP_ELO=0 GTAP_EHI=0
     if [ -x "$BIN_DIR/gtap_$BENCHMARK_NAME" ]; then
         read GTAP_MED _ _ GTAP_ELO GTAP_EHI < <(
             benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
-                "$BIN_DIR/gtap_$BENCHMARK_NAME" "${VALIDATE_ARGS[@]}" "$TMP_DIR/$DATA_FILE"
+                "$BIN_DIR/gtap_$BENCHMARK_NAME" "${RUN_ARGS[@]}"
         )
     fi
 
@@ -122,7 +128,7 @@ for size in "${SIZES[@]}"; do
     if [ -x "$BIN_DIR/omp_$BENCHMARK_NAME" ]; then
         read OMP_MED _ _ OMP_ELO OMP_EHI < <(
             benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
-                "$BIN_DIR/omp_$BENCHMARK_NAME" "${VALIDATE_ARGS[@]}" "$TMP_DIR/$DATA_FILE"
+                "$BIN_DIR/omp_$BENCHMARK_NAME" "${RUN_ARGS[@]}"
         )
     fi
 
@@ -131,7 +137,7 @@ for size in "${SIZES[@]}"; do
     if [ -x "$BIN_DIR/cilk_$BENCHMARK_NAME" ]; then
         read CILK_MED _ _ CILK_ELO CILK_EHI < <(
             benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
-                "$BIN_DIR/cilk_$BENCHMARK_NAME" "${VALIDATE_ARGS[@]}" "$TMP_DIR/$DATA_FILE"
+                "$BIN_DIR/cilk_$BENCHMARK_NAME" "${RUN_ARGS[@]}"
         )
     fi
 
@@ -160,7 +166,7 @@ for size in "${SIZES[@]}"; do
         DYNASOAR_SPEEDUP=$(echo "scale=6; $DYNASOAR_MED / $GTAP_MED" | bc -l)
     fi
 
-    rm -f "$TMP_DIR/$DATA_FILE"
+    rm -f "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"
 
     # Print aligned row
     printf "%6d | " "$size"

@@ -41,8 +41,9 @@ bash scripts/k579/run_kcgpu_pivot_k579_graph_tuned.sh
 ```
 
 Each script builds the required binaries and runs all three graphs with
-k = 5, 7, and 9, using 20 repetitions by default. Graph-specific GTaP
-settings are defined in `data/gtap_graph_k_config.csv`.
+k = 5, 7, and 9, using 20 repetitions by default. Times are summarized
+as the median. Graph-specific GTaP settings are defined in
+`data/gtap_graph_k_config.csv`.
 
 For a shorter check:
 

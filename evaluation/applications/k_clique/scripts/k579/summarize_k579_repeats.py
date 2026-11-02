@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Average GTAP/KCGPU k579 benchmark rows over repeat runs."""
+"""Median GTAP/KCGPU k579 benchmark rows over repeat runs."""
 
 from __future__ import annotations
 
@@ -61,16 +61,32 @@ def _float(value: str | None) -> float | None:
     return float(value)
 
 
-def _mean(values: list[float]) -> float | None:
+def _median(values: list[float]) -> float | None:
     if not values:
         return None
-    return statistics.fmean(values)
+    return statistics.median(values)
 
 
 def _stdev(values: list[float]) -> float | None:
     if len(values) < 2:
         return None
     return statistics.stdev(values)
+
+
+def _exit_ok(value: str | None) -> bool:
+    if value is None:
+        return True
+    value = value.strip()
+    return value == "" or value == "0"
+
+
+def is_success(row: dict) -> bool:
+    return _exit_ok(row.get("gtap_exit")) and _exit_ok(row.get("kcgpu_exit"))
+
+
+def _unique_exit(items: list[dict], field: str) -> str:
+    values = {item.get(field, "") for item in items if item.get(field, "") != ""}
+    return values.pop() if len(values) == 1 else ""
 
 
 def _group_key(row: dict) -> tuple[str, ...]:
@@ -84,19 +100,22 @@ def average_rows(rows: list[dict]) -> list[dict]:
 
     averaged: list[dict] = []
     for key, items in sorted(groups.items()):
+        valid = [item for item in items if is_success(item)]
+        source = valid
         out = {name: value for name, value in zip(GROUP_FIELDS, key)}
         out["repeat"] = "avg"
-        out["repeats"] = str(len(items))
+        out["repeats"] = str(len(valid))
+        out["repeats_total"] = str(len(items))
 
         for field in NUMERIC_FIELDS:
-            values = [_float(item.get(field)) for item in items]
+            values = [_float(item.get(field)) for item in source]
             nums = [v for v in values if v is not None]
-            mean = _mean(nums)
-            out[field] = f"{mean:.3f}" if mean is not None else ""
+            median = _median(nums)
+            out[field] = f"{median:.3f}" if median is not None else ""
             stdev = _stdev(nums)
             out[f"{field}_stdev"] = f"{stdev:.3f}" if stdev is not None else ""
 
-        matches = [item.get("match", "") for item in items if item.get("match")]
+        matches = [item.get("match", "") for item in source if item.get("match")]
         if matches and all(m == "YES" for m in matches):
             out["match"] = "YES"
         elif matches and all(m == "NO" for m in matches):
@@ -106,10 +125,9 @@ def average_rows(rows: list[dict]) -> list[dict]:
         else:
             out["match"] = ""
 
-        gtap_exits = {item.get("gtap_exit", "") for item in items if item.get("gtap_exit") != ""}
-        kcgpu_exits = {item.get("kcgpu_exit", "") for item in items if item.get("kcgpu_exit") != ""}
-        out["gtap_exit"] = gtap_exits.pop() if len(gtap_exits) == 1 else ""
-        out["kcgpu_exit"] = kcgpu_exits.pop() if len(kcgpu_exits) == 1 else ""
+        exit_items = valid if valid else items
+        out["gtap_exit"] = _unique_exit(exit_items, "gtap_exit")
+        out["kcgpu_exit"] = _unique_exit(exit_items, "kcgpu_exit")
         averaged.append(out)
     return averaged
 
@@ -120,6 +138,7 @@ def fieldnames(rows: list[dict]) -> list[str]:
         "k",
         "repeat",
         "repeats",
+        "repeats_total",
         "gtap_variant",
         "gtap_heavy",
         "gtap_second_heavy",
@@ -199,7 +218,7 @@ def main() -> int:
         "--output",
         type=Path,
         required=True,
-        help="Output averaged CSV",
+        help="Output median CSV",
     )
     parser.add_argument("--no-csv", action="store_true", help="Print table only.")
     args = parser.parse_args()

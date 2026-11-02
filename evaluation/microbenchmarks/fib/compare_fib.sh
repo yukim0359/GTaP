@@ -1,17 +1,11 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=01:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 BENCHMARK_NAME=fib
 
-cd "$PBS_O_WORKDIR"
-
-COMPARE_DIR=$(pwd)
-source "$COMPARE_DIR/../../common/benchmark.sh"
-PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd)
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
+PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd) || exit 1
 BIN_DIR="$PROJECT_ROOT/bin"
 
 if [ ! -d "$BIN_DIR" ]; then
@@ -19,7 +13,7 @@ if [ ! -d "$BIN_DIR" ]; then
 fi
 
 echo "Building fib binaries (force rebuild for updated runtime) ..."
-make -C "$COMPARE_DIR" -B gtap omp cilk
+make -C "$COMPARE_DIR" -B gtap omp cilk || exit 1
 
 N_VALUES=(2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40)
 

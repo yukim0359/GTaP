@@ -1,23 +1,16 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=02:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 # Depth sweep: thread / block / block-cutoff (K=1 binary tree).
 BENCHMARK_NAME=binary_tree
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${PBS_O_WORKDIR:-$SCRIPT_DIR}"
-
-COMPARE_DIR=$(pwd)
-source "$COMPARE_DIR/../../common/benchmark.sh"
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
 BIN_DIR="$COMPARE_DIR/bin"
 mkdir -p "$BIN_DIR"
 
 echo "Building GTaP binaries (force rebuild for updated runtime) ..."
-make -C "$COMPARE_DIR" -B gtap_thread gtap_block gtap_block_cutoff
+make -C "$COMPARE_DIR" -B gtap_thread gtap_block gtap_block_cutoff || exit 1
 
 DEPTH_VALUES=(12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28)
 COMPUTE=${COMPUTE:-2048}

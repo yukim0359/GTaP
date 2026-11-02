@@ -278,7 +278,6 @@ int main(int argc, char** argv) {
     cudaEventElapsedTime(&ms, start, stop);
     // Copy back and verify
     cudaMemcpy(h.data(), d_data, sizeof(int) * N, cudaMemcpyDeviceToHost);
-    std::sort(gold.begin(), gold.end());
     bool ok = std::is_sorted(h.begin(), h.end()) && (h == gold);
 
     // Match mergesort.cu output style

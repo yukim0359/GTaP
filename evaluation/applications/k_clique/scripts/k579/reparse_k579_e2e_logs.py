@@ -55,8 +55,10 @@ def _float(value: str | float | None) -> float | None:
     return float(value)
 
 
-def _mean(values: list[float]) -> float:
-    return statistics.fmean(values)
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return statistics.median(values)
 
 
 def _stdev(values: list[float]) -> float | None:
@@ -183,14 +185,14 @@ def average_by_group(rows: list[dict]) -> list[dict]:
                 "kcgpu_q": kcgpu_q,
                 "repeats": len(group_rows),
                 "gtap_count": group_rows[0]["gtap_count"],
-                "gtap_count_e2e_ms": _mean(e2e_vals),
+                "gtap_count_e2e_ms": _median(e2e_vals),
                 "gtap_count_e2e_ms_stdev": _stdev(e2e_vals),
-                "gtap_initialize_ms": _mean(init_vals),
-                "gtap_count_phase_ms": _mean(phase_vals) if phase_vals else None,
-                "gtap_kernel_ms": _mean(kernel_vals) if kernel_vals else None,
-                "kcgpu_ms": _mean(kcgpu_vals),
+                "gtap_initialize_ms": _median(init_vals),
+                "gtap_count_phase_ms": _median(phase_vals),
+                "gtap_kernel_ms": _median(kernel_vals),
+                "kcgpu_ms": _median(kcgpu_vals),
                 "kcgpu_ms_stdev": _stdev(kcgpu_vals),
-                "gtap_count_e2e_ms_over_kcgpu_ms": _mean(ratio_vals),
+                "gtap_count_e2e_ms_over_kcgpu_ms": _median(ratio_vals),
                 "match_all": all(r["match"] == "YES" for r in group_rows),
                 "variant_count": 1,
             }

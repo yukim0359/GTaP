@@ -138,7 +138,7 @@ else
 fi
 
 RESULTS_FILE="${RESULTS_FILE:-$COMPARE_DIR/fmm_dtt_theta_results.csv}"
-echo "n,theta,nodes,leaves,max_m2l,max_p2p,max_leaf,at_cap_pct,wl_pair_cap,wl_iterations,wl_max_frontier,wl_overflow,GTAP_med,GTAP_err_low,GTAP_err_high,WORKLIST_med,WORKLIST_err_low,WORKLIST_err_high,OMP_med,OMP_err_low,OMP_err_high,OMP_reset_med,OMP_traverse_med,OMP_stats_med,OMP_h2d_counts_med,OMP_h2d_lists_med,Ratio_OMP/GTAP,Ratio_WORKLIST/GTAP" > "$RESULTS_FILE"
+echo "n,theta,nodes,leaves,max_m2l,max_p2p,max_leaf,at_cap_pct,wl_pair_cap,wl_iterations,wl_max_frontier,wl_overflow,GTAP_med,GTAP_err_low,GTAP_err_high,WORKLIST_med,WORKLIST_err_low,WORKLIST_err_high,OMP_med,OMP_err_low,OMP_err_high,OMP_reset_med,OMP_traverse_med,OMP_stats_med,OMP_h2d_counts_med,OMP_h2d_lists_med,Ratio_OMP/GTAP,Ratio_WORKLIST/GTAP,GTAP_n,WORKLIST_n,OMP_n" > "$RESULTS_FILE"
 
 printf "FMM DTT theta sweep (runs=%s, N=%s, theta=%s)\n" \
   "$NUM_RUNS" "${N_VALUES:-${N_SIZES[*]}}" "${THETA_VALUES:-${THETAS[*]}}"
@@ -279,27 +279,38 @@ run_stats() {
   local n=$3
   local theta=$4
   local times=()
-  local warned=0
+  local dropped=0
+  local run_idx output dtt rc
 
-  for _ in $(seq 1 "$NUM_RUNS"); do
-    local output dtt rc
-    set +e
-    output="$(run_program "$program" "$n" "$theta")"
-    rc=$?
-    set -e
+  for run_idx in $(seq 1 "$NUM_RUNS"); do
+    rc=0
+    output="$(run_program "$program" "$n" "$theta")" || rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+      echo "fmm: drop $run_idx/$NUM_RUNS $label N=$n theta=$theta exit=$rc" >&2
+      printf '%s\n' "$output" >&2
+      dropped=$((dropped + 1))
+      continue
+    fi
 
     dtt="$(extract_dtt_ms "$output")"
     if [ -n "$dtt" ]; then
       times+=("$dtt")
-    elif [ "$warned" -eq 0 ]; then
+    else
+      echo "fmm: drop $run_idx/$NUM_RUNS $label N=$n theta=$theta: no parseable time" >&2
       log_run_failure "$label" "$n" "$theta" "$rc" "$output"
-      warned=1
+      printf '%s\n' "$output" >&2
+      dropped=$((dropped + 1))
     fi
   done
 
+  if [ "$dropped" -gt 0 ]; then
+    echo "fmm: used ${#times[@]}/$NUM_RUNS samples ($label N=$n theta=$theta, dropped $dropped)" >&2
+  fi
+
   local m=${#times[@]}
   if [ "$m" -lt 1 ]; then
-    echo "0 0 0 0 0"
+    echo "0 0 0 0 0 0"
     return
   fi
 
@@ -329,7 +340,7 @@ run_stats() {
   err_low=$(echo "scale=6; $median - $q1" | bc -l)
   err_high=$(echo "scale=6; $q3 - $median" | bc -l)
 
-  echo "$median $q1 $q3 $err_low $err_high"
+  echo "$median $q1 $q3 $err_low $err_high $m"
 }
 
 extract_host_breakdown() {
@@ -372,14 +383,19 @@ run_stats_omp_details() {
   local stats_times=()
   local h2dc_times=()
   local h2dl_times=()
-  local warned=0
+  local dropped=0
+  local run_idx output dtt rc
 
-  for _ in $(seq 1 "$NUM_RUNS"); do
-    local output dtt rc
-    set +e
-    output="$(run_program "$program" "$n" "$theta")"
-    rc=$?
-    set -e
+  for run_idx in $(seq 1 "$NUM_RUNS"); do
+    rc=0
+    output="$(run_program "$program" "$n" "$theta")" || rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+      echo "fmm: drop $run_idx/$NUM_RUNS OpenMP N=$n theta=$theta exit=$rc" >&2
+      printf '%s\n' "$output" >&2
+      dropped=$((dropped + 1))
+      continue
+    fi
 
     dtt="$(extract_dtt_ms "$output")"
     if [ -n "$dtt" ]; then
@@ -395,15 +411,21 @@ run_stats_omp_details() {
         h2dc_times+=("$c")
         h2dl_times+=("$l")
       fi
-    elif [ "$warned" -eq 0 ]; then
+    else
+      echo "fmm: drop $run_idx/$NUM_RUNS OpenMP N=$n theta=$theta: no parseable time" >&2
       log_run_failure "OpenMP" "$n" "$theta" "$rc" "$output"
-      warned=1
+      printf '%s\n' "$output" >&2
+      dropped=$((dropped + 1))
     fi
   done
 
+  if [ "$dropped" -gt 0 ]; then
+    echo "fmm: used ${#times[@]}/$NUM_RUNS samples (OpenMP N=$n theta=$theta, dropped $dropped)" >&2
+  fi
+
   local m=${#times[@]}
   if [ "$m" -lt 1 ]; then
-    echo "0 0 0 0 0 0 0 0 0 0"
+    echo "0 0 0 0 0 0 0 0 0 0 0"
     return
   fi
 
@@ -438,7 +460,7 @@ run_stats_omp_details() {
   h2dc_med="$(median_from_array "${h2dc_times[@]}")"
   h2dl_med="$(median_from_array "${h2dl_times[@]}")"
 
-  echo "$median $q1 $q3 $err_low $err_high $alloc_med $trav_med $stats_med $h2dc_med $h2dl_med"
+  echo "$median $q1 $q3 $err_low $err_high $alloc_med $trav_med $stats_med $h2dc_med $h2dl_med $m"
 }
 
 probe_meta() {
@@ -521,15 +543,15 @@ for n in "${N_SIZES[@]}"; do
 
     probe_meta "$n" "$theta"
 
-    GTAP_MED=0 GTAP_ELO=0 GTAP_EHI=0
-    read GTAP_MED _ _ GTAP_ELO GTAP_EHI < <(run_stats "$BIN_GTAP" "GTaP" "$n" "$theta")
+    GTAP_MED=0 GTAP_ELO=0 GTAP_EHI=0 GTAP_N=0
+    read GTAP_MED _ _ GTAP_ELO GTAP_EHI GTAP_N < <(run_stats "$BIN_GTAP" "GTaP" "$n" "$theta")
 
-    WORKLIST_MED=0 WORKLIST_ELO=0 WORKLIST_EHI=0
-    read WORKLIST_MED _ _ WORKLIST_ELO WORKLIST_EHI < <(run_stats "$BIN_WORKLIST" "worklist" "$n" "$theta")
+    WORKLIST_MED=0 WORKLIST_ELO=0 WORKLIST_EHI=0 WORKLIST_N=0
+    read WORKLIST_MED _ _ WORKLIST_ELO WORKLIST_EHI WORKLIST_N < <(run_stats "$BIN_WORKLIST" "worklist" "$n" "$theta")
 
-    OMP_MED=0 OMP_ELO=0 OMP_EHI=0
+    OMP_MED=0 OMP_ELO=0 OMP_EHI=0 OMP_N=0
     OMP_ALLOC_MED=0 OMP_TRAVERSE_MED=0 OMP_STATS_MED=0 OMP_H2D_COUNTS_MED=0 OMP_H2D_LISTS_MED=0
-    read OMP_MED _ _ OMP_ELO OMP_EHI OMP_ALLOC_MED OMP_TRAVERSE_MED OMP_STATS_MED OMP_H2D_COUNTS_MED OMP_H2D_LISTS_MED \
+    read OMP_MED _ _ OMP_ELO OMP_EHI OMP_ALLOC_MED OMP_TRAVERSE_MED OMP_STATS_MED OMP_H2D_COUNTS_MED OMP_H2D_LISTS_MED OMP_N \
       < <(run_stats_omp_details "$BIN_OMP" "$n" "$theta")
 
     RATIO_OMP=0
@@ -553,7 +575,7 @@ for n in "${N_SIZES[@]}"; do
     fmt_med_iqr "$WORKLIST_MED" "$WORKLIST_ELO" "$WORKLIST_EHI"; printf " | "
     fmt_med_iqr "$OMP_MED" "$OMP_ELO" "$OMP_EHI"; printf "\n"
 
-    echo "$n,$theta,$PROBE_NODES,$PROBE_LEAVES,$PROBE_MAX_M2L,$PROBE_MAX_P2P,$PROBE_MAX_LEAF,$PROBE_AT_CAP_PCT,$PROBE_WL_PAIR_CAP,$PROBE_WL_ITERATIONS,$PROBE_WL_MAX_FRONTIER,$PROBE_WL_OVERFLOW,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$WORKLIST_MED,$WORKLIST_ELO,$WORKLIST_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$OMP_ALLOC_MED,$OMP_TRAVERSE_MED,$OMP_STATS_MED,$OMP_H2D_COUNTS_MED,$OMP_H2D_LISTS_MED,$RATIO_OMP,$RATIO_WL" >> "$RESULTS_FILE"
+    echo "$n,$theta,$PROBE_NODES,$PROBE_LEAVES,$PROBE_MAX_M2L,$PROBE_MAX_P2P,$PROBE_MAX_LEAF,$PROBE_AT_CAP_PCT,$PROBE_WL_PAIR_CAP,$PROBE_WL_ITERATIONS,$PROBE_WL_MAX_FRONTIER,$PROBE_WL_OVERFLOW,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$WORKLIST_MED,$WORKLIST_ELO,$WORKLIST_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$OMP_ALLOC_MED,$OMP_TRAVERSE_MED,$OMP_STATS_MED,$OMP_H2D_COUNTS_MED,$OMP_H2D_LISTS_MED,$RATIO_OMP,$RATIO_WL,$GTAP_N,$WORKLIST_N,$OMP_N" >> "$RESULTS_FILE"
   done
   echo
 done

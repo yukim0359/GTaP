@@ -232,6 +232,9 @@ int main(int argc, char *argv[]) {
   int exit_code = 0;
   if (validate) {
     int correct = is_sorted(data, N);
+    if (reference) {
+      correct = correct && cilksort_arrays_equal(data, reference, N);
+    }
     printf("Cilksort(%zu) = %s\n", N, correct ? "Correct" : "Incorrect");
     exit_code = correct ? 0 : 1;
   }

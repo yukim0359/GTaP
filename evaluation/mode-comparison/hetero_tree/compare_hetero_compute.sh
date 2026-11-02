@@ -1,23 +1,16 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=04:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 # compute_iters sweep for hetero_tree (4 impls): thread wo/DAQ, block, block-cutoff.
 # Usage:
-#   HETERO_TREE_K=2 qsub -v HETERO_TREE_K compare_hetero_compute.sh
+#   HETERO_TREE_K=2 qsub -v HETERO_TREE_K compare_hetero_compute.pbs
 #   HETERO_TREE_K=4 bash compare_hetero_compute.sh
 # Writes: hetero_tree_compute_results_K${HETERO_TREE_K}.csv
 
 BENCHMARK_NAME=hetero_tree
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${PBS_O_WORKDIR:-$SCRIPT_DIR}"
-
-COMPARE_DIR=$(pwd)
-source "$COMPARE_DIR/../../common/benchmark.sh"
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
 BIN_DIR="$COMPARE_DIR/bin"
 mkdir -p "$BIN_DIR"
 
@@ -26,7 +19,7 @@ DEPTH=${DEPTH:-25}
 NUM_RUNS=${NUM_RUNS:-20}
 
 echo "Building hetero_tree binaries (K=${HETERO_TREE_K}) ..."
-make -C "$COMPARE_DIR" -B all HETERO_TREE_K="$HETERO_TREE_K"
+make -C "$COMPARE_DIR" -B all HETERO_TREE_K="$HETERO_TREE_K" || exit 1
 
 # compute_iters sweep: D fixed.
 COMPUTE_VALUES=(64 128 256 512 1024 2048 4096 8192 16384 32768)

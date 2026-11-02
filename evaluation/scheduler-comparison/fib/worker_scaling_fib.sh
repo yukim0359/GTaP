@@ -1,18 +1,12 @@
 #!/bin/bash
-#PBS -q regular-g
-#PBS -l select=1
-#PBS -l walltime=01:00:00
-#PBS -W group_list=gc64
-#PBS -j oe
 
 BENCHMARK_NAME=fib
 
-cd "$PBS_O_WORKDIR"
-
-# When submitted from gtap/evaluation/scheduler-comparison/$BENCHMARK_NAME
-SCALING_DIR=$(pwd)
-source "$SCALING_DIR/../../common/benchmark.sh"
-PROJECT_ROOT=$(cd "$SCALING_DIR/../../.." && pwd)
+# Run from gtap/evaluation/scheduler-comparison/$BENCHMARK_NAME
+SCALING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$SCALING_DIR" || exit 1
+source "$SCALING_DIR/../../common/benchmark.sh" || exit 1
+PROJECT_ROOT=$(cd "$SCALING_DIR/../../.." && pwd) || exit 1
 RUNTIME_DIR="$PROJECT_ROOT/runtime"
 TMP_BIN_DIR="$SCALING_DIR/tmp_bin_${BENCHMARK_NAME}"
 
@@ -181,7 +175,7 @@ for block_size in "${BLOCK_SIZES[@]}"; do
     done
 done
 
-cd "$SCALING_DIR"
+cd "$SCALING_DIR" || exit 1
 
 echo ""
 echo "=== Results saved to $RESULTS_FILE ==="
