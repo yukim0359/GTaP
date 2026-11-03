@@ -36,20 +36,25 @@ Run both experiments:
 
 ```sh
 mkdir -p k579/results
-bash scripts/k579/run_kcgpu_orientation_k579_graph_tuned.sh
-bash scripts/k579/run_kcgpu_pivot_k579_graph_tuned.sh
+bash scripts/k579/run_orientation_k579_e2e.sh
+bash scripts/k579/run_pivot_k579_e2e.sh
 ```
 
 Each script builds the required binaries and runs all three graphs with
-k = 5, 7, and 9, using 20 repetitions by default. Times are summarized
-as the median. Graph-specific GTaP settings are defined in
-`data/gtap_graph_k_config.csv`.
+k = 5, 7, and 9, using 20 repetitions by default. Graph-specific GTaP
+settings are defined in `data/gtap_graph_k_config.csv`.
 
 For a shorter check:
 
 ```sh
 GRAPHS=DBLP K_VALUES=5 REPEATS=1 \
-  bash scripts/k579/run_kcgpu_pivot_k579_graph_tuned.sh
+  bash scripts/k579/run_pivot_k579_e2e.sh
+```
+
+Build the paper table from the per-run CSVs:
+
+```sh
+bash scripts/k579/summarize_k579_e2e_combined.sh
 ```
 
 ## Results

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate LaTeX benchmark table from k579 e2e best summary CSV."""
+"""Generate LaTeX benchmark table from k579/results/e2e_table.csv."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 K_CLIQUE_DIR = SCRIPT_DIR.parent.parent
 K579_DIR = K_CLIQUE_DIR / "k579"
-DEFAULT_INPUT = K_CLIQUE_DIR / "k579" / "results" / "gtap_kcgpu_k579_e2e_init_included_best_summary.csv"
+DEFAULT_INPUT = K_CLIQUE_DIR / "k579" / "results" / "e2e_table.csv"
 DEFAULT_OUTPUT = K579_DIR / "latex" / "k579_benchmark_tables.tex"
 
 GRAPH_ORDER = ["DBLP", "as-Skitter", "Orkut"]

@@ -1,7 +1,9 @@
 #!/bin/bash
-# Re-parse e2e logs (GTaP e2e includes gtap_initialize) and build LaTeX.
+# Build the paper e2e table from per-run CSVs.
 #
-# Usage (after both PBS jobs finish):
+#   orientation_runs.csv + pivot_runs.csv → e2e_table.csv → LaTeX
+#
+# Usage:
 #   ./scripts/k579/summarize_k579_e2e_combined.sh
 
 set -euo pipefail
@@ -10,14 +12,21 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 K579_DIR=$(cd "$SCRIPT_DIR/../../k579" && pwd)
 RESULTS_DIR="$K579_DIR/results"
 
-COMBINED_SUMMARY="$RESULTS_DIR/gtap_kcgpu_k579_e2e_init_included_best_summary.csv"
-LATEX_TABLE="$K579_DIR/latex/k579_benchmark_tables.tex"
+ORIENT_RUNS="${ORIENT_RUNS:-$RESULTS_DIR/orientation_runs.csv}"
+PIVOT_RUNS="${PIVOT_RUNS:-$RESULTS_DIR/pivot_runs.csv}"
+E2E_TABLE="${E2E_TABLE:-$RESULTS_DIR/e2e_table.csv}"
+LATEX_TABLE="${LATEX_TABLE:-$K579_DIR/latex/k579_benchmark_tables.tex}"
 
-python3 "$SCRIPT_DIR/reparse_k579_e2e_logs.py" --only both
+mkdir -p "$RESULTS_DIR" "$(dirname "$LATEX_TABLE")"
+
+python3 "$SCRIPT_DIR/build_e2e_table.py" \
+    --orientation-runs "$ORIENT_RUNS" \
+    --pivot-runs "$PIVOT_RUNS" \
+    -o "$E2E_TABLE"
 
 python3 "$SCRIPT_DIR/format_k579_latex_table.py" \
-    -i "$COMBINED_SUMMARY" \
+    -i "$E2E_TABLE" \
     -o "$LATEX_TABLE"
 
-echo "Wrote $COMBINED_SUMMARY"
+echo "Wrote $E2E_TABLE"
 echo "Wrote $LATEX_TABLE"

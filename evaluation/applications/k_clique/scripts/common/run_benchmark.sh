@@ -9,9 +9,6 @@ WORK_ROOT=$(cd "$GTAP_ROOT/.." && pwd)
 KCGPU_DIR=${KCGPU_DIR:-"$WORK_ROOT/KCGPU"}
 GRAPH_DIR=${GRAPH_DIR:-"$KCGPU_DIR/graphs"}
 
-RESULTS_FILE=${RESULTS_FILE:-"$K_CLIQUE_DIR/legacy/gtap_kcgpu_k4_8_graph_tuned_results.csv"}
-LOG_DIR=${LOG_DIR:-"$K_CLIQUE_DIR/legacy/gtap_kcgpu_k4_8_graph_tuned_logs"}
-
 K_VALUES=${K_VALUES:-"4 5 6 7 8"}
 REPEATS=${REPEATS:-1}
 DEVICE=${DEVICE:-0}
@@ -34,6 +31,10 @@ else
     KCGPU_VARIANT_SET=${KCGPU_VARIANT_SET:-oriented_binary}
 fi
 export GTAP_ORIENT
+
+RESULTS_FILE=${RESULTS_FILE:-"$K_CLIQUE_DIR/k579/results/${GTAP_VARIANT}_runs.csv"}
+LOG_DIR=${LOG_DIR:-"$K_CLIQUE_DIR/k579/logs/${GTAP_VARIANT}_e2e"}
+
 KCGPU_PROCESS=${KCGPU_PROCESS:-edge}
 KCGPU_ELEMENT=${KCGPU_ELEMENT:-bw}
 KCGPU_VARIANTS=${KCGPU_VARIANTS:-}
@@ -75,7 +76,7 @@ case "$GTAP_VARIANT" in
         ;;
 esac
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$(dirname "$RESULTS_FILE")"
 
 if [ "$BUILD_KCGPU" = "1" ] && [ "$RUN_KCGPU" = "1" ]; then
     if [ "$KCGPU_FORCE_REBUILD" = "1" ] || [ ! -x "$KCGPU_DIR/build/exe/src/main.cu.exe" ]; then
@@ -351,6 +352,11 @@ for graph_name_arg in $GRAPHS; do
                 gtap_count=$(printf "%s\n" "$gtap_out" | parse_gtap_count)
                 gtap_count_e2e_ms=$(printf "%s\n" "$gtap_out" | parse_gtap_count_e2e_ms)
                 gtap_initialize_ms=$(printf "%s\n" "$gtap_out" | parse_gtap_initialize_ms)
+                # Paper e2e includes gtap_initialize (printed e2e is count-phase pipeline only).
+                if [ -n "$gtap_count_e2e_ms" ] && [ -n "$gtap_initialize_ms" ]; then
+                    gtap_count_e2e_ms=$(awk -v e="$gtap_count_e2e_ms" -v i="$gtap_initialize_ms" \
+                        'BEGIN { printf "%.3f", e + i }')
+                fi
                 gtap_count_phase_ms=$(printf "%s\n" "$gtap_out" | parse_gtap_count_phase_ms)
                 gtap_kernel_ms=$(printf "%s\n" "$gtap_out" | parse_gtap_kernel_ms)
                 gtap_preprocess_transfer_ms=$(printf "%s\n" "$gtap_out" | parse_gtap_preprocess_transfer_ms)
