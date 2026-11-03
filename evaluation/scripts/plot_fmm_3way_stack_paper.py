@@ -21,7 +21,7 @@ IMG_DIR = EVAL_DIR / "img"
 FMM_DIR = EVAL_DIR / "applications" / "fmm"
 sys.path.insert(0, str(FMM_DIR / "scripts" / "stack"))
 
-from plot_phase_stack import (  # noqa: E402
+from fmm_phase_stack import (  # noqa: E402
     PAPER_DTT_PHASES,
     PAPER_EDGE_COLORS,
     PAPER_PHASES,

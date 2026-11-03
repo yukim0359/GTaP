@@ -21,9 +21,9 @@ FMM_DIR = EVAL_DIR / "applications" / "fmm"
 sys.path.insert(0, str(EVAL_DIR))
 
 from common.plotting.gtap_colors import (  # noqa: E402
-    COL_GPU_THRUST,
     COL_GTAP_THREAD,
     COL_OMP,
+    COL_WORKLIST,
     LABEL_CPU_OMP,
     LABEL_RATIO_OMP,
 )
@@ -147,7 +147,7 @@ def plot_absolute_panel(ax, sub: pd.DataFrame, *, use_legend: bool = False):
     if not wl_df.empty:
         plot_with_iqr(
             ax, wl_df, _legend_label(LABEL_WORKLIST, use_legend=use_legend),
-            "^", "WORKLIST", color=COL_GPU_THRUST,
+            "^", "WORKLIST", color=COL_WORKLIST,
         )
     if not omp_df.empty:
         plot_with_iqr(
@@ -219,7 +219,7 @@ def plot_normalized_panel(ax, ratio_df: pd.DataFrame):
     if "worklist_ratio" in ratio_df.columns:
         plot_ratio_series(
             ax, ratio_df, _legend_label(r"GPU worklist / GTaP", use_legend=False), "^",
-            "worklist_ratio", "WORKLIST", COL_GPU_THRUST,
+            "worklist_ratio", "WORKLIST", COL_WORKLIST,
         )
     if "omp_ratio" in ratio_df.columns:
         plot_ratio_series(

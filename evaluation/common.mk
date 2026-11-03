@@ -16,10 +16,11 @@ CC_OMP           ?= $(CLANG_BIN)
 CXX_OMP          ?= $(CXX_BIN)
 OMP_RESOURCE_DIR ?= $(PROJ_DIR)/clang-gtap/build/lib/clang/21
 OMP_INC          := $(OMP_RESOURCE_DIR)/include
-OMP_LIB_DIR      ?= $(PROJ_DIR)/clang-gtap/build/lib
+OMP_LIB_DIR      ?= $(PROJ_DIR)/clang-gtap/build/runtimes/runtimes-bins/openmp/runtime/src
 CFLAGS_OMP       ?= -O3 -Wall -Wextra -fopenmp -I"$(OMP_INC)"
 CXXFLAGS_OMP     ?= -O3 -Wall -Wextra -fopenmp -I"$(OMP_INC)"
-LDFLAGS_OMP      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -lomp
+# DT_RPATH so the linked libomp is used even if LD_LIBRARY_PATH has another libomp.so.
+LDFLAGS_OMP      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -Wl,--disable-new-dtags -lomp
 
 OPENCILK_ROOT    ?= $(HOME)/opencilk
 OPENCILK_PREFIX  ?= $(OPENCILK_ROOT)/install

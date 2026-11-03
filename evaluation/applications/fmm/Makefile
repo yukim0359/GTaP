@@ -54,7 +54,7 @@ GTAP_MAX_TASKS_PER_WARP ?= 50000
 GTAP_CFLAGS             ?= -fgtap-no-taskwait
 GTAP_PROFILE_CAPACITY   ?= 30000
 GTAP_HOST_OMP_FLAGS     ?= -fopenmp -I"$(OMP_INC)"
-GTAP_HOST_OMP_LIBS      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -lomp
+GTAP_HOST_OMP_LIBS      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -Wl,--disable-new-dtags -lomp
 
 FMM_DEFS := \
   -DFMM3D_NCRIT="$(FMM3D_NCRIT)" \

@@ -1,42 +1,18 @@
 BENCHMARK_NAME := fib
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
+include $(SCRIPT_DIR)/../../common.mk
 
-CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang
-GT_INC     ?= $(PROJ_DIR)/runtime
+SRC_GTAP := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
 
-# ---- Inputs / Outputs ----
-SRC_GTAP   := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
-SRC_OMP    := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).c
-SRC_SEQ    := $(SCRIPT_DIR)/seq_$(BENCHMARK_NAME).c
-
-OUT_DIR    := $(SCRIPT_DIR)/bin
-OUT_GTAP   := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
+OUT_GTAP := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
 OUT_GTAP_GQ := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)_gq
 OUT_GTAP_CHASELEV := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)_chaselev
-OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
-OUT_SEQ    := $(OUT_DIR)/seq_$(BENCHMARK_NAME)
 
-# ---- GTAP build settings ----
 GTAP_GRID_SIZE          ?= 4000
 GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 200000
-GTAP_CFLAGS             ?= 
-
-# ---- OpenMP build settings ----
-CC_OMP           ?= $(CLANG_BIN)
-OMP_RESOURCE_DIR ?= $(PROJ_DIR)/clang-gtap/build/lib/clang/21
-OMP_INC          := $(OMP_RESOURCE_DIR)/include
-OMP_LIB_DIR      ?= $(PROJ_DIR)/clang-gtap/build/lib
-CFLAGS_OMP       ?= -O3 -Wall -Wextra -fopenmp -I"$(OMP_INC)"
-LDFLAGS_OMP      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -lomp
-
-# ---- Sequential build settings ----
-CC_SEQ           ?= $(CLANG_BIN)
-CFLAGS_SEQ       ?= -O3 -Wall -Wextra
+GTAP_CFLAGS             ?=
 
 .PHONY: all gtap gtap_gq gtap_chaselev clean print-vars
 
@@ -54,7 +30,6 @@ print-vars:
 $(OUT_DIR):
 	mkdir -p "$(OUT_DIR)"
 
-# ---- Build: gtap_$(BENCHMARK_NAME).cu ----
 gtap: $(OUT_GTAP)
 gtap_gq: $(OUT_GTAP_GQ)
 gtap_chaselev: $(OUT_GTAP_CHASELEV)
@@ -103,18 +78,5 @@ $(OUT_GTAP_CHASELEV): $(SRC_GTAP) | $(OUT_DIR)
 	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
 	  "$(SRC_GTAP)" -o "$(OUT_GTAP_CHASELEV)"
 
-# # ---- Build: omp_$(BENCHMARK_NAME).c ----
-# omp: $(OUT_OMP)
-
-# $(OUT_OMP): $(SRC_OMP) | $(OUT_DIR)
-# 	"$(CC_OMP)" $(CFLAGS_OMP) $(LDFLAGS_OMP) "$(SRC_OMP)" -o "$(OUT_OMP)"
-
-# # ---- Build: seq_$(BENCHMARK_NAME).c ----
-# seq: $(OUT_SEQ)
-
-# $(OUT_SEQ): $(SRC_SEQ) | $(OUT_DIR)
-# 	"$(CC_SEQ)" $(CFLAGS_SEQ) "$(SRC_SEQ)" -o "$(OUT_SEQ)"
-
 clean:
-	rm -f $(OUT_GTAP) $(OUT_GTAP_GQ) $(OUT_GTAP_CHASELEV) \
-	  $(OUT_OMP) $(OUT_SEQ)
+	rm -f $(OUT_GTAP) $(OUT_GTAP_GQ) $(OUT_GTAP_CHASELEV)

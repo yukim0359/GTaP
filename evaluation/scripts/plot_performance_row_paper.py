@@ -26,7 +26,6 @@ from common.plotting.gtap_colors import (  # noqa: E402
     COL_KIUCHI,
     COL_GTAP_THREAD,
     COL_OMP,
-    COL_SEQ,
     LABEL_CPU_CILK,
     LABEL_CPU_OMP,
     LABEL_KIUCHI,
@@ -129,26 +128,21 @@ def plot_with_iqr(
     ax.plot(x, y, marker=marker, label=label, **kw)
 
 
-def _method_frames(sub: pd.DataFrame, *, include_seq: bool = False):
+def _method_frames(sub: pd.DataFrame):
     gtap = sub[sub["GTAP_med"] > 0].copy() if "GTAP_med" in sub.columns else pd.DataFrame()
     omp = sub[sub["OMP_med"] > 0].copy() if "OMP_med" in sub.columns else pd.DataFrame()
     cilk = sub[sub["CILK_med"] > 0].copy() if "CILK_med" in sub.columns else pd.DataFrame()
     dynasoar = sub[sub["DYNASOAR_med"] > 0].copy() if "DYNASOAR_med" in sub.columns else pd.DataFrame()
-    if include_seq and "SEQ_med" in sub.columns:
-        seq = sub[sub["SEQ_med"] > 0].copy()
-    else:
-        seq = pd.DataFrame()
-    return gtap, omp, cilk, dynasoar, seq
+    return gtap, omp, cilk, dynasoar
 
 
 def plot_absolute_panel(
     ax,
     sub: pd.DataFrame,
     *,
-    include_seq: bool = False,
     use_legend: bool = False,
 ):
-    gtap_df, omp_df, cilk_df, dynasoar_df, seq_df = _method_frames(sub, include_seq=include_seq)
+    gtap_df, omp_df, cilk_df, dynasoar_df = _method_frames(sub)
     if not gtap_df.empty:
         plot_with_iqr(
             ax, gtap_df, _legend_label("GTaP", use_legend=use_legend),
@@ -168,11 +162,6 @@ def plot_absolute_panel(
         plot_with_iqr(
             ax, cilk_df, _legend_label(LABEL_CPU_CILK, use_legend=use_legend),
             "D", "CILK", color=COL_CILK, marker_every_offset=1,
-        )
-    if not seq_df.empty:
-        plot_with_iqr(
-            ax, seq_df, _legend_label("CPU Sequential", use_legend=use_legend),
-            "^", "SEQ", color=COL_SEQ, marker_every_offset=0,
         )
     ax.set_yscale("log")
     ax.grid(True, alpha=plt.rcParams["grid.alpha"])
@@ -226,7 +215,6 @@ def _load_benchmark_csv(bench: BenchSpec) -> pd.DataFrame:
 def plot_performance_row_paper(
     *,
     output_path: Path,
-    include_seq: bool = False,
 ):
     plt.rcParams.update(PAPER_RC)
 
@@ -248,7 +236,7 @@ def plot_performance_row_paper(
         if use_legend:
             legend_ax = ax
 
-        plot_absolute_panel(ax, sub, include_seq=include_seq, use_legend=use_legend)
+        plot_absolute_panel(ax, sub, use_legend=use_legend)
 
         ax.set_title(bench.title, pad=2)
         ax.set_xlabel(bench.xlabel)
@@ -287,17 +275,9 @@ def main() -> None:
         default=IMG_DIR / f"microbenchmark_performance_comparison.{OUTPUT_FORMAT}",
         help="Output PDF path",
     )
-    parser.add_argument(
-        "--include-seq",
-        action="store_true",
-        help="Include CPU sequential series (default: off).",
-    )
     args = parser.parse_args()
 
-    plot_performance_row_paper(
-        output_path=args.output.resolve(),
-        include_seq=args.include_seq,
-    )
+    plot_performance_row_paper(output_path=args.output.resolve())
 
 
 if __name__ == "__main__":

@@ -1171,7 +1171,9 @@ def resolve_runs_csv(summary_csv: str, runs_csv: str) -> str:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Plot FMM phase stacked bars from pipeline output.")
+    ap = argparse.ArgumentParser(
+        description="Run FMM binaries, parse phase timings, write CSV, and optionally draw stacked bars.",
+    )
     ap.add_argument("--n", type=int, default=20_000_000)
     ap.add_argument("--theta", type=float, default=0.3)
     ap.add_argument("--left-bin", default="")
@@ -1186,6 +1188,8 @@ def main() -> None:
     ap.add_argument("--logs", default="", help="Comma-separated log files to parse with --no-run.")
     ap.add_argument("--out", default="img/fmm_gtap_dtt_vs_omp_dtt_stack.png")
     ap.add_argument("--csv-out", default="", help="Write summary/runs CSV for later replot.")
+    ap.add_argument("--csv-only", action="store_true",
+                    help="Write --csv-out and exit without drawing.")
     ap.add_argument("--csv-in", default="", help="Replot from a summary CSV written by --csv-out.")
     ap.add_argument("--title", default="")
     ap.add_argument("--include-init", action="store_true",
@@ -1219,6 +1223,11 @@ def main() -> None:
 
     if args.runs < 1:
         raise SystemExit("--runs must be >= 1")
+    if args.csv_only:
+        if not args.csv_out:
+            raise SystemExit("--csv-only requires --csv-out")
+        if args.csv_in or args.paper or args.panel_csv:
+            raise SystemExit("--csv-only cannot be combined with --csv-in, --paper, or --panel-csv")
 
     env = dict(os.environ)
     cuda_root = env.get("CUDA_PATH") or env.get("CUDA_HOME") or ""
@@ -1233,7 +1242,8 @@ def main() -> None:
         existing = env.get("LD_LIBRARY_PATH", "")
         env["LD_LIBRARY_PATH"] = ":".join(prepend + ([existing] if existing else []))
 
-    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+    if not args.csv_only:
+        os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
 
     if args.panel_csv:
         if not args.no_run:
@@ -1274,6 +1284,8 @@ def main() -> None:
         title += f", average of {args.runs} runs"
     if args.csv_out and not args.csv_in:
         write_csv(data, args.csv_out)
+    if args.csv_only:
+        return
 
     if args.paper:
         runs_csv = resolve_runs_csv(data.source_csv or args.csv_in, args.runs_csv)

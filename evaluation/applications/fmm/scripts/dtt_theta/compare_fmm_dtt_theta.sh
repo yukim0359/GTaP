@@ -7,9 +7,8 @@
 #   - GPU worklist traversal   (bin/N<N>/theta<THETA>/worklist_dtt_fmm)
 #   - Host OpenMP traversal    (bin/N<N>/theta<THETA>/omp_dtt_fmm)
 #
-# Build staged bins first (same layout as plot_fmm_dtt_stack.sh):
+# Build staged bins first:
 #   ./scripts/dtt_theta/build_fmm_dtt_theta_bins.sh 0.3 10000000
-#   # or for all thetas: ./scripts/stack/plot_fmm_dtt_stack.sh --rebuild
 # Falls back to bin/theta<THETA>/ then bin/ if staged dirs are missing.
 #
 #   ./scripts/dtt_theta/compare_fmm_dtt_theta.sh
