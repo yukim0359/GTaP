@@ -239,6 +239,11 @@ def _prepare_heatmap(
         timeline_df, t_min, t_max, strong_state=strong_state,
     )
     warp_ids = ordered_warp_ids(stats_df, busy_times, sort_by_busy=sort_by_busy)
+    n_listed = len(warp_ids)
+    warp_ids = [w for w in warp_ids if busy_times.get(w, 0.0) > 0.0]
+    n_dropped = n_listed - len(warp_ids)
+    if n_dropped:
+        print(f"Dropped {n_dropped} never-busy warps ({len(warp_ids)}/{n_listed} remain)")
     total_warps = len(warp_ids)
     if max_warps > 0:
         warp_ids = warp_ids[:max_warps]
