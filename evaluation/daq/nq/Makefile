@@ -1,18 +1,12 @@
 BENCHMARK_NAME := nq
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
-
-CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang
-GT_INC     ?= $(PROJ_DIR)/runtime
+include $(SCRIPT_DIR)/../../common.mk
 
 # ---- Inputs / Outputs ----
 SRC_QUEUE_1   := $(SCRIPT_DIR)/$(BENCHMARK_NAME)_queue_1.cu
 SRC_QUEUE_2   := $(SCRIPT_DIR)/$(BENCHMARK_NAME)_queue_2.cu
 
-OUT_DIR       := $(SCRIPT_DIR)/bin
 OUT_QUEUE_1   := $(OUT_DIR)/$(BENCHMARK_NAME)_queue_1
 OUT_QUEUE_2   := $(OUT_DIR)/$(BENCHMARK_NAME)_queue_2
 
@@ -51,8 +45,8 @@ $(OUT_QUEUE_1): $(SRC_QUEUE_1) | $(OUT_DIR)
 	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_QUEUE_1)" -o "$(OUT_QUEUE_1)"
+	  "$(SRC_QUEUE_1)" -o "$(OUT_QUEUE_1)" \
+	  $(GTAP_CUDA_LIBS)
 
 # ---- Build: $(BENCHMARK_NAME)_queue_2.cu ----
 queue_2: $(OUT_QUEUE_2)
@@ -67,8 +61,8 @@ $(OUT_QUEUE_2): $(SRC_QUEUE_2) | $(OUT_DIR)
 	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_QUEUE_2)" -o "$(OUT_QUEUE_2)"
+	  "$(SRC_QUEUE_2)" -o "$(OUT_QUEUE_2)" \
+	  $(GTAP_CUDA_LIBS)
 
 clean:
 	rm -f $(OUT_QUEUE_1) $(OUT_QUEUE_2)

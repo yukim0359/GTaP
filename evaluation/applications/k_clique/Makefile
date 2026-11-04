@@ -13,15 +13,7 @@
 BENCHMARK_NAME := k_clique
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
-
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
-
-CXX_BIN    ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
-GT_INC     ?= $(PROJ_DIR)/runtime
-
-OUT_DIR    := $(SCRIPT_DIR)/bin
+include $(SCRIPT_DIR)/../../common.mk
 
 KCGPU_ROOT ?= $(abspath $(SCRIPT_DIR)/../../../../KCGPU)
 NVCC       ?= nvcc
@@ -155,7 +147,7 @@ $(OUT_GTAP_ORIENTATION): $(SRC_GTAP_ORIENTATION) $(SRC_GPU_ORIENT) $(LIB_KCGPU_O
 	  -DGTAP_CUDA_STACK_SIZE="$(GTAP_ORIENTATION_CUDA_STACK_SIZE)" \
 	  $(GTAP_CFLAGS) $(GTAP_EXTRA_CFLAGS) \
 	  "$(SRC_GTAP_ORIENTATION)" "$(SRC_GPU_ORIENT)" -o "$(OUT_GTAP_ORIENTATION)" \
-	  -L"$(CUDA_PATH)/lib64" -L"$(OUT_DIR)" -lcudart -lkcgpu_orient
+	  $(GTAP_CUDA_LIBS) -L"$(OUT_DIR)" -lkcgpu_orient
 
 gtap_pivot: $(OUT_GTAP_PIVOT)
 
@@ -179,7 +171,7 @@ $(OUT_GTAP_PIVOT): $(SRC_GTAP_PIVOT) $(SRC_GPU_ORIENT) $(LIB_KCGPU_ORIENT) | $(O
 	  -DGTAP_CUDA_STACK_SIZE="$(GTAP_PIVOT_CUDA_STACK_SIZE)" \
 	  $(GTAP_CFLAGS) $(GTAP_EXTRA_CFLAGS) \
 	  "$(SRC_GTAP_PIVOT)" "$(SRC_GPU_ORIENT)" -o "$(OUT_GTAP_PIVOT)" \
-	  -L"$(CUDA_PATH)/lib64" -L"$(OUT_DIR)" -lcudart -lkcgpu_orient
+	  $(GTAP_CUDA_LIBS) -L"$(OUT_DIR)" -lkcgpu_orient
 
 ncr: $(NCR_TXT)
 

@@ -7,7 +7,6 @@ cd "$COMPARE_DIR" || exit 1
 source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
 PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd) || exit 1
 BIN_DIR="$PROJECT_ROOT/bin"
-MAKEFILE="$COMPARE_DIR/Makefile"
 UTIL_DIR="$PROJECT_ROOT/../../util"
 TMP_DIR="$COMPARE_DIR/tmp"
 
@@ -32,61 +31,6 @@ echo "cutoff,1queue_med,1queue_err_low,1queue_err_high,3queue_med,3queue_err_low
 printf "%6s | %25s | %25s | %10s\n" "cutoff" "1queue (ms)" "3queue (ms)" "Speedup"
 printf "%6s-+-%25s-+-%25s-+-%10s\n" "------" "-------------------------" "-------------------------" "----------"
 
-
-# Compile function with cutoff value
-compile_with_cutoff() {
-    local cutoff=$1
-    local queue_type=$2
-    local src_file="$COMPARE_DIR/${BENCHMARK_NAME}_queue_${queue_type}.cu"
-    local out_file="$BIN_DIR/${BENCHMARK_NAME}_queue_${queue_type}"
-    
-    if [ ! -f "$src_file" ]; then
-        echo "Error: Source file not found: $src_file" >&2
-        return 1
-    fi
-    
-    local PROJ_DIR="${PROJ_DIR:-$(cd "$COMPARE_DIR/../../.." && pwd)}"
-    local CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-}}"
-    local CUDA_ARCH="${CUDA_ARCH:-sm_90}"
-    local CXX_BIN="${CXX_BIN:-$PROJ_DIR/clang-gtap/build/bin/clang++}"
-    local GT_INC="${GT_INC:-$PROJ_DIR/runtime}"
-    local GTAP_GRID_SIZE="${GTAP_GRID_SIZE:-4000}"
-    local GTAP_BLOCK_SIZE="${GTAP_BLOCK_SIZE:-32}"
-    local GTAP_MAX_TASKS_PER_WARP="${GTAP_MAX_TASKS_PER_WARP:-90000}"
-    local GTAP_CFLAGS="${GTAP_CFLAGS:-}"
-    if [ -z "$CUDA_PATH" ]; then
-        echo "Error: set CUDA_PATH or CUDA_HOME to the CUDA installation root" >&2
-        return 1
-    fi
-    
-    mkdir -p "$BIN_DIR"
-    # Do not run a binary left over from a previous cutoff if this build fails.
-    rm -f "$out_file"
-    
-    echo "Compiling ${BENCHMARK_NAME}_queue_${queue_type} with cutoff=$cutoff..." >&2
-    
-    # Add -Xcuda-ptxas --warn-on-spills only for queue_1 (matching Makefile)
-    local extra_flags=""
-    if [ "$queue_type" = "1" ]; then
-        extra_flags="-Xcuda-ptxas --warn-on-spills"
-    fi
-    
-    "$CXX_BIN" -O3 -x cuda \
-      --cuda-path="$CUDA_PATH" \
-      --cuda-gpu-arch="$CUDA_ARCH" \
-      -Wall -Wextra \
-      $extra_flags \
-      -I"$GT_INC" \
-      -DGTAP_GRID_SIZE="$GTAP_GRID_SIZE" \
-      -DGTAP_BLOCK_SIZE="$GTAP_BLOCK_SIZE" \
-      -DGTAP_MAX_TASKS_PER_WARP="$GTAP_MAX_TASKS_PER_WARP" \
-      -DTASK_SPAWN_CUTOFF_SORT="$cutoff" \
-      -DTASK_SPAWN_CUTOFF_MERGE="$cutoff" \
-      $GTAP_CFLAGS \
-      -L"$CUDA_PATH/lib64" -lcudart \
-      "$src_file" -o "$out_file"
-}
-
 # Generate test data once (unsorted + gen_vector sidecar .sorted.bin)
 echo "Generating test data..."
 cd "$UTIL_DIR" || exit 1
@@ -100,19 +44,14 @@ if [ ! -f "$TMP_DIR/$REF_FILE" ]; then
 fi
 
 for cutoff in "${CUTOFF_VALUES[@]}"; do
-    # Compile with current cutoff value
     echo "=== Compiling and testing with cutoff=$cutoff ===" >&2
-    
-    # Compile 1-queue version
-    if ! compile_with_cutoff "$cutoff" "1"; then
-        echo "Warning: Failed to compile queue_1 with cutoff=$cutoff" >&2
+
+    # Force rebuild: only GTAP_CFLAGS (cutoff) changes between iterations.
+    if ! make -C "$COMPARE_DIR" -B queue_1 queue_3 \
+        GTAP_CFLAGS="-DTASK_SPAWN_CUTOFF_SORT=$cutoff -DTASK_SPAWN_CUTOFF_MERGE=$cutoff"; then
+        echo "Warning: Failed to compile with cutoff=$cutoff" >&2
     fi
-    
-    # Compile 3-queue version
-    if ! compile_with_cutoff "$cutoff" "3"; then
-        echo "Warning: Failed to compile queue_3 with cutoff=$cutoff" >&2
-    fi
-    
+
     # --- 1-queue ---
     QUEUE1_MED=0 QUEUE1_ELO=0 QUEUE1_EHI=0
     if [ -x "$BIN_DIR/${BENCHMARK_NAME}_queue_1" ]; then

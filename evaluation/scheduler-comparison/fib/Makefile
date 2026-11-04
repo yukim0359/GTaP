@@ -45,8 +45,8 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_GTAP)" -o "$(OUT_GTAP)"
+	  "$(SRC_GTAP)" -o "$(OUT_GTAP)" \
+	  $(GTAP_CUDA_LIBS)
 
 $(OUT_GTAP_GQ): $(SRC_GTAP) | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
@@ -60,8 +60,8 @@ $(OUT_GTAP_GQ): $(SRC_GTAP) | $(OUT_DIR)
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  -DGQ \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_GTAP)" -o "$(OUT_GTAP_GQ)"
+	  "$(SRC_GTAP)" -o "$(OUT_GTAP_GQ)" \
+	  $(GTAP_CUDA_LIBS)
 
 $(OUT_GTAP_CHASELEV): $(SRC_GTAP) | $(OUT_DIR)
 	"$(CLANG_BIN)" -O3 -x cuda \
@@ -75,8 +75,8 @@ $(OUT_GTAP_CHASELEV): $(SRC_GTAP) | $(OUT_DIR)
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  -DCHASELEV \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -Wl,-rpath,"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_GTAP)" -o "$(OUT_GTAP_CHASELEV)"
+	  "$(SRC_GTAP)" -o "$(OUT_GTAP_CHASELEV)" \
+	  $(GTAP_CUDA_LIBS)
 
 clean:
 	rm -f $(OUT_GTAP) $(OUT_GTAP_GQ) $(OUT_GTAP_CHASELEV)

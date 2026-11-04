@@ -1,18 +1,12 @@
 BENCHMARK_NAME := fib
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
-
-CLANG_BIN  ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
-GT_INC     ?= $(PROJ_DIR)/runtime
+include $(SCRIPT_DIR)/../../common.mk
 
 # ---- Inputs / Outputs ----
 SRC_QUEUE_1   := $(SCRIPT_DIR)/$(BENCHMARK_NAME)_queue_1.cu
 SRC_QUEUE_3   := $(SCRIPT_DIR)/$(BENCHMARK_NAME)_queue_3.cu
 
-OUT_DIR       := $(SCRIPT_DIR)/bin
 OUT_QUEUE_1   := $(OUT_DIR)/$(BENCHMARK_NAME)_queue_1
 OUT_QUEUE_3   := $(OUT_DIR)/$(BENCHMARK_NAME)_queue_3
 
@@ -20,7 +14,7 @@ OUT_QUEUE_3   := $(OUT_DIR)/$(BENCHMARK_NAME)_queue_3
 GTAP_GRID_SIZE          ?= 4000
 GTAP_BLOCK_SIZE         ?= 32
 GTAP_MAX_TASKS_PER_WARP ?= 150000
-GTAP_CFLAGS             ?= 
+GTAP_CFLAGS             ?=
 
 .PHONY: all queue_1 queue_3 clean print-vars
 
@@ -29,7 +23,7 @@ all: queue_1 queue_3
 print-vars:
 	@echo "SCRIPT_DIR=$(SCRIPT_DIR)"
 	@echo "PROJ_DIR=$(PROJ_DIR)"
-	@echo "CLANG_BIN=$(CLANG_BIN)"
+	@echo "CXX_BIN=$(CXX_BIN)"
 	@echo "CUDA_PATH=$(CUDA_PATH)"
 	@echo "CUDA_ARCH=$(CUDA_ARCH)"
 	@echo "GT_INC=$(GT_INC)"
@@ -42,7 +36,7 @@ $(OUT_DIR):
 queue_1: $(OUT_QUEUE_1)
 
 $(OUT_QUEUE_1): $(SRC_QUEUE_1) | $(OUT_DIR)
-	"$(CLANG_BIN)" -O3 -x cuda \
+	"$(CXX_BIN)" -O3 -x cuda \
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
@@ -51,14 +45,14 @@ $(OUT_QUEUE_1): $(SRC_QUEUE_1) | $(OUT_DIR)
 	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_QUEUE_1)" -o "$(OUT_QUEUE_1)"
+	  "$(SRC_QUEUE_1)" -o "$(OUT_QUEUE_1)" \
+	  $(GTAP_CUDA_LIBS)
 
 # ---- Build: $(BENCHMARK_NAME)_queue_3.cu ----
 queue_3: $(OUT_QUEUE_3)
 
 $(OUT_QUEUE_3): $(SRC_QUEUE_3) | $(OUT_DIR)
-	"$(CLANG_BIN)" -O3 -x cuda \
+	"$(CXX_BIN)" -O3 -x cuda \
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
@@ -67,8 +61,8 @@ $(OUT_QUEUE_3): $(SRC_QUEUE_3) | $(OUT_DIR)
 	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
-	  "$(SRC_QUEUE_3)" -o "$(OUT_QUEUE_3)"
+	  "$(SRC_QUEUE_3)" -o "$(OUT_QUEUE_3)" \
+	  $(GTAP_CUDA_LIBS)
 
 clean:
 	rm -f $(OUT_QUEUE_1) $(OUT_QUEUE_3)

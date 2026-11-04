@@ -1,14 +1,5 @@
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PROJ_DIR   ?= $(abspath $(SCRIPT_DIR)/../../..)
-
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
-
-CXX_BIN    ?= $(PROJ_DIR)/clang-gtap/build/bin/clang++
-GT_INC     ?= $(PROJ_DIR)/runtime
-OMP_RESOURCE_DIR ?= $(PROJ_DIR)/clang-gtap/build/lib/clang/21
-OMP_INC          := $(OMP_RESOURCE_DIR)/include
-OMP_LIB_DIR      ?= $(PROJ_DIR)/clang-gtap/build/runtimes/runtimes-bins/openmp/runtime/src
+include $(SCRIPT_DIR)/../../common.mk
 
 SRC_FMM := $(SCRIPT_DIR)/main.cu
 FMM_HEADERS := \
@@ -17,7 +8,6 @@ FMM_HEADERS := \
   $(wildcard $(SCRIPT_DIR)/numerics/*.cuh $(SCRIPT_DIR)/numerics/*.hpp) \
   $(wildcard $(SCRIPT_DIR)/tree/*.cuh $(SCRIPT_DIR)/tree/*.hpp)
 
-OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_GTAP_DTT := $(OUT_DIR)/gtap_dtt_fmm
 OUT_GTAP_FUSED_DTT := $(OUT_DIR)/gtap_fused_dtt_fmm
 OUT_OMP_DTT := $(OUT_DIR)/omp_dtt_fmm
@@ -54,7 +44,7 @@ GTAP_MAX_TASKS_PER_WARP ?= 50000
 GTAP_CFLAGS             ?= -fgtap-no-taskwait
 GTAP_PROFILE_CAPACITY   ?= 30000
 GTAP_HOST_OMP_FLAGS     ?= -fopenmp -I"$(OMP_INC)"
-GTAP_HOST_OMP_LIBS      ?= -L"$(OMP_LIB_DIR)" -Wl,-rpath,"$(OMP_LIB_DIR)" -Wl,--disable-new-dtags -lomp
+GTAP_HOST_OMP_LIBS      ?= $(LDFLAGS_OMP)
 
 FMM_DEFS := \
   -DFMM3D_NCRIT="$(FMM3D_NCRIT)" \
@@ -87,8 +77,7 @@ FMM_CXXFLAGS := -O3 -x cuda \
   $(GTAP_CFLAGS)
 
 FMM_LDFLAGS := \
-  -L"$(CUDA_PATH)/lib64" -lcudart \
-  -Wl,-rpath,"$(CUDA_PATH)/lib64" \
+  $(GTAP_CUDA_LIBS) \
   $(GTAP_HOST_OMP_LIBS)
 
 define FMM_LINK
