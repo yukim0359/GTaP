@@ -49,7 +49,7 @@ python3 "$script_dir/fmm_phase_stack.py" \
   --csv-only \
   --include-init
 
-python3 "$FMM_ROOT/../../scripts/plot_fmm_3way_stack_paper.py" --n "$N" --theta "$THETA"
+python3 "$FMM_ROOT/../../scripts/plot/plot_fmm_3way_stack_paper.py" --n "$N" --theta "$THETA"
 
 echo "=== Done ==="
 date

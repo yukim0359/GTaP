@@ -27,7 +27,7 @@ mkdir -p "$PROF"
 GTAP_MAX_TASKS_PER_WARP="$PIVOT_MTP" ./bin/gtap_pivot "$GRAPH" 9
 
 # Regenerate paper figure
-python3 "$GTAP_ROOT/evaluation/scripts/plot_k_clique_pivot_timeline_paper.py" \
+python3 "$GTAP_ROOT/evaluation/scripts/plot/plot_k_clique_pivot_timeline_paper.py" \
   --profile-dir "$PROF/pivot" \
   --app-name as-Skitter-9
 

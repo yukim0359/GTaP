@@ -2,7 +2,7 @@
 # Build OpenCilk from source into a local prefix under $OPENCILK_ROOT.
 #
 # Usage:
-#   ./evaluation/scripts/build_opencilk.sh [jobs]
+#   ./evaluation/scripts/setup/build_opencilk.sh [jobs]
 #
 # Override the install location with the OPENCILK_ROOT environment variable
 # (defaults to $HOME/opencilk).

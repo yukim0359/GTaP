@@ -59,7 +59,7 @@ $(OUT_OMP): $(SRC_OMP) | $(OUT_DIR)
 cilk: $(OUT_CILK)
 
 $(OUT_CILK): $(SRC_CILK) | $(OUT_DIR)
-	@test -x "$(CC_CILK)" || (echo "Error: OpenCilk not found at $(CC_CILK). Run: $(PROJ_DIR)/evaluation/scripts/build_opencilk.sh" && false)
+	@test -x "$(CC_CILK)" || (echo "Error: OpenCilk not found at $(CC_CILK). Run: $(PROJ_DIR)/evaluation/scripts/setup/build_opencilk.sh" && false)
 	"$(CC_CILK)" $(CFLAGS_CILK) "$(SRC_CILK)" -o "$(OUT_CILK)" $(LDFLAGS_CILK)
 
 clean:

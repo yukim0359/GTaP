@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.gridspec import GridSpec
 
-EVAL_DIR = Path(__file__).resolve().parents[1]
+EVAL_DIR = Path(__file__).resolve().parents[2]
 IMG_DIR = EVAL_DIR / "img"
 K_CLIQUE_DIR = EVAL_DIR / "applications" / "k_clique"
 SM_TIMELINE_BINS = 1200

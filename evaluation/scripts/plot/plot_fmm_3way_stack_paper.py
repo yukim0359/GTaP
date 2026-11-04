@@ -16,7 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-EVAL_DIR = Path(__file__).resolve().parents[1]
+EVAL_DIR = Path(__file__).resolve().parents[2]
 IMG_DIR = EVAL_DIR / "img"
 FMM_DIR = EVAL_DIR / "applications" / "fmm"
 sys.path.insert(0, str(FMM_DIR / "scripts" / "stack"))

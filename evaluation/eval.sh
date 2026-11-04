@@ -174,31 +174,31 @@ resolve_plot() {
     case "$name" in
         tree|tree-depth|tree-compute)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot_binary_tree_normalized_sweeps_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_binary_tree_normalized_sweeps_paper.py"
             ;;
         hetero)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot_hetero_tree_compute_normalized_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_hetero_tree_compute_normalized_paper.py"
             ;;
         micro|fib|nq|cilksort)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot_performance_row_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_performance_row_paper.py"
             ;;
         daq|daq-fib|daq-nq|daq-cilksort)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot_daq_ratio_row_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_daq_ratio_row_paper.py"
             ;;
         worker-fib)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot_fib_worker_scaling_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_fib_worker_scaling_paper.py"
             ;;
         fmm-theta)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot_fmm_dtt_theta_row_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_fmm_dtt_theta_row_paper.py"
             ;;
         fmm-stack)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot_fmm_3way_stack_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_fmm_3way_stack_paper.py"
             ;;
         kclique|kclique-orientation|kclique-pivot)
             PLOT_KIND=exec

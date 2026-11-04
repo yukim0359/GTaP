@@ -23,7 +23,7 @@ import pandas as pd
 from matplotlib import transforms
 from matplotlib.gridspec import GridSpec
 
-EVAL_DIR = Path(__file__).resolve().parents[1]
+EVAL_DIR = Path(__file__).resolve().parents[2]
 IMG_DIR = EVAL_DIR / "img"
 K_CLIQUE_DIR = EVAL_DIR / "applications" / "k_clique"
 from gtap_profile_visualization import (  # noqa: E402

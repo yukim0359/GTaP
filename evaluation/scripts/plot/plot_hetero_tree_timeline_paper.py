@@ -21,7 +21,7 @@ import pandas as pd
 from matplotlib import transforms
 from matplotlib.gridspec import GridSpec
 
-EVAL_DIR = Path(__file__).resolve().parents[1]
+EVAL_DIR = Path(__file__).resolve().parents[2]
 IMG_DIR = EVAL_DIR / "img"
 HETERO_DIR = EVAL_DIR / "mode-comparison" / "hetero_tree"
 from gtap_profile_visualization import (  # noqa: E402

@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-EVAL_DIR = Path(__file__).resolve().parents[1]
+EVAL_DIR = Path(__file__).resolve().parents[2]
 COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
 SCALING_DIR = EVAL_DIR / "scheduler-comparison" / "fib"

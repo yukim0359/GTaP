@@ -17,7 +17,7 @@
 #   qsub scripts/dtt_theta/run_compare_fmm_dtt_theta_rebuild.pbs
 #
 # Paper figure:
-#   python3 ../../scripts/plot_fmm_dtt_theta_row_paper.py
+#   python3 ../../scripts/plot/plot_fmm_dtt_theta_row_paper.py
 #   -> evaluation/img/fmm_dtt_theta_combined_row.pdf
 #
 # Useful env overrides:
@@ -49,7 +49,7 @@ Usage: $0 [--plot-only]
 
 Compare DTT core traversal time vs theta (GTaP / worklist / Host OpenMP).
 Writes: fmm_dtt_theta_results.csv
-Plots:  python3 ../../scripts/plot_fmm_dtt_theta_row_paper.py
+Plots:  python3 ../../scripts/plot/plot_fmm_dtt_theta_row_paper.py
 
   $0              Run measurement sweep (default)
   $0 --plot-only  Replot from existing fmm_dtt_theta_results.csv only
@@ -68,7 +68,7 @@ if [ "$plot_only" -eq 1 ]; then
     exit 1
   fi
   echo "Plot only from: $RESULTS_FILE"
-  exec python3 "$COMPARE_DIR/../../scripts/plot_fmm_dtt_theta_row_paper.py"
+  exec python3 "$COMPARE_DIR/../../scripts/plot/plot_fmm_dtt_theta_row_paper.py"
 fi
 
 # shellcheck source=../omp_host_dtt_env.sh
@@ -580,4 +580,4 @@ for n in "${N_SIZES[@]}"; do
 done
 
 echo "Wrote: $RESULTS_FILE"
-echo "Plot with: python3 $COMPARE_DIR/../../scripts/plot_fmm_dtt_theta_row_paper.py"
+echo "Plot with: python3 $COMPARE_DIR/../../scripts/plot/plot_fmm_dtt_theta_row_paper.py"

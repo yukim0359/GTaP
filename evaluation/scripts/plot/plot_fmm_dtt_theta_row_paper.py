@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.ticker import MultipleLocator
 
-EVAL_DIR = Path(__file__).resolve().parents[1]
+EVAL_DIR = Path(__file__).resolve().parents[2]
 IMG_DIR = EVAL_DIR / "img"
 FMM_DIR = EVAL_DIR / "applications" / "fmm"
 sys.path.insert(0, str(EVAL_DIR))

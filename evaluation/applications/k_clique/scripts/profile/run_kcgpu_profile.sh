@@ -185,7 +185,7 @@ else
 fi
 
 echo "Generating SM working timeline (max_sms=$MAX_WORKERS)"
-python3 "$K_CLIQUE_DIR/../../scripts/plot_kcgpu_sm_timeline_paper.py" \
+python3 "$K_CLIQUE_DIR/../../scripts/plot/plot_kcgpu_sm_timeline_paper.py" \
     --profile-dir "$PROFILE_ROOT" \
     --variant "$KCGPU_VARIANT" \
     --profile-tag "$tag" \
