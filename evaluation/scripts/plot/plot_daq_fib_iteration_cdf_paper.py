@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Paper figure: CDF of task-execution interval durations (Fibonacci).
 
-Uses current-format profiles from evaluation/daq/fib (n=40, cutoff=10 by default) and
+Uses current-format profiles from evaluation/microbenchmarks/daq/fib (n=40, cutoff=10 by default) and
 compares 1-queue (without DAQ) vs 3-queue DAQ (cutoff / non-cutoff / continuation).
 """
 
@@ -19,7 +19,7 @@ import pandas as pd
 EVAL_DIR = Path(__file__).resolve().parents[2]
 COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
-DAQ_FIB_DIR = EVAL_DIR / "daq" / "fib"
+DAQ_FIB_DIR = EVAL_DIR / "microbenchmarks" / "daq" / "fib"
 sys.path.insert(0, str(EVAL_DIR))
 
 from common.plotting.gtap_colors import COL_GTAP_THREAD, COL_OMP  # noqa: E402

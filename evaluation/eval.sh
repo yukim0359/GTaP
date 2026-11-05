@@ -104,32 +104,32 @@ resolve() {
             TARGET_SUBMIT=compare_hetero_compute_k24.pbs
             ;;
         fib)
-            TARGET_DIR="$EVAL_DIR/microbenchmarks/fib"
+            TARGET_DIR="$EVAL_DIR/microbenchmarks/runtime-comparison/fib"
             TARGET_RUN=compare_fib.sh
             TARGET_SUBMIT=compare_fib.pbs
             ;;
         nq)
-            TARGET_DIR="$EVAL_DIR/microbenchmarks/nq"
+            TARGET_DIR="$EVAL_DIR/microbenchmarks/runtime-comparison/nq"
             TARGET_RUN=compare_nq.sh
             TARGET_SUBMIT=compare_nq.pbs
             ;;
         cilksort)
-            TARGET_DIR="$EVAL_DIR/microbenchmarks/cilksort"
+            TARGET_DIR="$EVAL_DIR/microbenchmarks/runtime-comparison/cilksort"
             TARGET_RUN=compare_cilksort.sh
             TARGET_SUBMIT=compare_cilksort.pbs
             ;;
         daq-fib)
-            TARGET_DIR="$EVAL_DIR/daq/fib"
+            TARGET_DIR="$EVAL_DIR/microbenchmarks/daq/fib"
             TARGET_RUN=daq_fib.sh
             TARGET_SUBMIT=daq_fib.pbs
             ;;
         daq-nq)
-            TARGET_DIR="$EVAL_DIR/daq/nq"
+            TARGET_DIR="$EVAL_DIR/microbenchmarks/daq/nq"
             TARGET_RUN=daq_nq.sh
             TARGET_SUBMIT=daq_nq.pbs
             ;;
         daq-cilksort)
-            TARGET_DIR="$EVAL_DIR/daq/cilksort"
+            TARGET_DIR="$EVAL_DIR/microbenchmarks/daq/cilksort"
             TARGET_RUN=daq_cilksort.sh
             TARGET_SUBMIT=daq_cilksort.pbs
             ;;

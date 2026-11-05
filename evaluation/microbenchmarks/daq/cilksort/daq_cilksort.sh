@@ -4,10 +4,10 @@ BENCHMARK_NAME=cilksort
 
 COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 cd "$COMPARE_DIR" || exit 1
-source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
+source "$COMPARE_DIR/../../../common/benchmark.sh" || exit 1
 PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd) || exit 1
 BIN_DIR="$PROJECT_ROOT/bin"
-UTIL_DIR="$PROJECT_ROOT/../../util"
+UTIL_DIR="$PROJECT_ROOT/../../../util"
 TMP_DIR="$COMPARE_DIR/tmp"
 
 # Test values for cutoff depth

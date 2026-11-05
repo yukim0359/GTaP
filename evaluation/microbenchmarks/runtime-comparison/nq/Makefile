@@ -1,7 +1,7 @@
-BENCHMARK_NAME := fib
+BENCHMARK_NAME := nq
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(SCRIPT_DIR)/../../common.mk
+include $(SCRIPT_DIR)/../../../common.mk
 
 SRC_GTAP   := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
 SRC_OMP    := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).c
@@ -11,10 +11,10 @@ OUT_GTAP   := $(OUT_DIR)/gtap_$(BENCHMARK_NAME)
 OUT_OMP    := $(OUT_DIR)/omp_$(BENCHMARK_NAME)
 OUT_CILK   := $(OUT_DIR)/cilk_$(BENCHMARK_NAME)
 
-GTAP_GRID_SIZE          ?= 3000
+GTAP_GRID_SIZE          ?= 2000
 GTAP_BLOCK_SIZE         ?= 32
-GTAP_MAX_TASKS_PER_WARP ?= 120000
-GTAP_NUM_QUEUES         ?= 1
+GTAP_MAX_TASKS_PER_WARP ?= 20000
+GTAP_CFLAGS             ?= -fgtap-no-taskwait
 
 .PHONY: all gtap omp cilk clean print-vars
 
@@ -41,12 +41,10 @@ $(OUT_GTAP): $(SRC_GTAP) | $(OUT_DIR)
 	  --cuda-path="$(CUDA_PATH)" \
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -Wall -Wextra \
-	  -Xcuda-ptxas -v \
 	  -I"$(GT_INC)" \
 	  -DGTAP_GRID_SIZE="$(GTAP_GRID_SIZE)" \
 	  -DGTAP_BLOCK_SIZE="$(GTAP_BLOCK_SIZE)" \
 	  -DGTAP_MAX_TASKS_PER_WARP="$(GTAP_MAX_TASKS_PER_WARP)" \
-	  -DGTAP_NUM_QUEUES="$(GTAP_NUM_QUEUES)" \
 	  $(GTAP_CFLAGS) \
 	  "$(SRC_GTAP)" -o "$(OUT_GTAP)" \
 	  $(GTAP_CUDA_LIBS)

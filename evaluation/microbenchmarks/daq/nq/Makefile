@@ -1,7 +1,7 @@
 BENCHMARK_NAME := nq
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(SCRIPT_DIR)/../../common.mk
+include $(SCRIPT_DIR)/../../../common.mk
 
 # ---- Inputs / Outputs ----
 SRC_QUEUE_1   := $(SCRIPT_DIR)/$(BENCHMARK_NAME)_queue_1.cu

@@ -1,7 +1,7 @@
 BENCHMARK_NAME := cilksort
 
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-include $(SCRIPT_DIR)/../../common.mk
+include $(SCRIPT_DIR)/../../../common.mk
 
 SRC_GTAP    := $(SCRIPT_DIR)/gtap_$(BENCHMARK_NAME).cu
 SRC_OMP     := $(SCRIPT_DIR)/omp_$(BENCHMARK_NAME).cpp

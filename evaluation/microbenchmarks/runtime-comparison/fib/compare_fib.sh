@@ -4,7 +4,7 @@ BENCHMARK_NAME=fib
 
 COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 cd "$COMPARE_DIR" || exit 1
-source "$COMPARE_DIR/../../common/benchmark.sh" || exit 1
+source "$COMPARE_DIR/../../../common/benchmark.sh" || exit 1
 PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd) || exit 1
 BIN_DIR="$PROJECT_ROOT/bin"
 
@@ -25,7 +25,7 @@ export CILK_NWORKERS="${CILK_NWORKERS:-${OMP_NUM_THREADS:-$(nproc)}}"
 # Dynasoar fork-join implementation
 if [ -z "${DYNASOAR_ROOT:-}" ]; then
     for _candidate in \
-        "$COMPARE_DIR/../../../../fine-grained-fork-join" \
+        "$COMPARE_DIR/../../../../../fine-grained-fork-join" \
         "$HOME/fine-grained-fork-join"; do
         if [ -d "$_candidate" ]; then
             DYNASOAR_ROOT=$(cd "$_candidate" && pwd)

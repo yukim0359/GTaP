@@ -8,8 +8,9 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-EVAL_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
-GTAP_ROOT=$(cd "$EVAL_DIR/../.." && pwd)
+DAQ_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
+EVAL_DIR=$(cd "$DAQ_DIR/../.." && pwd)
+GTAP_ROOT=$(cd "$EVAL_DIR/.." && pwd)
 NCU_BIN=${NCU_BIN:-ncu}
 OUT_DIR=${OUT_DIR:-"$SCRIPT_DIR"}
 RESULTS_CSV=${RESULTS_CSV:-"$OUT_DIR/warp_efficiency_summary.csv"}
@@ -76,7 +77,7 @@ profile_one() {
 
 build_bench() {
     local benchmark=$1
-    make -C "$EVAL_DIR/$benchmark" all
+    make -C "$DAQ_DIR/$benchmark" all
 }
 
 run_probe() {
@@ -91,7 +92,7 @@ run_probe() {
 
 run_fib() {
     build_bench fib
-    local bin_dir="$EVAL_DIR/fib/bin"
+    local bin_dir="$DAQ_DIR/fib/bin"
     for cutoff in $FIB_CUTOFFS; do
         profile_one fib queue_1 1 "$FIB_N" "$cutoff" "$bin_dir/fib_queue_1" "$FIB_N" "$cutoff"
         profile_one fib queue_3 3 "$FIB_N" "$cutoff" "$bin_dir/fib_queue_3" "$FIB_N" "$cutoff"
@@ -100,7 +101,7 @@ run_fib() {
 
 run_nq() {
     build_bench nq
-    local bin_dir="$EVAL_DIR/nq/bin"
+    local bin_dir="$DAQ_DIR/nq/bin"
     for cutoff in $NQ_CUTOFFS; do
         profile_one nq queue_1 1 "$NQ_N" "$cutoff" "$bin_dir/nq_queue_1" "$NQ_N" "$cutoff"
         profile_one nq queue_2 2 "$NQ_N" "$cutoff" "$bin_dir/nq_queue_2" "$NQ_N" "$cutoff"
@@ -108,8 +109,8 @@ run_nq() {
 }
 
 run_cilksort() {
-    local bench_dir="$EVAL_DIR/cilksort"
-    local util_dir="$EVAL_DIR/../util"
+    local bench_dir="$DAQ_DIR/cilksort"
+    local util_dir="$EVAL_DIR/util"
     local tmp_dir="$bench_dir/tmp"
     local data_file="$tmp_dir/ncu_data_${CILKSORT_SIZE}.bin"
     mkdir -p "$tmp_dir"

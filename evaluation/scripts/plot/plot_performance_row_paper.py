@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 EVAL_DIR = Path(__file__).resolve().parents[2]
-COMPARE_DIR = EVAL_DIR / "microbenchmarks"
+COMPARE_DIR = EVAL_DIR / "microbenchmarks" / "runtime-comparison"
 IMG_DIR = EVAL_DIR / "img"
 sys.path.insert(0, str(EVAL_DIR))
 

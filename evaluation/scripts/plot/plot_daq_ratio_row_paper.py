@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Paper figure: DAQ normalized time T_DAQ/T_1queue for fib / nq / cilksort.
 
-Reads DAQ experiment CSVs from evaluation/daq/{fib,nq,cilksort}/ and plots one row of
+Reads DAQ experiment CSVs from evaluation/microbenchmarks/daq/{fib,nq,cilksort}/ and plots one row of
 three panels at ACM single-column width (3.33 in) with 8pt typography.
 """
 
@@ -21,7 +21,7 @@ import pandas as pd
 EVAL_DIR = Path(__file__).resolve().parents[2]
 COMPARE_DIR = EVAL_DIR / "microbenchmarks"
 IMG_DIR = EVAL_DIR / "img"
-DAQ_DIR = EVAL_DIR / "daq"
+DAQ_DIR = EVAL_DIR / "microbenchmarks" / "daq"
 sys.path.insert(0, str(EVAL_DIR))
 
 from common.plotting.gtap_colors import COL_GTAP_THREAD  # noqa: E402
