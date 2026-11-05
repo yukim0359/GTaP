@@ -1,0 +1,10 @@
+#!/bin/bash
+#PBS -q regular-g
+#PBS -l select=1
+#PBS -l walltime=12:00:00
+#PBS -W group_list=gc64
+#PBS -j oe
+#PBS -V
+
+cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")/../.." && pwd)}" || exit 1
+exec bash ./scripts/k579/run_pivot_k579_e2e.sh "$@"

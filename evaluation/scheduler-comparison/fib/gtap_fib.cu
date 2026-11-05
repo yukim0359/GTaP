@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
-// #define GTAP_ENABLE_PROFILING
 
 #ifdef GQ
 #include "experimental/gtap_thread_gq.cuh"
@@ -11,16 +10,7 @@
 #include "gtap_thread.cuh"
 #endif
 #endif
-
-#ifndef GTAP_BENCH_GRID_SIZE
-#define GTAP_BENCH_GRID_SIZE 4000
-#endif
-#ifndef GTAP_BENCH_BLOCK_SIZE
-#define GTAP_BENCH_BLOCK_SIZE 32
-#endif
-#ifndef GTAP_BENCH_MAX_TASKS_PER_WARP
-#define GTAP_BENCH_MAX_TASKS_PER_WARP 200000
-#endif
+#include "../../common/gtap_launch.hpp"
 
 __device__ int d_result;
 
@@ -48,11 +38,14 @@ int main(int argc, char** argv) {
     if (argc >= 2) n = atoi(argv[1]);
 
     gtap_thread_config config{
-        .grid_size = GTAP_BENCH_GRID_SIZE,
-        .block_size = GTAP_BENCH_BLOCK_SIZE,
-        .max_tasks_per_warp = GTAP_BENCH_MAX_TASKS_PER_WARP,
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
         .num_queues = 1,
     };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
     cudaError_t err = gtap_initialize(config);
     if (err != cudaSuccess) {
         printf("Error: %s\n", cudaGetErrorString(err));
@@ -69,9 +62,13 @@ int main(int argc, char** argv) {
         gtap_finalize();
         return 1;
     }
-    gtap_synchronize();
     cudaEventRecord(stop);
-    cudaDeviceSynchronize();
+    err = gtap_synchronize();
+    if (err != cudaSuccess) {
+        printf("Error: %s\n", cudaGetErrorString(err));
+        gtap_finalize();
+        return 1;
+    }
     cudaEventSynchronize(stop);
     
     int h_result;
@@ -81,10 +78,6 @@ int main(int argc, char** argv) {
     float elapsed_time;
     cudaEventElapsedTime(&elapsed_time, start, stop);
     printf("Execution time: %.3f ms\n", elapsed_time);
-
-#ifdef GTAP_ENABLE_PROFILING
-    visualize_working_time("fib");
-#endif
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);

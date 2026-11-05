@@ -1,0 +1,44 @@
+#!/bin/bash
+# Rebuild FMM DTT binaries for each (N, theta), then run compare_fmm_dtt_theta.sh.
+
+set -euo pipefail
+
+FMM_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || exit 1
+cd "$FMM_ROOT" || exit 1
+
+N_VALUES="${N_VALUES:-10000000,50000000}"
+THETA_VALUES="${THETA_VALUES:-0.2,0.3,0.4,0.5}"
+export N_VALUES THETA_VALUES
+export NUM_RUNS="${NUM_RUNS:-20}"
+export GTAP_GRID_SIZE="${GTAP_GRID_SIZE:-3168}"
+
+echo "=== Rebuild + compare FMM DTT theta ==="
+echo "N_VALUES=${N_VALUES} THETA_VALUES=${THETA_VALUES} NUM_RUNS=${NUM_RUNS} GTAP_GRID_SIZE=${GTAP_GRID_SIZE}"
+date
+hostname
+nvidia-smi -L || true
+
+IFS=',' read -r -a ns <<< "$N_VALUES"
+IFS=',' read -r -a thetas <<< "$THETA_VALUES"
+
+for n in "${ns[@]}"; do
+  n="${n//[[:space:]]/}"
+  for theta in "${thetas[@]}"; do
+    theta="${theta//[[:space:]]/}"
+    echo "=== build_fmm_dtt_theta_bins.sh ${theta} ${n} ==="
+    # Clear any leftover env so apply_build_defs picks per-(N,theta) defaults.
+    unset GTAP_MAX_TASKS_PER_WARP || true
+    ./scripts/dtt_theta/build_fmm_dtt_theta_bins.sh "$theta" "$n"
+  done
+done
+
+# Critical: do not leave GTAP_MAX_TASKS_PER_WARP in the environment, or the
+# runtime getenv override would force one cap onto every binary.
+unset GTAP_MAX_TASKS_PER_WARP || true
+
+echo "=== compare_fmm_dtt_theta.sh ==="
+./scripts/dtt_theta/compare_fmm_dtt_theta.sh
+
+echo "=== Done ==="
+date
+ls -la fmm_dtt_theta_results.csv

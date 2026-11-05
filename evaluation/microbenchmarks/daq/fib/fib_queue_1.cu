@@ -1,0 +1,84 @@
+#include <stdio.h>
+#include <cuda_runtime.h>
+// #define GTAP_ENABLE_PROFILING
+#include "gtap_thread.cuh"
+#include "../../../common/gtap_launch.hpp"
+
+__device__ int d_result;
+__device__ int d_cutoff;
+
+__device__ int fib_sequential(int n) {
+    if (n < 2) return n;
+    int result1 = fib_sequential(n - 1);
+    int result2 = fib_sequential(n - 2);
+    return result1 + result2;
+}
+
+#pragma gtap function
+__device__ int fib(int n) {
+    if (n < d_cutoff) return fib_sequential(n);
+    int a, b;
+    #pragma gtap task
+    a = fib(n - 1);
+    #pragma gtap task
+    b = fib(n - 2);
+    #pragma gtap taskwait
+    return a + b;
+}
+
+__global__ void exec_kernel(int n) {
+    #pragma gtap entry
+    d_result = fib(n);
+}
+
+int main(int argc, char** argv) {
+    int n = 40;
+    int cutoff = 2;
+    if (argc >= 2) n = atoi(argv[1]);
+    if (argc >= 3) cutoff = atoi(argv[2]);
+
+    gtap_thread_config config{
+        .grid_size = GTAP_GRID_SIZE,
+        .block_size = GTAP_BLOCK_SIZE,
+        .max_tasks_per_warp = GTAP_MAX_TASKS_PER_WARP,
+        .num_queues = 1,
+    };
+    if (!apply_thread_launch_env(config.grid_size, config.block_size, config.max_tasks_per_warp)) {
+        return 1;
+    }
+    cudaError_t err = gtap_initialize(config);
+    if (err != cudaSuccess) {
+        printf("Error: %s\n", cudaGetErrorString(err));
+        return 1;
+    }
+
+    cudaMemcpyToSymbol(d_cutoff, &cutoff, sizeof(int));
+    
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+    err = gtap_launch(exec_kernel, n);
+    cudaEventRecord(stop);
+    gtap_synchronize();
+    cudaEventSynchronize(stop);
+    
+    int h_result;
+    cudaMemcpyFromSymbol(&h_result, d_result, sizeof(int));
+    printf("Fibonacci of %d is %d\n", n, h_result);
+
+    float elapsed_time;
+    cudaEventElapsedTime(&elapsed_time, start, stop);
+    printf("Execution time: %.3f ms\n", elapsed_time);
+
+#ifdef GTAP_ENABLE_PROFILING
+    gtap_export_profile({
+        .output_directory = "./profile/fib_queue_1",
+        .overwrite = true,
+    });
+#endif
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    return 0;
+}

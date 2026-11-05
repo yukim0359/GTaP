@@ -1,0 +1,141 @@
+#!/bin/bash
+
+BENCHMARK_NAME=fib
+
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../../common/benchmark.sh" || exit 1
+PROJECT_ROOT=$(cd "$COMPARE_DIR" && pwd) || exit 1
+BIN_DIR="$PROJECT_ROOT/bin"
+
+if [ ! -d "$BIN_DIR" ]; then
+    mkdir -p "$BIN_DIR"
+fi
+
+echo "Building fib binaries (force rebuild for updated runtime) ..."
+make -C "$COMPARE_DIR" -B gtap omp cilk || exit 1
+
+N_VALUES=(2 4 6 8 10 12 14 16 18 20 22 24 26 28 30 32 34 36 38 40)
+
+### fib-specific settings ###
+export OMP_STACKSIZE=20M
+# Match OpenMP thread count when not set explicitly.
+export CILK_NWORKERS="${CILK_NWORKERS:-${OMP_NUM_THREADS:-$(nproc)}}"
+
+# Dynasoar fork-join implementation
+if [ -z "${DYNASOAR_ROOT:-}" ]; then
+    for _candidate in \
+        "$COMPARE_DIR/../../../../../fine-grained-fork-join" \
+        "$HOME/fine-grained-fork-join"; do
+        if [ -d "$_candidate" ]; then
+            DYNASOAR_ROOT=$(cd "$_candidate" && pwd)
+            break
+        fi
+    done
+fi
+DYNASOAR_FIB_TARGET="${DYNASOAR_FIB_TARGET:-FibOnlyOne}"
+DYNASOAR_FIB_BIN="${DYNASOAR_FIB_BIN:-${DYNASOAR_ROOT:+$DYNASOAR_ROOT/bin/$DYNASOAR_FIB_TARGET}}"
+
+ensure_dynasoar_bin() {
+    if [ -z "${DYNASOAR_ROOT:-}" ] || [ ! -d "$DYNASOAR_ROOT" ]; then
+        echo "Warning: fine-grained-fork-join not found (set DYNASOAR_ROOT); skipping Dynasoar runs" >&2
+        return 1
+    fi
+    if [ -x "$DYNASOAR_FIB_BIN" ]; then
+        return 0
+    fi
+    echo "Building Dynasoar $DYNASOAR_FIB_TARGET in $DYNASOAR_ROOT ..."
+    make -C "$DYNASOAR_ROOT" "bin/$DYNASOAR_FIB_TARGET" || {
+        echo "Warning: Dynasoar $DYNASOAR_FIB_TARGET build failed; skipping Dynasoar runs" >&2
+        return 1
+    }
+    [ -x "$DYNASOAR_FIB_BIN" ]
+}
+
+# Number of runs
+NUM_RUNS=20
+
+# Results CSV (median + IQR error bars)
+RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_performance_results.csv"
+echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,OMP_med,OMP_err_low,OMP_err_high,CILK_med,CILK_err_low,CILK_err_high,DYNASOAR_med,DYNASOAR_err_low,DYNASOAR_err_high,SEQ_med,SEQ_err_low,SEQ_err_high,Speedup_med(OMP/GTAP),Speedup_med(CILK/GTAP),Speedup_med(DYNASOAR/GTAP)" > "$RESULTS_FILE"
+
+DYNASOAR_ENABLED=0
+if ensure_dynasoar_bin; then
+    DYNASOAR_ENABLED=1
+    echo "Dynasoar Fib: $DYNASOAR_FIB_BIN"
+else
+    echo "Dynasoar Fib: disabled"
+fi
+
+# Pretty header (fixed width columns)
+printf "%6s | %25s | %25s | %25s | %25s | %10s\n" "n" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Dynasoar (ms)" "OMP/GTAP"
+printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" "------" "-------------------------" "-------------------------" "-------------------------" "-------------------------" "----------"
+
+for n in "${N_VALUES[@]}"; do
+    # --- GTAP ---
+    GTAP_MED=0 GTAP_ELO=0 GTAP_EHI=0
+    if [ -x "$BIN_DIR/gtap_$BENCHMARK_NAME" ]; then
+        read GTAP_MED _ _ GTAP_ELO GTAP_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                "$BIN_DIR/gtap_$BENCHMARK_NAME" "$n"
+        )
+    fi
+
+    # --- OpenMP ---
+    OMP_MED=0 OMP_ELO=0 OMP_EHI=0
+    if [ -x "$BIN_DIR/omp_$BENCHMARK_NAME" ]; then
+        read OMP_MED _ _ OMP_ELO OMP_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                "$BIN_DIR/omp_$BENCHMARK_NAME" "$n"
+        )
+    fi
+
+    # --- Cilk ---
+    CILK_MED=0 CILK_ELO=0 CILK_EHI=0
+    if [ -x "$BIN_DIR/cilk_$BENCHMARK_NAME" ]; then
+        read CILK_MED _ _ CILK_ELO CILK_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+                "$BIN_DIR/cilk_$BENCHMARK_NAME" "$n"
+        )
+    fi
+
+    # --- Dynasoar ---
+    DYNASOAR_MED=0 DYNASOAR_ELO=0 DYNASOAR_EHI=0
+    if [ "$DYNASOAR_ENABLED" = "1" ]; then
+        read DYNASOAR_MED _ _ DYNASOAR_ELO DYNASOAR_EHI < <(
+            benchmark_run_stats "$NUM_RUNS" benchmark_parse_dynasoar_ms \
+                "$DYNASOAR_FIB_BIN" "$n"
+        )
+    fi
+
+    SEQ_MED=0 SEQ_ELO=0 SEQ_EHI=0
+
+    # Speedup (OMP / GTAP, CILK / GTAP) based on medians
+    SPEEDUP=0
+    CILK_SPEEDUP=0
+    DYNASOAR_SPEEDUP=0
+    if [ "$GTAP_MED" != "0" ] && [ "$OMP_MED" != "0" ]; then
+        SPEEDUP=$(echo "scale=6; $OMP_MED / $GTAP_MED" | bc -l)
+    fi
+    if [ "$GTAP_MED" != "0" ] && [ "$CILK_MED" != "0" ]; then
+        CILK_SPEEDUP=$(echo "scale=6; $CILK_MED / $GTAP_MED" | bc -l)
+    fi
+    if [ "$GTAP_MED" != "0" ] && [ "$DYNASOAR_MED" != "0" ]; then
+        DYNASOAR_SPEEDUP=$(echo "scale=6; $DYNASOAR_MED / $GTAP_MED" | bc -l)
+    fi
+
+    # Print aligned row
+    printf "%6d | " "$n"
+    benchmark_fmt_med_iqr "$GTAP_MED" "$GTAP_ELO" "$GTAP_EHI"; printf " | "
+    benchmark_fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
+    benchmark_fmt_med_iqr "$CILK_MED" "$CILK_ELO" "$CILK_EHI"; printf " | "
+    benchmark_fmt_med_iqr "$DYNASOAR_MED" "$DYNASOAR_ELO" "$DYNASOAR_EHI"; printf " | "
+    if [ "$SPEEDUP" = "0" ]; then
+        printf "%10s\n" "N/A"
+    else
+        printf "%10.2f\n" "$SPEEDUP"
+    fi
+
+    # CSV
+    echo "$n,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$CILK_MED,$CILK_ELO,$CILK_EHI,$DYNASOAR_MED,$DYNASOAR_ELO,$DYNASOAR_EHI,$SEQ_MED,$SEQ_ELO,$SEQ_EHI,$SPEEDUP,$CILK_SPEEDUP,$DYNASOAR_SPEEDUP" >> "$RESULTS_FILE"
+done

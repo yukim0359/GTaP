@@ -1,0 +1,162 @@
+#!/bin/bash
+
+BENCHMARK_NAME=nq
+
+COMPARE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+cd "$COMPARE_DIR" || exit 1
+source "$COMPARE_DIR/../../../common/benchmark.sh" || exit 1
+BIN_DIR="$COMPARE_DIR/bin"
+
+if [ ! -d "$COMPARE_DIR" ]; then
+    echo "Error: Please submit this script from gtap/evaluation/microbenchmarks/runtime-comparison/$BENCHMARK_NAME"
+    exit 1
+fi
+
+# GTaP, Kiuchi (Dynasoar), OpenMP, Cilk — n=1..17 (n=18 omitted for now)
+N_VALUES=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17)
+
+### nq-specific settings ###
+export CILK_NWORKERS="${CILK_NWORKERS:-${OMP_NUM_THREADS:-$(nproc)}}"
+CUTOFF="${CUTOFF:-7}"
+
+# Dynasoar fork-join implementation (Kiuchi et al.)
+if [ -z "${DYNASOAR_ROOT:-}" ]; then
+    for _candidate in \
+        "$COMPARE_DIR/../../../../../fine-grained-fork-join" \
+        "$HOME/fine-grained-fork-join"; do
+        if [ -d "$_candidate" ]; then
+            DYNASOAR_ROOT=$(cd "$_candidate" && pwd)
+            break
+        fi
+    done
+fi
+DYNASOAR_NQ_BIN="${DYNASOAR_NQ_BIN:-${DYNASOAR_ROOT:+$DYNASOAR_ROOT/bin/NQCutoff}}"
+DYNASOAR_NQ_TARGET="${DYNASOAR_NQ_TARGET:-NQCutoff}"
+DYNASOAR_NQ_CUTOFF="${DYNASOAR_NQ_CUTOFF:-$CUTOFF}"
+
+ensure_dynasoar_bin() {
+    if [ -z "${DYNASOAR_ROOT:-}" ] || [ ! -d "$DYNASOAR_ROOT" ]; then
+        echo "Warning: fine-grained-fork-join not found (set DYNASOAR_ROOT); skipping Kiuchi runs" >&2
+        return 1
+    fi
+    if [ -x "$DYNASOAR_NQ_BIN" ]; then
+        return 0
+    fi
+    echo "Building Dynasoar $DYNASOAR_NQ_TARGET in $DYNASOAR_ROOT ..."
+    make -C "$DYNASOAR_ROOT" "bin/$DYNASOAR_NQ_TARGET" || {
+        echo "Warning: Dynasoar $DYNASOAR_NQ_TARGET build failed; skipping Kiuchi runs" >&2
+        return 1
+    }
+    [ -x "$DYNASOAR_NQ_BIN" ]
+}
+
+CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-}}"
+if [ -z "$CUDA_PATH" ]; then
+    echo "Error: set CUDA_PATH or CUDA_HOME to the CUDA installation root" >&2
+    exit 1
+fi
+export CUDA_PATH
+export LD_LIBRARY_PATH="${CUDA_PATH}/lib64:${LD_LIBRARY_PATH:-}"
+
+NUM_RUNS=20
+NUM_RUNS_LARGE="${NUM_RUNS_LARGE:-10}"
+
+RESULTS_FILE="$COMPARE_DIR/${BENCHMARK_NAME}_performance_results.csv"
+echo "n,GTAP_med,GTAP_err_low,GTAP_err_high,OMP_med,OMP_err_low,OMP_err_high,CILK_med,CILK_err_low,CILK_err_high,DYNASOAR_med,DYNASOAR_err_low,DYNASOAR_err_high,DYNASOAR_cutoff,Speedup_med(OMP/GTAP),Speedup_med(CILK/GTAP),Speedup_med(DYNASOAR/GTAP)" > "$RESULTS_FILE"
+
+echo "Building GTaP / OpenMP / Cilk binaries ..."
+make -C "$COMPARE_DIR" -B gtap omp cilk || exit 1
+
+DYNASOAR_ENABLED=0
+if ensure_dynasoar_bin; then
+    DYNASOAR_ENABLED=1
+    echo "Kiuchi (Dynasoar) NQ: $DYNASOAR_NQ_BIN (cutoff=$DYNASOAR_NQ_CUTOFF)"
+else
+    echo "Kiuchi (Dynasoar) NQ: disabled"
+fi
+
+printf "%6s | %25s | %25s | %25s | %25s | %10s\n" \
+    "n" "GTAP (ms)" "OpenMP (ms)" "Cilk (ms)" "Kiuchi (ms)" "OMP/GTAP"
+printf "%6s-+-%25s-+-%25s-+-%25s-+-%25s-+-%10s\n" \
+    "------" "-------------------------" "-------------------------" \
+    "-------------------------" "-------------------------" "----------"
+
+runs_for_n() {
+    local n=$1
+    if (( n >= 17 )); then
+        echo "$NUM_RUNS_LARGE"
+    else
+        echo "$NUM_RUNS"
+    fi
+}
+
+measure_and_record() {
+    local n=$1
+    local num_runs
+    num_runs=$(runs_for_n "$n")
+
+    GTAP_MED=0 GTAP_ELO=0 GTAP_EHI=0
+    if [ -x "$BIN_DIR/gtap_$BENCHMARK_NAME" ]; then
+        read GTAP_MED _ _ GTAP_ELO GTAP_EHI < <(
+            benchmark_run_stats "$num_runs" benchmark_parse_execution_ms \
+                "$BIN_DIR/gtap_$BENCHMARK_NAME" "$n" "$CUTOFF"
+        )
+    fi
+
+    OMP_MED=0 OMP_ELO=0 OMP_EHI=0
+    if [ -x "$BIN_DIR/omp_$BENCHMARK_NAME" ]; then
+        read OMP_MED _ _ OMP_ELO OMP_EHI < <(
+            benchmark_run_stats "$num_runs" benchmark_parse_execution_ms \
+                "$BIN_DIR/omp_$BENCHMARK_NAME" "$n" "$CUTOFF"
+        )
+    fi
+
+    CILK_MED=0 CILK_ELO=0 CILK_EHI=0
+    if [ -x "$BIN_DIR/cilk_$BENCHMARK_NAME" ]; then
+        read CILK_MED _ _ CILK_ELO CILK_EHI < <(
+            benchmark_run_stats "$num_runs" benchmark_parse_execution_ms \
+                "$BIN_DIR/cilk_$BENCHMARK_NAME" "$n" "$CUTOFF"
+        )
+    fi
+
+    DYNASOAR_MED=0 DYNASOAR_ELO=0 DYNASOAR_EHI=0
+    if [ "$DYNASOAR_ENABLED" = "1" ]; then
+        read DYNASOAR_MED _ _ DYNASOAR_ELO DYNASOAR_EHI < <(
+            benchmark_run_stats "$num_runs" benchmark_parse_dynasoar_ms \
+                "$DYNASOAR_NQ_BIN" "$n" 0 "$DYNASOAR_NQ_CUTOFF"
+        )
+    fi
+
+    SPEEDUP=0
+    CILK_SPEEDUP=0
+    DYNASOAR_SPEEDUP=0
+    if [ "$GTAP_MED" != "0" ] && [ "$OMP_MED" != "0" ]; then
+        SPEEDUP=$(echo "scale=6; $OMP_MED / $GTAP_MED" | bc -l)
+    fi
+    if [ "$GTAP_MED" != "0" ] && [ "$CILK_MED" != "0" ]; then
+        CILK_SPEEDUP=$(echo "scale=6; $CILK_MED / $GTAP_MED" | bc -l)
+    fi
+    if [ "$GTAP_MED" != "0" ] && [ "$DYNASOAR_MED" != "0" ]; then
+        DYNASOAR_SPEEDUP=$(echo "scale=6; $DYNASOAR_MED / $GTAP_MED" | bc -l)
+    fi
+
+    printf "%6d | " "$n"
+    benchmark_fmt_med_iqr "$GTAP_MED" "$GTAP_ELO" "$GTAP_EHI"; printf " | "
+    benchmark_fmt_med_iqr "$OMP_MED"  "$OMP_ELO"  "$OMP_EHI";  printf " | "
+    benchmark_fmt_med_iqr "$CILK_MED" "$CILK_ELO" "$CILK_EHI"; printf " | "
+    benchmark_fmt_med_iqr "$DYNASOAR_MED" "$DYNASOAR_ELO" "$DYNASOAR_EHI"; printf " | "
+    if [ "$SPEEDUP" = "0" ]; then
+        printf "%10s\n" "N/A"
+    else
+        printf "%10.2f\n" "$SPEEDUP"
+    fi
+
+    echo "$n,$GTAP_MED,$GTAP_ELO,$GTAP_EHI,$OMP_MED,$OMP_ELO,$OMP_EHI,$CILK_MED,$CILK_ELO,$CILK_EHI,$DYNASOAR_MED,$DYNASOAR_ELO,$DYNASOAR_EHI,$DYNASOAR_NQ_CUTOFF,$SPEEDUP,$CILK_SPEEDUP,$DYNASOAR_SPEEDUP" >> "$RESULTS_FILE"
+}
+
+for n in "${N_VALUES[@]}"; do
+    measure_and_record "$n"
+done
+
+echo ""
+echo "Results saved to: $RESULTS_FILE"

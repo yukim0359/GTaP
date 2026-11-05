@@ -21,6 +21,7 @@ __pycache__/
 venv/
 
 # Batch jobs, logs, and temporary outputs
+evaluation/eval.jobs.*
 *.sh.o*
 *.pbs.o*
 *.o[0-9]*
