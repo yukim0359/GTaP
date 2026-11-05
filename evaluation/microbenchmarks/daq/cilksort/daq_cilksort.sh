@@ -47,28 +47,24 @@ for cutoff in "${CUTOFF_VALUES[@]}"; do
     echo "=== Compiling and testing with cutoff=$cutoff ===" >&2
 
     # Force rebuild: only GTAP_CFLAGS (cutoff) changes between iterations.
+    # Exit on failure so a stale binary from another cutoff is never timed.
     if ! make -C "$COMPARE_DIR" -B queue_1 queue_3 \
         GTAP_CFLAGS="-DTASK_SPAWN_CUTOFF_SORT=$cutoff -DTASK_SPAWN_CUTOFF_MERGE=$cutoff"; then
-        echo "Warning: Failed to compile with cutoff=$cutoff" >&2
+        echo "Error: Failed to compile with cutoff=$cutoff" >&2
+        exit 1
     fi
 
     # --- 1-queue ---
-    QUEUE1_MED=0 QUEUE1_ELO=0 QUEUE1_EHI=0
-    if [ -x "$BIN_DIR/${BENCHMARK_NAME}_queue_1" ]; then
-        read QUEUE1_MED _ _ QUEUE1_ELO QUEUE1_EHI < <(
-            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
-                "$BIN_DIR/${BENCHMARK_NAME}_queue_1" "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"
-        )
-    fi
+    read QUEUE1_MED _ _ QUEUE1_ELO QUEUE1_EHI < <(
+        benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+            "$BIN_DIR/${BENCHMARK_NAME}_queue_1" "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"
+    )
 
     # --- 3-queue ---
-    QUEUE3_MED=0 QUEUE3_ELO=0 QUEUE3_EHI=0
-    if [ -x "$BIN_DIR/${BENCHMARK_NAME}_queue_3" ]; then
-        read QUEUE3_MED _ _ QUEUE3_ELO QUEUE3_EHI < <(
-            benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
-                "$BIN_DIR/${BENCHMARK_NAME}_queue_3" "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"
-        )
-    fi
+    read QUEUE3_MED _ _ QUEUE3_ELO QUEUE3_EHI < <(
+        benchmark_run_stats "$NUM_RUNS" benchmark_parse_execution_ms \
+            "$BIN_DIR/${BENCHMARK_NAME}_queue_3" "$TMP_DIR/$DATA_FILE" "$TMP_DIR/$REF_FILE"
+    )
 
     # Speedup (1-queue / 3-queue) based on medians
     SPEEDUP=0
