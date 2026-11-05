@@ -1,14 +1,9 @@
 # GTaP example: Fibonacci
-GTAP_ROOT  ?= ../..
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-CLANG_BIN  ?= $(GTAP_ROOT)/clang-gtap/build/bin/clang++
-GT_INC     ?= $(GTAP_ROOT)/runtime
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
+include $(SCRIPT_DIR)/../common.mk
 
 SRC_THREAD := $(SCRIPT_DIR)/fib_thread.cu
 SRC_BLOCK  := $(SCRIPT_DIR)/fib_block.cu
-OUT_DIR    := $(SCRIPT_DIR)/bin
 OUT_THREAD := $(OUT_DIR)/fib_thread
 OUT_BLOCK  := $(OUT_DIR)/fib_block
 OUT_THREAD_PROFILE := $(OUT_DIR)/fib_thread_profile
@@ -38,7 +33,7 @@ $(OUT_THREAD): $(SRC_THREAD) | $(OUT_DIR)
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  $(GTAP_CUDA_LIBS) \
 	  "$(SRC_THREAD)" -o "$(OUT_THREAD)"
 
 $(OUT_BLOCK): $(SRC_BLOCK) | $(OUT_DIR)
@@ -47,7 +42,7 @@ $(OUT_BLOCK): $(SRC_BLOCK) | $(OUT_DIR)
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  $(GTAP_CUDA_LIBS) \
 	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK)"
 
 $(OUT_THREAD_PROFILE): $(SRC_THREAD) | $(OUT_DIR)
@@ -57,7 +52,7 @@ $(OUT_THREAD_PROFILE): $(SRC_THREAD) | $(OUT_DIR)
 	  -I"$(GT_INC)" \
 	  -DGTAP_ENABLE_PROFILING \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  $(GTAP_CUDA_LIBS) \
 	  "$(SRC_THREAD)" -o "$(OUT_THREAD_PROFILE)"
 
 $(OUT_BLOCK_PROFILE): $(SRC_BLOCK) | $(OUT_DIR)
@@ -67,7 +62,7 @@ $(OUT_BLOCK_PROFILE): $(SRC_BLOCK) | $(OUT_DIR)
 	  -I"$(GT_INC)" \
 	  -DGTAP_ENABLE_PROFILING \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  $(GTAP_CUDA_LIBS) \
 	  "$(SRC_BLOCK)" -o "$(OUT_BLOCK_PROFILE)"
 
 clean:

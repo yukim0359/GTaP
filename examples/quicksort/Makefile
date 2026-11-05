@@ -1,14 +1,9 @@
 # GTaP example: Quicksort (thread and block variants)
-GTAP_ROOT  ?= ../..
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-CLANG_BIN  ?= $(GTAP_ROOT)/clang-gtap/build/bin/clang++
-GT_INC     ?= $(GTAP_ROOT)/runtime
-CUDA_PATH  ?= $(CUDA_HOME)
-CUDA_ARCH  ?= sm_90
+include $(SCRIPT_DIR)/../common.mk
 
 SRC_THREAD   := $(SCRIPT_DIR)/quicksort_thread.cu
 SRC_ADVANCED := $(SCRIPT_DIR)/quicksort_advanced_block.cu
-OUT_DIR      := $(SCRIPT_DIR)/bin
 OUT_THREAD   := $(OUT_DIR)/quicksort_thread
 OUT_ADVANCED := $(OUT_DIR)/quicksort_advanced_block
 OUT_ADVANCED_PROFILE := $(OUT_DIR)/quicksort_advanced_block_profile
@@ -33,7 +28,7 @@ $(OUT_THREAD): $(SRC_THREAD) | $(OUT_DIR)
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  $(GTAP_CUDA_LIBS) \
 	  "$(SRC_THREAD)" -o "$(OUT_THREAD)"
 
 $(OUT_ADVANCED): $(SRC_ADVANCED) | $(OUT_DIR)
@@ -42,7 +37,7 @@ $(OUT_ADVANCED): $(SRC_ADVANCED) | $(OUT_DIR)
 	  --cuda-gpu-arch="$(CUDA_ARCH)" \
 	  -I"$(GT_INC)" \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  $(GTAP_CUDA_LIBS) \
 	  "$(SRC_ADVANCED)" -o "$(OUT_ADVANCED)"
 
 $(OUT_ADVANCED_PROFILE): $(SRC_ADVANCED) | $(OUT_DIR)
@@ -52,7 +47,7 @@ $(OUT_ADVANCED_PROFILE): $(SRC_ADVANCED) | $(OUT_DIR)
 	  -I"$(GT_INC)" \
 	  -DGTAP_ENABLE_PROFILING \
 	  $(GTAP_CFLAGS) \
-	  -L"$(CUDA_PATH)/lib64" -lcudart \
+	  $(GTAP_CUDA_LIBS) \
 	  "$(SRC_ADVANCED)" -o "$(OUT_ADVANCED_PROFILE)"
 
 clean:
