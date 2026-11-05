@@ -15,7 +15,7 @@ BENCHMARK_NAME := k_clique
 SCRIPT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 include $(SCRIPT_DIR)/../../common.mk
 
-KCGPU_ROOT ?= $(abspath $(SCRIPT_DIR)/../../../../KCGPU)
+KCGPU_DIR  ?= $(abspath $(SCRIPT_DIR)/../../../../KCGPU)
 NVCC       ?= nvcc
 NVCC_ARCH_CODE := $(patsubst sm_%,%,$(CUDA_ARCH))
 
@@ -99,9 +99,11 @@ SRC_GEN_NCR := $(SCRIPT_DIR)/scripts/common/gen_ncr.py
 GTAP_NCR_ROWS ?= 1001
 GTAP_NCR_COLS ?= 401
 
-.PHONY: all gtap_orientation gtap_pivot ncr clean print-vars
+.PHONY: all setup gtap_orientation gtap_pivot ncr graphs clean print-vars
 
 all: gtap_orientation gtap_pivot
+
+setup: ncr graphs
 
 print-vars:
 	@echo "SCRIPT_DIR=$(SCRIPT_DIR)"
@@ -118,7 +120,7 @@ $(OUT_DIR):
 
 $(OBJ_KCGPU_ORIENT): $(SRC_KCGPU_ORIENT) | $(OUT_DIR)
 	"$(NVCC)" -std=c++17 -O3 -w -Xcompiler -fPIC \
-	  -I"$(KCGPU_ROOT)/include" -I"$(KCGPU_ROOT)/kcore" \
+	  -I"$(KCGPU_DIR)/include" -I"$(KCGPU_DIR)/kcore" \
 	  -arch=sm_$(NVCC_ARCH_CODE) \
 	  -DCUDA -DNOT_IMPL \
 	  -c "$(SRC_KCGPU_ORIENT)" -o "$(OBJ_KCGPU_ORIENT)"
@@ -178,6 +180,9 @@ ncr: $(NCR_TXT)
 $(NCR_TXT): $(SRC_GEN_NCR)
 	mkdir -p "$(SCRIPT_DIR)/data"
 	python3 "$(SRC_GEN_NCR)" --rows $(GTAP_NCR_ROWS) --cols $(GTAP_NCR_COLS) "$(NCR_TXT)"
+
+graphs:
+	bash "$(SCRIPT_DIR)/scripts/common/download_graphs.sh"
 
 clean:
 	rm -f $(OUT_GTAP_ORIENTATION) $(OUT_GTAP_PIVOT) $(OBJ_KCGPU_ORIENT) $(LIB_KCGPU_ORIENT)

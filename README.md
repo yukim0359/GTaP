@@ -109,4 +109,4 @@ See [`examples/fib`](examples/fib) for an example.
 
 Yuki Maeda and Kenjiro Taura.<br>
 [GTaP: A GPU-Resident Fork-Join Task-Parallel System with a Pragma-Based Interface](https://arxiv.org/abs/2604.05982).<br>
-arXiv:2604.05982, 2026.
+PPoPP 2027 (to appear).

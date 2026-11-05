@@ -11,12 +11,13 @@ Set `CUDA_PATH`, `CUDA_ARCH`, and `CXX_BIN` according to the artifact setup.
 Run the following commands from this directory:
 
 ```sh
-export KCGPU_DIR=/path/to/KCGPU
-export KCGPU_ROOT="$KCGPU_DIR"
-export GRAPH_DIR=/path/to/graphs
+export KCGPU_DIR=/path/to/KCGPU   # optional; default is <gtap>/../KCGPU
+export GRAPH_DIR=/path/to/graphs  # optional; default is $KCGPU_DIR/graphs
+make setup
 ```
 
-The graph directory must contain these Matrix Market files:
+`make setup` builds the pivot binomial table (`ncr`) and downloads SNAP
+edgelists into contiguous-ID Matrix Market files.
 
 ```text
 com-DBLP/com-DBLP.mtx
@@ -25,12 +26,6 @@ com-Orkut/com-Orkut.mtx
 ```
 
 ## Run
-
-Generate the binomial-coefficient table required by pivot counting:
-
-```sh
-make ncr
-```
 
 Run both experiments:
 
