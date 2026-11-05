@@ -7,7 +7,7 @@
 #include <cuda_runtime.h>
 // #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
-#include "../../common/gtap_launch.hpp"
+#include "../../../common/gtap_launch.hpp"
 #include "cilksort_options.hpp"
 
 #define TASK_SPAWN_CUTOFF_SORT 64

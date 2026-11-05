@@ -2,7 +2,7 @@
 #include <cuda_runtime.h>
 // #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
-#include "../../common/gtap_launch.hpp"
+#include "../../../common/gtap_launch.hpp"
 
 __device__ int d_result;
 __device__ int d_cutoff;

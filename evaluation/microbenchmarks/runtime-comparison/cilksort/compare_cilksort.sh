@@ -35,7 +35,7 @@ if [ "$VALIDATE" = "0" ]; then
     VALIDATE_ARGS=(--no-validate)
 fi
 
-PROJECT_ROOT=$(cd "$COMPARE_DIR/../../.." && pwd) || exit 1
+PROJECT_ROOT=$(cd "$COMPARE_DIR/../../../.." && pwd) || exit 1
 BIN_DIR="$COMPARE_DIR/bin"
 UTIL_DIR="$PROJECT_ROOT/evaluation/util"
 TMP_DIR="$COMPARE_DIR/tmp"

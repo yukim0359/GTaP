@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 #include "gtap_thread.cuh"
-#include "../../common/gtap_launch.hpp"
+#include "../../../common/gtap_launch.hpp"
 
 __device__ int d_answer;
 __device__ __constant__ int d_grid_size;

@@ -4,7 +4,7 @@
 #include <cuda_runtime.h>
 // #define GTAP_ENABLE_PROFILING
 #include "gtap_thread.cuh"
-#include "../../common/gtap_launch.hpp"
+#include "../../../common/gtap_launch.hpp"
 
 __device__ unsigned long long d_answer;
 __device__ __constant__ int d_n;

@@ -7,7 +7,7 @@
 #include <cuda_runtime.h>
 // #define DEBUG
 #include "gtap_thread.cuh"
-#include "../../common/gtap_launch.hpp"
+#include "../../../common/gtap_launch.hpp"
 
 #ifndef TASK_SPAWN_CUTOFF_SORT
 #define TASK_SPAWN_CUTOFF_SORT 64
