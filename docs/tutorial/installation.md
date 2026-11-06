@@ -12,7 +12,7 @@ GTaP has been tested on an NVIDIA GH200 node of the Miyabi-G supercomputer.
 | Compute capability | 9.0 (`sm_90`) |
 | GTaP-enabled Clang | Based on LLVM 21.1.8 |
 | CUDA Toolkit | 12.9 |
-| Linux kernel | `5.14.0-427.13.1.el9_4.aarch64` |
+| Linux kernel | `5.14.0-687.26.1.el9_8.aarch64+64k` |
 
 Other NVIDIA GPU and CUDA configurations may work, but this is the currently
 verified environment.

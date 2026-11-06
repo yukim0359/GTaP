@@ -55,7 +55,7 @@ Tested environment:
 - Compute capability 9.0 (`sm_90`)
 - Clang 21.1.8
 - CUDA Toolkit 12.9
-- Linux kernel `5.14.0-427.13.1.el9_4.aarch64`
+- Linux kernel `5.14.0-687.26.1.el9_8.aarch64+64k`
 
 ### 1. Clone the repository
 
