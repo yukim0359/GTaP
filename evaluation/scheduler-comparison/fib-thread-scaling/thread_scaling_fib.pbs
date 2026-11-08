@@ -7,4 +7,4 @@
 #PBS -V
 
 cd "${PBS_O_WORKDIR:-$(cd "$(dirname "$0")" && pwd)}" || exit 1
-exec bash ./worker_scaling_fib.sh "$@"
+exec bash ./thread_scaling_fib.sh "$@"

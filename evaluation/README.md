@@ -60,7 +60,7 @@ Profiling experiments are separate from the `paper` target.
 | [FMM theta sweep](applications/fmm/scripts/dtt_theta/) (§6.4.1) | `fmm-theta` | `fmm-theta` |
 | [FMM phase breakdown](applications/fmm/scripts/stack/) (§6.4.1) | `fmm-stack` | `fmm-stack` |
 | [k-clique timings](applications/k_clique/) (§6.4.2) | `kclique-orientation`, `kclique-pivot` | `kclique` |
-| [Scheduler comparison](scheduler-comparison/fib/) (§6.5) | `worker-fib` | `worker-fib` |
+| [Scheduler comparison](scheduler-comparison/) (§6.5) | `thread-fib`, `sm-fib` | `thread-sm-fib` |
 
 ## Results
 

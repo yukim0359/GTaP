@@ -2,7 +2,7 @@
 
 BENCHMARK_NAME=fib
 
-# Run from gtap/evaluation/scheduler-comparison/$BENCHMARK_NAME
+# Run from gtap/evaluation/scheduler-comparison/fib-thread-scaling
 SCALING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
 cd "$SCALING_DIR" || exit 1
 source "$SCALING_DIR/../../common/benchmark.sh" || exit 1
@@ -13,9 +13,9 @@ mkdir -p "$TMP_BIN_DIR"
 # Block sizes to test (override: BLOCK_SIZES="32 64")
 BLOCK_SIZES=(${BLOCK_SIZES:-32})
 
-# Total threads: 2^10 to 2^18 (9 points)
+# Total threads: 2^10 to 2^17 (resident ceiling for t/b=32 on H100: ~135k)
 # Total threads = gridDim × blockDim
-TOTAL_THREADS_EXPONENTS=(10 11 12 13 14 15 16 17 18)
+TOTAL_THREADS_EXPONENTS=(10 11 12 13 14 15 16 17)
 
 # Number of runs (matching compare_fib.sh)
 NUM_RUNS=20
@@ -23,12 +23,12 @@ NUM_RUNS=20
 ### fib-specific settings (override: INPUT_N=40) ###
 INPUT_N="${INPUT_N:-35}"
 
-echo "=== ${BENCHMARK_NAME} Worker Scaling Analysis ==="
+echo "=== ${BENCHMARK_NAME} Thread Scaling Analysis ==="
 echo "INPUT_N=$INPUT_N  BLOCK_SIZES=${BLOCK_SIZES[*]}"
 echo "=============================================================="
 
 # Results file
-RESULTS_FILE="$SCALING_DIR/${BENCHMARK_NAME}_scaling_results.csv"
+RESULTS_FILE="$SCALING_DIR/${BENCHMARK_NAME}_thread_scaling_results.csv"
 echo "block_size,total_threads,grid_size,max_tasks_per_warp,ws_med,ws_err_low,ws_err_high,gq_med,gq_err_low,gq_err_high,chaselev_med,chaselev_err_low,chaselev_err_high" > "$RESULTS_FILE"
 
 # Constant: total_threads * MAX_TASKS_PER_WARP = 1024 * 96 * 150000

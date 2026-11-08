@@ -33,11 +33,11 @@ Usage: $0 list
   plot      rebuild a paper figure from existing CSVs
 
 Targets: tree-depth tree-compute hetero fib nq cilksort
-         daq-fib daq-nq daq-cilksort worker-fib
+         daq-fib daq-nq daq-cilksort thread-fib sm-fib
          fmm-theta fmm-stack kclique-orientation kclique-pivot
          paper
 
-Plots:   tree hetero micro daq worker-fib
+Plots:   tree hetero micro daq thread-sm-fib
          fmm-theta fmm-stack kclique paper
 EOF
 }
@@ -61,7 +61,8 @@ PAPER_TARGETS=(
     daq-fib
     daq-nq
     daq-cilksort
-    worker-fib
+    thread-fib
+    sm-fib
     fmm-theta
     fmm-stack
     kclique-orientation
@@ -73,7 +74,7 @@ PLOT_TARGETS=(
     hetero
     micro
     daq
-    worker-fib
+    thread-sm-fib
     fmm-theta
     fmm-stack
     kclique
@@ -133,10 +134,15 @@ resolve() {
             TARGET_RUN=daq_cilksort.sh
             TARGET_SUBMIT=daq_cilksort.pbs
             ;;
-        worker-fib)
-            TARGET_DIR="$EVAL_DIR/scheduler-comparison/fib"
-            TARGET_RUN=worker_scaling_fib.sh
-            TARGET_SUBMIT=worker_scaling_fib.pbs
+        thread-fib)
+            TARGET_DIR="$EVAL_DIR/scheduler-comparison/fib-thread-scaling"
+            TARGET_RUN=thread_scaling_fib.sh
+            TARGET_SUBMIT=thread_scaling_fib.pbs
+            ;;
+        sm-fib)
+            TARGET_DIR="$EVAL_DIR/scheduler-comparison/fib-sm-scaling"
+            TARGET_RUN=sm_scaling_fib.sh
+            TARGET_SUBMIT=sm_scaling_fib.pbs
             ;;
         fmm-theta)
             TARGET_DIR="$EVAL_DIR/applications/fmm"
@@ -188,9 +194,9 @@ resolve_plot() {
             PLOT_KIND=python3
             PLOT_PATH="$EVAL_DIR/scripts/plot/plot_daq_ratio_row_paper.py"
             ;;
-        worker-fib)
+        thread-sm-fib|thread-fib|sm-fib)
             PLOT_KIND=python3
-            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_fib_worker_scaling_paper.py"
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_fib_scaling_row_paper.py"
             ;;
         fmm-theta)
             PLOT_KIND=python3
