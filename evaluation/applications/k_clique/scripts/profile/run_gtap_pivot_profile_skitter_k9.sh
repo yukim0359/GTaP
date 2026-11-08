@@ -8,7 +8,8 @@ cd "$K_CLIQUE_DIR" || exit 1
 
 GTAP_ROOT="$(cd "$K_CLIQUE_DIR/../../.." && pwd)"
 KCGPU_DIR="${KCGPU_DIR:-$GTAP_ROOT/../KCGPU}"
-GRAPH="${GRAPH:-$KCGPU_DIR/graphs/as-Skitter/as-Skitter.mtx}"
+GRAPH_DIR="${GRAPH_DIR:-$KCGPU_DIR/graphs}"
+GRAPH="${GRAPH:-$GRAPH_DIR/as-Skitter/as-Skitter.mtx}"
 PROF=profile
 
 if [ ! -f "$GRAPH" ]; then

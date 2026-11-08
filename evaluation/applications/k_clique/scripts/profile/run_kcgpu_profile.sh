@@ -88,21 +88,29 @@ if [ -n "${CUDA_PATH:-}" ]; then
     export LD_LIBRARY_PATH="$CUDA_PATH/lib64:${LD_LIBRARY_PATH:-}"
 fi
 
-kcgpu_exe="$KCGPU_DIR/build/exe/src/main.cu.exe"
+# Keep the profile binary out of build/ so normal e2e (BUILD_KCGPU=0) cannot
+# pick up an instrumented main.cu.exe after timeline runs.
+KCGPU_PROFILE_BUILD_DIR="${KCGPU_PROFILE_BUILD_DIR:-build-profile}"
+kcgpu_exe="$KCGPU_DIR/$KCGPU_PROFILE_BUILD_DIR/exe/src/main.cu.exe"
+kcgpu_exe_rel="./$KCGPU_PROFILE_BUILD_DIR/exe/src/main.cu.exe"
 kcgpu_has_profile() {
     [ -x "$kcgpu_exe" ] || return 1
     grep -aobF 'KCGPU profile exported:' "$kcgpu_exe" >/dev/null 2>&1
 }
 if [ "${KCGPU_SKIP_BUILD:-0}" != "1" ]; then
-    echo "Building KCGPU with KCGPU_PROFILE=1 (CUDA_ARCH=$KCGPU_CUDA_ARCH)"
-    make_args=(CUDA_ARCH="$KCGPU_CUDA_ARCH" KCGPU_PROFILE=1)
+    echo "Building KCGPU profile binary under $KCGPU_PROFILE_BUILD_DIR/ (CUDA_ARCH=$KCGPU_CUDA_ARCH)"
+    make_args=(
+        BUILD_DIR="$KCGPU_PROFILE_BUILD_DIR"
+        CUDA_ARCH="$KCGPU_CUDA_ARCH"
+        KCGPU_PROFILE=1
+    )
     if [ -n "${KCPROFILE_MAX_SAMPLES:-}" ]; then
         make_args+=(KCPROFILE_MAX_SAMPLES="$KCPROFILE_MAX_SAMPLES")
         echo "  KCPROFILE_MAX_SAMPLES=$KCPROFILE_MAX_SAMPLES"
     fi
     make_target=()
     if [ "${KCGPU_FORCE_BUILD:-0}" = "1" ] || ! kcgpu_has_profile; then
-        echo "  forcing rebuild (-B): binary missing or built without KCGPU_PROFILE"
+        echo "  forcing rebuild (-B): profile binary missing or not instrumented"
         make_target=(-B)
     fi
     if ! make -C "$KCGPU_DIR" "${make_args[@]}" "${make_target[@]}"; then
@@ -117,7 +125,7 @@ if [ ! -x "$kcgpu_exe" ]; then
     exit 1
 fi
 if ! kcgpu_has_profile; then
-    echo "ERROR: KCGPU binary was built without profile support." >&2
+    echo "ERROR: KCGPU profile binary was built without profile support: $kcgpu_exe" >&2
     echo "Hint: KCGPU_FORCE_BUILD=1 $0" >&2
     exit 1
 fi
@@ -134,7 +142,7 @@ stats_csv="$PROFILE_ROOT/${KCGPU_APP_NAME}_warp_statistics_working${tag}.csv"
 sm_csv="$PROFILE_ROOT/${KCGPU_APP_NAME}_sm_balance${tag}.csv"
 
 kcgpu_args=(
-    ./build/exe/src/main.cu.exe
+    "$kcgpu_exe_rel"
     -g "$GRAPH_PATH"
     -d "$DEVICE"
     -m kc
@@ -175,7 +183,7 @@ else
 
     if [ ! -f "$timeline_csv" ]; then
         echo "ERROR: profile CSV was not created: $timeline_csv" >&2
-        echo "Hint: rebuild with 'make -C \"$KCGPU_DIR\" KCGPU_PROFILE=1 -B' and rerun." >&2
+        echo "Hint: rebuild with 'make -C \"$KCGPU_DIR\" BUILD_DIR=$KCGPU_PROFILE_BUILD_DIR KCGPU_PROFILE=1 -B' and rerun." >&2
         exit 1
     fi
     timeline_mtime=$(stat -c %Y "$timeline_csv")
@@ -185,14 +193,19 @@ else
     fi
 fi
 
-echo "Generating SM working timeline (max_sms=$MAX_WORKERS)"
-python3 "$K_CLIQUE_DIR/../../scripts/plot/plot_kcgpu_sm_timeline_paper.py" \
-    --profile-dir "$PROFILE_ROOT" \
-    --variant "$KCGPU_VARIANT" \
-    --profile-tag "$tag" \
-    --max-sms "$MAX_WORKERS" \
-    --output "$IMG_ROOT/${KCGPU_APP_NAME}${tag}_sm_timeline.${FIG_FORMAT}"
-
 echo "Profile CSV: $timeline_csv"
 echo "SM balance CSV: $sm_csv"
-echo "Figures: $IMG_ROOT"
+# Optional preview figures (sweeps). Paper Fig.7 uses ./eval.sh plot kclique-timeline-kcgpu
+# (all SMs → evaluation/img/kcgpu_pivot_sm_timeline.pdf).
+if [ "${KCGPU_MAKE_FIGURES:-1}" = "1" ]; then
+    echo "Generating SM working timeline preview (max_sms=$MAX_WORKERS)"
+    python3 "$K_CLIQUE_DIR/../../scripts/plot/plot_kcgpu_sm_timeline_paper.py" \
+        --profile-dir "$PROFILE_ROOT" \
+        --variant "$KCGPU_VARIANT" \
+        --profile-tag "$tag" \
+        --max-sms "$MAX_WORKERS" \
+        --output "$IMG_ROOT/${KCGPU_APP_NAME}${tag}_sm_timeline.${FIG_FORMAT}"
+    echo "Figures: $IMG_ROOT"
+else
+    echo "Skipping figure generation (KCGPU_MAKE_FIGURES=0); use plot kclique-timeline-kcgpu"
+fi

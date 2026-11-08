@@ -78,14 +78,21 @@ esac
 
 mkdir -p "$LOG_DIR" "$(dirname "$RESULTS_FILE")"
 
+kcgpu_default_exe="$KCGPU_DIR/build/exe/src/main.cu.exe"
+kcgpu_exe_has_profile() {
+    [ -x "$1" ] || return 1
+    grep -aobF 'KCGPU profile exported:' "$1" >/dev/null 2>&1
+}
+# Profile builds live under build-profile/; still heal a contaminated default
+# binary even when BUILD_KCGPU=0 (pivot's default).
+if [ "$RUN_KCGPU" = "1" ] && [ "$KCGPU_PROFILE" = "0" ] && kcgpu_exe_has_profile "$kcgpu_default_exe"; then
+    echo "Rebuilding KCGPU without profile (default binary was instrumented)"
+    make -C "$KCGPU_DIR" CUDA_ARCH="$KCGPU_CUDA_ARCH" KCGPU_PROFILE=0 -B >/dev/null
+fi
 if [ "$BUILD_KCGPU" = "1" ] && [ "$RUN_KCGPU" = "1" ]; then
-    if [ "$KCGPU_FORCE_REBUILD" = "1" ] || [ ! -x "$KCGPU_DIR/build/exe/src/main.cu.exe" ]; then
+    if [ "$KCGPU_FORCE_REBUILD" = "1" ] || [ ! -x "$kcgpu_default_exe" ]; then
         echo "Building KCGPU: CUDA_ARCH=$KCGPU_CUDA_ARCH KCGPU_PROFILE=$KCGPU_PROFILE"
         make -C "$KCGPU_DIR" CUDA_ARCH="$KCGPU_CUDA_ARCH" KCGPU_PROFILE="$KCGPU_PROFILE" -B >/dev/null
-    elif [ "$KCGPU_PROFILE" = "0" ] &&
-         strings "$KCGPU_DIR/build/exe/src/main.cu.exe" 2>/dev/null | grep -q "KCGPU profile exported"; then
-        echo "Rebuilding KCGPU without profile (existing binary was built with KCGPU_PROFILE=1)"
-        make -C "$KCGPU_DIR" CUDA_ARCH="$KCGPU_CUDA_ARCH" KCGPU_PROFILE=0 -B >/dev/null
     fi
 fi
 
