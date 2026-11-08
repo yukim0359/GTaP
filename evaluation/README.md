@@ -46,8 +46,8 @@ location and revision overrides (`KCGPU_DIR`, `DYNASOAR_ROOT`, and so on).
 
 Run measurements on a GPU node. The experiment scripts build the required
 binaries and use their paper settings by default; `run paper` executes the
-full set sequentially. `plot` reads saved CSVs without rerunning measurements.
-Profiling experiments are separate from the `paper` target.
+full set sequentially. `plot` reads saved CSVs / profile dumps without
+rerunning measurements.
 
 ## Experiments
 
@@ -60,6 +60,7 @@ Profiling experiments are separate from the `paper` target.
 | [FMM theta sweep](applications/fmm/scripts/dtt_theta/) (§6.4.1) | `fmm-theta` | `fmm-theta` |
 | [FMM phase breakdown](applications/fmm/scripts/stack/) (§6.4.1) | `fmm-stack` | `fmm-stack` |
 | [k-clique timings](applications/k_clique/) (§6.4.2) | `kclique-orientation`, `kclique-pivot` | `kclique` |
+| [k-clique pivot timelines](applications/k_clique/scripts/profile/) (Fig. 7) | `kclique-timeline-gtap`, `kclique-timeline-kcgpu` | `kclique-timeline-gtap`, `kclique-timeline-kcgpu` |
 | [Scheduler comparison](scheduler-comparison/) (§6.5) | `thread-fib`, `sm-fib` | `thread-sm-fib` |
 
 ## Results
@@ -71,6 +72,9 @@ Profiling experiments are separate from the `paper` target.
   CSVs in `results/`, logs in `logs/`, and the generated table in
   `latex/k579_benchmark_tables.tex`.
   Run `./eval.sh plot kclique` after both k-clique experiments finish.
+- Fig. 7 timelines need profile-instrumented runs, then
+  `./eval.sh plot kclique-timeline-gtap` /
+  `./eval.sh plot kclique-timeline-kcgpu`.
 - Performance figures are written to `img/` by scripts in `scripts/plot/`.
 
 PBS users can use `submit` instead of `run` after adjusting the `.pbs` files

@@ -35,10 +35,12 @@ Usage: $0 list
 Targets: tree-depth tree-compute hetero fib nq cilksort
          daq-fib daq-nq daq-cilksort thread-fib sm-fib
          fmm-theta fmm-stack kclique-orientation kclique-pivot
+         kclique-timeline-gtap kclique-timeline-kcgpu
          paper
 
 Plots:   tree hetero micro daq thread-sm-fib
-         fmm-theta fmm-stack kclique paper
+         fmm-theta fmm-stack kclique
+         kclique-timeline-gtap kclique-timeline-kcgpu paper
 EOF
 }
 
@@ -67,6 +69,8 @@ PAPER_TARGETS=(
     fmm-stack
     kclique-orientation
     kclique-pivot
+    kclique-timeline-gtap
+    kclique-timeline-kcgpu
 )
 
 PLOT_TARGETS=(
@@ -78,6 +82,8 @@ PLOT_TARGETS=(
     fmm-theta
     fmm-stack
     kclique
+    kclique-timeline-gtap
+    kclique-timeline-kcgpu
 )
 
 norm() {
@@ -164,6 +170,16 @@ resolve() {
             TARGET_RUN=scripts/k579/run_pivot_k579_e2e.sh
             TARGET_SUBMIT=scripts/k579/run_pivot_k579_e2e.pbs
             ;;
+        kclique-timeline-gtap)
+            TARGET_DIR="$EVAL_DIR/applications/k_clique"
+            TARGET_RUN=scripts/profile/run_gtap_pivot_profile_skitter_k9.sh
+            TARGET_SUBMIT=scripts/profile/run_gtap_pivot_profile_skitter_k9.pbs
+            ;;
+        kclique-timeline-kcgpu)
+            TARGET_DIR="$EVAL_DIR/applications/k_clique"
+            TARGET_RUN=scripts/profile/run_kcgpu_pivot_profile_skitter_k9.sh
+            TARGET_SUBMIT=scripts/profile/run_kcgpu_pivot_profile_skitter_k9.pbs
+            ;;
         *)
             echo "unknown target: $1" >&2
             usage >&2
@@ -209,6 +225,14 @@ resolve_plot() {
         kclique|kclique-orientation|kclique-pivot)
             PLOT_KIND=exec
             PLOT_PATH="$EVAL_DIR/applications/k_clique/scripts/k579/summarize_k579_e2e_combined.sh"
+            ;;
+        kclique-timeline-gtap)
+            PLOT_KIND=python3
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_k_clique_pivot_timeline_paper.py"
+            ;;
+        kclique-timeline-kcgpu)
+            PLOT_KIND=python3
+            PLOT_PATH="$EVAL_DIR/scripts/plot/plot_kcgpu_sm_timeline_paper.py"
             ;;
         *)
             echo "unknown plot target: $1" >&2

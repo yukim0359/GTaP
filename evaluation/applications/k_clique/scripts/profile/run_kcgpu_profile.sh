@@ -89,6 +89,10 @@ if [ -n "${CUDA_PATH:-}" ]; then
 fi
 
 kcgpu_exe="$KCGPU_DIR/build/exe/src/main.cu.exe"
+kcgpu_has_profile() {
+    [ -x "$kcgpu_exe" ] || return 1
+    grep -aobF 'KCGPU profile exported:' "$kcgpu_exe" >/dev/null 2>&1
+}
 if [ "${KCGPU_SKIP_BUILD:-0}" != "1" ]; then
     echo "Building KCGPU with KCGPU_PROFILE=1 (CUDA_ARCH=$KCGPU_CUDA_ARCH)"
     make_args=(CUDA_ARCH="$KCGPU_CUDA_ARCH" KCGPU_PROFILE=1)
@@ -97,7 +101,8 @@ if [ "${KCGPU_SKIP_BUILD:-0}" != "1" ]; then
         echo "  KCPROFILE_MAX_SAMPLES=$KCPROFILE_MAX_SAMPLES"
     fi
     make_target=()
-    if [ "${KCGPU_FORCE_BUILD:-0}" = "1" ]; then
+    if [ "${KCGPU_FORCE_BUILD:-0}" = "1" ] || ! kcgpu_has_profile; then
+        echo "  forcing rebuild (-B): binary missing or built without KCGPU_PROFILE"
         make_target=(-B)
     fi
     if ! make -C "$KCGPU_DIR" "${make_args[@]}" "${make_target[@]}"; then
@@ -111,13 +116,9 @@ if [ ! -x "$kcgpu_exe" ]; then
     echo "ERROR: KCGPU profile binary not found: $kcgpu_exe" >&2
     exit 1
 fi
-profile_markers=$(
-    strings "$kcgpu_exe" 2>/dev/null |
-        grep -c "KCGPU profile exported:" ||
-        true
-)
-if [ "${profile_markers:-0}" -eq 0 ]; then
+if ! kcgpu_has_profile; then
     echo "ERROR: KCGPU binary was built without profile support." >&2
+    echo "Hint: KCGPU_FORCE_BUILD=1 $0" >&2
     exit 1
 fi
 if [ "${KCGPU_BUILD_ONLY:-0}" = "1" ]; then
