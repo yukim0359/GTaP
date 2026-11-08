@@ -64,17 +64,21 @@ fi
 case "$GTAP_VARIANT" in
     orientation)
         GTAP_TARGET=gtap_orientation
-        GTAP_BIN="$K_CLIQUE_DIR/bin/gtap_orientation"
         ;;
     pivot)
         GTAP_TARGET=gtap_pivot
-        GTAP_BIN="$K_CLIQUE_DIR/bin/gtap_pivot"
         ;;
     *)
         echo "Unknown GTAP_VARIANT=$GTAP_VARIANT (expected orientation or pivot)" >&2
         exit 1
         ;;
 esac
+# Profile builds live under bin-profile/; e2e keeps using bin/.
+GTAP_OUT_DIR="$K_CLIQUE_DIR/bin"
+if [ "$GTAP_ENABLE_PROFILING" = "1" ]; then
+    GTAP_OUT_DIR="$K_CLIQUE_DIR/bin-profile"
+fi
+GTAP_BIN="$GTAP_OUT_DIR/$GTAP_TARGET"
 
 mkdir -p "$LOG_DIR" "$(dirname "$RESULTS_FILE")"
 
@@ -94,6 +98,17 @@ if [ "$BUILD_KCGPU" = "1" ] && [ "$RUN_KCGPU" = "1" ]; then
         echo "Building KCGPU: CUDA_ARCH=$KCGPU_CUDA_ARCH KCGPU_PROFILE=$KCGPU_PROFILE"
         make -C "$KCGPU_DIR" CUDA_ARCH="$KCGPU_CUDA_ARCH" KCGPU_PROFILE="$KCGPU_PROFILE" -B >/dev/null
     fi
+fi
+
+gtap_default_bin="$K_CLIQUE_DIR/bin/$GTAP_TARGET"
+gtap_bin_has_profile() {
+    [ -x "$1" ] || return 1
+    # Path string only exists in the #ifdef GTAP_ENABLE_PROFILING block.
+    grep -aobE '\./profile/(pivot|orientation)/' "$1" >/dev/null 2>&1
+}
+if [ "$RUN_GTAP" = "1" ] && [ "$GTAP_ENABLE_PROFILING" = "0" ] && gtap_bin_has_profile "$gtap_default_bin"; then
+    echo "Rebuilding $GTAP_TARGET without profile (default binary was instrumented)"
+    make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" OUT_DIR="$K_CLIQUE_DIR/bin" GTAP_ENABLE_PROFILING=0 >/dev/null
 fi
 
 flag_enabled() {
@@ -154,13 +169,15 @@ build_gtap_for_case() {
     done < <(python3 "$GTAP_CONFIG_LOADER" -c "$GTAP_CONFIG" --make-args "$GTAP_VARIANT" "$graph_name" "$k")
 
     if [ ${#make_args[@]} -eq 0 ]; then
-        echo "Rebuilding $GTAP_TARGET: GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING"
-        make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" >/dev/null
+        echo "Rebuilding $GTAP_TARGET: OUT_DIR=$GTAP_OUT_DIR GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING"
+        make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" OUT_DIR="$GTAP_OUT_DIR" \
+            GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" >/dev/null
         return
     fi
 
-    echo "Rebuilding $GTAP_TARGET for $graph_name k=$k: GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING ${make_args[*]}"
-    make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" "${make_args[@]}" >/dev/null
+    echo "Rebuilding $GTAP_TARGET for $graph_name k=$k: OUT_DIR=$GTAP_OUT_DIR GTAP_ENABLE_PROFILING=$GTAP_ENABLE_PROFILING ${make_args[*]}"
+    make -C "$K_CLIQUE_DIR" -B "$GTAP_TARGET" OUT_DIR="$GTAP_OUT_DIR" \
+        GTAP_ENABLE_PROFILING="$GTAP_ENABLE_PROFILING" "${make_args[@]}" >/dev/null
 }
 
 parse_gtap_count() {

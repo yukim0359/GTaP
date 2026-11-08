@@ -1,5 +1,6 @@
 #!/bin/bash
 # Paper Fig.7 (GTaP): as-Skitter, k=9, pivoting, with GTAP_ENABLE_PROFILING=1.
+# Profile binary lives under bin-profile/ so normal e2e bin/gtap_pivot is untouched.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +12,8 @@ KCGPU_DIR="${KCGPU_DIR:-$GTAP_ROOT/../KCGPU}"
 GRAPH_DIR="${GRAPH_DIR:-$KCGPU_DIR/graphs}"
 GRAPH="${GRAPH:-$GRAPH_DIR/as-Skitter/as-Skitter.mtx}"
 PROF=profile
+GTAP_PROFILE_OUT_DIR="${GTAP_PROFILE_OUT_DIR:-bin-profile}"
+GTAP_PIVOT_BIN="./$GTAP_PROFILE_OUT_DIR/gtap_pivot"
 
 if [ ! -f "$GRAPH" ]; then
     echo "ERROR: graph not found: $GRAPH" >&2
@@ -20,14 +23,20 @@ fi
 read -r HEAVY SECOND THIRD _ORIENT_MTP PIVOT_MTP < <(
     python3 scripts/common/load_gtap_graph_k_config.py --values as-Skitter 9
 )
-make -B gtap_pivot GTAP_ENABLE_PROFILING=1 \
+echo "Building GTaP profile binary under $GTAP_PROFILE_OUT_DIR/"
+make -B gtap_pivot OUT_DIR="$GTAP_PROFILE_OUT_DIR" GTAP_ENABLE_PROFILING=1 \
   GTAP_HEAVY_CANDIDATES="$HEAVY" \
   GTAP_SECOND_HEAVY_CANDIDATES="$SECOND" \
   GTAP_THIRD_HEAVY_CANDIDATES="$THIRD"
 
+if [ ! -x "$GTAP_PIVOT_BIN" ]; then
+    echo "ERROR: GTaP profile binary not found: $GTAP_PIVOT_BIN" >&2
+    exit 1
+fi
+
 mkdir -p "$PROF"
 # Binary writes ./profile/pivot/<graph>-<k>.
-GTAP_MAX_TASKS_PER_WARP="$PIVOT_MTP" ./bin/gtap_pivot "$GRAPH" 9
+GTAP_MAX_TASKS_PER_WARP="$PIVOT_MTP" "$GTAP_PIVOT_BIN" "$GRAPH" 9
 
 python3 - <<'PY'
 import json

@@ -1,3 +1,6 @@
+# Profile-instrumented binaries (Fig. 7); e2e keeps using bin/
+bin-profile/
+
 # Job / smoke logs
 logs/
 

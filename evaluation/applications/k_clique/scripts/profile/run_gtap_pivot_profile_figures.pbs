@@ -7,7 +7,7 @@
 #PBS -V
 #
 # GTAP pivot: render the paper timeline from a current-format profile
-# (run gtap_pivot with GTAP_ENABLE_PROFILING=1 first).
+# (run bin-profile/gtap_pivot with GTAP_ENABLE_PROFILING=1 first).
 #
 # Usage:
 #   qsub run_gtap_pivot_profile_figures.pbs
