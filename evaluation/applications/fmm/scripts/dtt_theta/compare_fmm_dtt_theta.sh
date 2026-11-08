@@ -344,7 +344,21 @@ run_stats() {
 
 extract_host_breakdown() {
   local text="$1"
-  local details
+  local details reset traverse stats h2d_counts h2d_lists
+
+  # Current host_report.hpp OpenMP timeline lines.
+  reset="$(printf '%s\n' "$text" | sed -n 's/.*DTT reset\/counts: \([0-9.][0-9.]*\).*/\1/p' | head -n 1)"
+  traverse="$(printf '%s\n' "$text" | sed -n 's/.*\[CPU\/OpenMP\]  DTT traversal core: \([0-9.][0-9.]*\).*/\1/p' | head -n 1)"
+  stats="$(printf '%s\n' "$text" | sed -n 's/.*DTT list stats: \([0-9.][0-9.]*\).*/\1/p' | head -n 1)"
+  h2d_counts="$(printf '%s\n' "$text" | sed -n 's/.*DTT list counts: \([0-9.][0-9.]*\).*/\1/p' | head -n 1)"
+  h2d_lists="$(printf '%s\n' "$text" | sed -n 's/.*DTT list payloads: \([0-9.][0-9.]*\).*/\1/p' | head -n 1)"
+  if [ -n "$reset" ] && [ -n "$traverse" ] && [ -n "$stats" ] && \
+     [ -n "$h2d_counts" ] && [ -n "$h2d_lists" ]; then
+    printf '%s %s %s %s %s\n' "$reset" "$traverse" "$stats" "$h2d_counts" "$h2d_lists"
+    return 0
+  fi
+
+  # Legacy single-line formats (pre-timeline report).
   details="$(printf '%s\n' "$text" | sed -n 's/^DTT host breakdown (steady-state): reset_counts=\([0-9.][0-9.]*\)  traverse=\([0-9.][0-9.]*\)  stats=\([0-9.][0-9.]*\)  h2d_counts=\([0-9.][0-9.]*\)  h2d_lists=\([0-9.][0-9.]*\).*/\1 \2 \3 \4 \5/p' | head -n 1)"
   if [ -n "$details" ]; then
     printf '%s\n' "$details"
