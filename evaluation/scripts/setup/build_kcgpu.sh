@@ -8,7 +8,7 @@
 #   KCGPU_DIR       Checkout / build tree (default: <gtap>/../KCGPU)
 #   KCGPU_REPO      Git URL if cloning (default: https://github.com/yukim0359/KCGPU.git)
 #   KCGPU_REF       Branch / tag / commit to checkout when cloning or updating
-#                   (default: main)
+#                   (default: paper experiment SHA on yukim0359/KCGPU)
 #   KCGPU_CUDA_ARCH NVCC arch number (default: 90)
 #   KCGPU_PROFILE   0 = e2e binary (default), 1 = SM/warp profile binary
 #   KCGPU_UPDATE     Set to 1 to git fetch + checkout KCGPU_REF before build
@@ -30,7 +30,7 @@ WORK_ROOT=$(cd "$GTAP_ROOT/.." && pwd)
 
 KCGPU_DIR="${KCGPU_DIR:-$WORK_ROOT/KCGPU}"
 KCGPU_REPO="${KCGPU_REPO:-https://github.com/yukim0359/KCGPU.git}"
-KCGPU_REF="${KCGPU_REF:-main}"
+KCGPU_REF="${KCGPU_REF:-f7156ddc73b1a749dd1e0c2a25b8c32ccdf61bf1}"
 KCGPU_CUDA_ARCH="${KCGPU_CUDA_ARCH:-90}"
 KCGPU_PROFILE="${KCGPU_PROFILE:-0}"
 KCGPU_UPDATE="${KCGPU_UPDATE:-0}"

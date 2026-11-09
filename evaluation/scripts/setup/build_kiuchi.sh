@@ -10,7 +10,8 @@
 #                   (default: <gtap>/../fine-grained-fork-join)
 #   KIUCHI_REPO     Git URL if cloning
 #                   (default: https://github.com/yukim0359/fine-grained-fork-join.git)
-#   KIUCHI_REF      Branch / tag / commit when cloning or updating (default: master)
+#   KIUCHI_REF      Branch / tag / commit when cloning or updating
+#                   (default: paper experiment SHA on yukim0359/fine-grained-fork-join)
 #   KIUCHI_TARGETS  Make targets (default: paper subset)
 #   KIUCHI_UPDATE    Set to 1 to git fetch + checkout KIUCHI_REF before build
 #
@@ -31,7 +32,7 @@ WORK_ROOT=$(cd "$GTAP_ROOT/.." && pwd)
 
 DYNASOAR_ROOT="${DYNASOAR_ROOT:-$WORK_ROOT/fine-grained-fork-join}"
 KIUCHI_REPO="${KIUCHI_REPO:-https://github.com/yukim0359/fine-grained-fork-join.git}"
-KIUCHI_REF="${KIUCHI_REF:-master}"
+KIUCHI_REF="${KIUCHI_REF:-ccaebc6dabe025ba0a05159ae4255ff10cffc575}"
 KIUCHI_TARGETS="${KIUCHI_TARGETS:-bin/FibOnlyOne bin/NQCutoff bin/CilkSort}"
 KIUCHI_UPDATE="${KIUCHI_UPDATE:-0}"
 
